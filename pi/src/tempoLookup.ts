@@ -23,6 +23,8 @@ export interface TempoCacheEntry {
   learn?: Record<string, number>; learnAt?: number;
   /** Dom vid latslut: facit mot hela latens median-bpm (ok / ok-oktav-0.5|2 / ok-fantom-x / avvisat). */
   verdictEnd?: string;
+  /** AUTOMATISKT LARD: oktavledtrad (2 / 0.5 / 1) ur verdictEnd, och hur manga spelningar som gett samma klass. */
+  octaveHint?: number; hintCount?: number;
 }
 const NEG_TTL_MS = 7 * 24 * 3600e3;
 

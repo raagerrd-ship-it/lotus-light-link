@@ -718,6 +718,8 @@ export class PiLightEngine {
   private _tempoWinLastAt = 0; private _tempoSm = 0;
   /** Oktavregelns senaste ringmatt (per slag) + rakning for inlarningsraden. */
   private _octRingMs = 0; private _octPerBeat = 0; private _octReg = 0; private _octOn = false; private _octBeats = 0; private _octBeatsTotal = 0;
+  /** AUTOMATISK OKTAVLEDTRAD (09-19): lard ur facit vid forra spelningen av samma lat (2 = analysatorn en oktav under, 0.5 = over, 1 = ratt/okand). */
+  private _octHint = 1;
   /** Pagaende landmarkes-inspelning: bas i ljudklockan, slut, och det som samlats. */
   private _capBaseMs = -1;
   private _capUntilMs = -1;
@@ -1236,6 +1238,12 @@ export class PiLightEngine {
   setLearnSaver(fn: ((artist: string, title: string, summary: Record<string, number>) => void) | null): void {
     this._learnSaver = fn;
   }
+  /** Oktavledtrad for aktuell lat, lard automatiskt ur facit (index.ts). Ignoreras om laten redan bytt. */
+  setOctaveHint(hint: number, artist: string, title: string): void {
+    if ((artist || '') !== this._songArtist || (title || '') !== this._songTitle) return;
+    this._octHint = hint === 2 || hint === 0.5 ? hint : 1;
+    if (this._octHint !== 1) console.log(`[takt] oktavledtrad ${this._octHint}x for "${title}" (lard ur facit vid forra spelningen)`);
+  }
   /** 1 Hz: analysatorns bpm/konfidens. Var 5 s: nya kick-intervall ur ringen till ett 5 ms-histogram. */
   private learnSample(frame: { bpm?: number; bpmConfidence?: number } | null): void {
     const now = Date.now();
@@ -1464,7 +1472,7 @@ export class PiLightEngine {
       try { this._learnSaver?.(this._songArtist, this._songTitle, this.learnSummary()); } catch { /* cachen far aldrig falla motorn */ }
     }
     this.learnReset();
-    this._octOn = false; this._octBeats = 0; this._octBeatsTotal = 0; this._octRingMs = 0; this._octPerBeat = 0; this._octReg = 0;
+    this._octOn = false; this._octBeats = 0; this._octBeatsTotal = 0; this._octRingMs = 0; this._octPerBeat = 0; this._octReg = 0; this._octHint = 1;
     this._tempoWin = []; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
     this._songBpm = 0;
     this._songEntry = null;
@@ -1719,7 +1727,7 @@ export class PiLightEngine {
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
-    subdivLevel: number; octave: { on: boolean; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
+    subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
     const now = Date.now();
@@ -1733,7 +1741,7 @@ export class PiLightEngine {
       beatErr: this._beatErr,
       gridPulses: this._gridPulseCount,
       subdivLevel: this._subdivLevel,
-      octave: { on: this._octOn, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
+      octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
@@ -2231,6 +2239,10 @@ export class PiLightEngine {
               if (this._octOn) _octWants = 1;
               this._octBeatsTotal++; if (this._octOn) this._octBeats++;
             } else this._octOn = false;
+            // LARD LEDTRAD gar fore ringregeln: facit vid forra spelningen sa att analysatorn ligger en
+            // oktav under (2) eller over (0.5) pa just den har laten. Analysatorn ger fortfarande fas
+            // och tempo - bara presentationens oktav rattas, den kan analysatorn inte avgora sjalv.
+            if (this._octHint === 2) _octWants = 1; else if (this._octHint === 0.5) _octWants = -1;
             if (_bpmWants !== null) next = _bpmWants;
             else if (_octWants !== null) next = _octWants;
             else if (energySubdiv) {

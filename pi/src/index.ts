@@ -245,7 +245,27 @@ async function ensureEngineInstance(): Promise<void> {
         verdictEnd = cls === undefined ? 'avvisat' : ((cls === 0.5 || cls === 1 || cls === 2) ? (cls === 1 ? 'ok' : `ok-oktav-${cls}`) : `ok-fantom-${cls.toFixed(2)}`);
         (summary as Record<string, number>).facitRatioEnd = Math.round(r * 100) / 100;
       }
-      tc.upsert(key, a, t, { learn: summary, learnAt: Date.now(), ...(verdictEnd ? { verdictEnd } : {}) });
+      // AUTOMATISK JUSTERING (09-19): domen blir en oktavledtrad pa laten. Nasta spelning rattar
+      // motorn presentationens oktav sjalv (setOctaveHint) - analysatorn ger fas och tempo som forr.
+      // Samma klass tva ganger i rad = stabil; en avvikande dom nollar rakningen (inte ledtraden).
+      let hintPatch: Partial<import('./tempoLookup.js').TempoCacheEntry> = {};
+      if (verdictEnd) {
+        const cls = verdictEnd === 'ok-oktav-2' ? 2 : verdictEnd === 'ok-oktav-0.5' ? 0.5 : verdictEnd === 'ok' ? 1 : 0;
+        if (cls > 0) {
+          const same = e?.octaveHint === cls;
+          hintPatch = { octaveHint: cls, hintCount: same ? (e?.hintCount ?? 0) + 1 : 1 };
+        }
+      }
+      tc.upsert(key, a, t, { learn: summary, learnAt: Date.now(), ...(verdictEnd ? { verdictEnd } : {}), ...hintPatch });
+      // OKTAVREGELNS TRAFFSAKERHET mot facit, loggad lopande: bland latar dar regeln presenterade 2x
+      // (octave2x > 0,5) och facit finns - hur ofta lag analysatorn verkligen en oktav under?
+      try {
+        const rows = tc.list().filter((r) => r.bpm > 0 && r.learn && (r.learn.octave2x ?? 0) > 0.5 && typeof r.learn.facitRatioEnd === 'number');
+        if (rows.length) {
+          const hit = rows.filter((r) => Math.abs((r.learn!.facitRatioEnd as number) / 2 - 1) < 0.05).length;
+          console.log(`[takt] oktavregel mot facit: ${hit}/${rows.length} ratt (2x-presenterade latar med facit)`);
+        }
+      } catch { /* statistik far aldrig falla motorn */ }
       console.log(`[tempo] inlärning: "${a} - ${t}"${verdictEnd ? ` facit ${e!.bpm} -> ${verdictEnd} |` : ''} analysator ${summary.bpmMedian} (${summary.bpmMin}-${summary.bpmMax}, conf ${summary.confMedian}) ring ${summary.ringIntervalMs} ms x${summary.ringPerBeat}/slag reg ${summary.ringRegular} n=${summary.ringN} ${summary.durationS}s`);
     });
     console.log(`[tempo] katalogcache: ${tc.size} låtar (facit-läge: katalogen driver ${JSON.parse(getItem('light-calibration') || '{}').useMetaTempo === true ? 'PÅ' : 'av'})`);
@@ -454,6 +474,10 @@ async function startSonosSubsystem(): Promise<void> {
           const { hit, cached } = await resolveTempo(tempoCacheRef, artist, title);
           if (title !== lastTrackName) return;                 // laten hann byta
           if (hit) engineInstance.setMetaTempo(hit.bpm, hit.source + (cached ? ' (cache)' : ''), artist || '', title);
+          // Lard oktavledtrad fran forra spelningen (automatisk justering, se learn-saver).
+          const { songKey: sk } = await import('./songStore.js');
+          const row = tempoCacheRef.get(sk(artist || '', title)) ?? null;
+          if (row && (row.octaveHint === 2 || row.octaveHint === 0.5)) engineInstance.setOctaveHint(row.octaveHint, artist || '', title);
           else console.log(`[tempo] inget katalogtempo for "${artist ?? '?'} - ${title}"${cached ? ' (cache)' : ''}`);
         } catch (e) { console.log('[tempo] uppslag misslyckades:', (e as Error).message); }
       };
