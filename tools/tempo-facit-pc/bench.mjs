@@ -69,6 +69,7 @@ const rows = [];
 if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('.json'))) {
   const meta = JSON.parse(readFileSync(join(DIR, f), 'utf8')); const wav = join(DIR, f.replace(/\.json$/, '.wav'));
   if (!existsSync(wav)) continue;
+  if (meta.result?.method === 'brus' || (meta.result?.quality && meta.result.quality.ok === false)) continue;   // brus-snuttar (kvalitetsgrinden) ar inget facit
   let facit = meta.result?.bpm || 0;
   const hasSections = !!(meta.result?.analysis?.sections?.segments?.length);
   if (!facit && !hasSections) continue;                                   // langfangst med sektionsfacit far vara med utan tempofacit (osakert = bpm 0)

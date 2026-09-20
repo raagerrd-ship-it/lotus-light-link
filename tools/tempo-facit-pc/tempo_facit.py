@@ -51,6 +51,21 @@ def estimate(y: np.ndarray, sr: int) -> dict:
     return estimate_rigid(y, sr) if METHOD == 'rigid' else estimate_evidens(y, sr)
 
 
+def audio_quality(y: np.ndarray, sr: int) -> dict:
+    """KVALITETSGRIND (2026-09-20 14:50). Snuttarna 14:13-14:36 var bredbandigt brus (nagot i rummet / mattad mic): spektral
+    flathet 0,03-0,06 mot normala 0,002, rolloff 16 kHz mot 9, basandel < 200 Hz 0,2-0,36 mot 0,85 - Beat This! hittade 0 slag,
+    librosa och analysatorn gav godtyckliga tempon. Sadana snuttar ska inte bli facit, inte kosta moln och inte laras pa.
+    Matt pa de forsta 20 s: flatness (median), basandel. brus = (flatness > 0,02 OCH basandel < 0,5) ELLER flatness > 0,04."""
+    seg = y[: int(sr * 20)]
+    if len(seg) < sr * 3: return {'ok': True, 'flatness': 0.0, 'bass': 1.0}
+    S = np.abs(librosa.stft(seg, n_fft=2048))
+    flat = float(np.median(librosa.feature.spectral_flatness(S=S)))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048); p = (S ** 2).sum(axis=1); bass = float(p[freqs < 200].sum() / max(1e-12, p.sum()))
+    rms = float(np.sqrt((seg ** 2).mean()))
+    # orkestralt utan bas (Red Handed: flatness 0,002, bas 0,29) ar musik, inte brus -> basandelen doms bara ihop med hojd flathet
+    return {'ok': not ((flat > 0.02 and bass < 0.5) or flat > 0.04), 'flatness': round(flat, 4), 'bass': round(bass, 2), 'rms': round(rms, 3)}
+
+
 def fold_an(b: float) -> float:
     """Analysatorns vikning [80,160) - klassjamforelser gors i den."""
     while b >= 160: b /= 2
@@ -425,8 +440,20 @@ def process_one(row: dict) -> bool:
         log.info('for kort snutt (%.1f s) for %s - %s', len(y) / sr, artist, title)
         http('PUT', '/api/tempo/facit', {'id': sid, 'key': key, 'kind': kind, 'artist': artist, 'title': title, 'bpm': 0, 'method': 'kort'})
         return False
+    q = audio_quality(y, sr)
+    if not q['ok']:
+        log.info('BRUS: %s - %s (flatness %s, basandel %s, rms %s) - inget facit, inget moln, sparas markt', artist, title, q['flatness'], q['bass'], q.get('rms'))
+        http('PUT', '/api/tempo/facit', {'id': sid, 'key': key, 'kind': kind, 'artist': artist, 'title': title, 'bpm': 0, 'method': 'brus', 'analysis': {'quality': q}})
+        try:
+            os.makedirs(CORPUS_DIR, exist_ok=True); safe = sid.replace('|', '__').replace('#', '_')
+            with open(os.path.join(CORPUS_DIR, safe + '.wav'), 'wb') as f: f.write(wav)
+            with open(os.path.join(CORPUS_DIR, safe + '.json'), 'w', encoding='utf-8') as f:
+                json.dump({'row': row, 'result': {'bpm': 0, 'method': 'brus', 'quality': q}, 'events': ev, 'savedAt': time.time()}, f, ensure_ascii=False)
+        except Exception as e: log.warning('brus-snutt kunde inte sparas: %s', e)
+        return False
     r = estimate(y, sr)
     beats, onset_lo = r.pop('_beats'), r.pop('_onset_lo')
+    r['quality'] = q
     # ── TRE ROSTER ────────────────────────────────────────────────────────────
     bt = beatthis_track(wav)
     if bt and not (40 <= float(bt.get('bpm') or 0) <= 220): log.info('beatthis orimligt tempo %s - ignoreras', bt.get('bpm')); bt = None   # 'Age of War': 6,2 BPM
@@ -439,7 +466,8 @@ def process_one(row: dict) -> bool:
             if a1 and tempo_class(a1, r['pcBpm']) == 'lika': r['facitVotes'] = 'pc+moln'
             elif a1 and tempo_class(a1, bt['bpm']) == 'lika': r['facitVotes'] = 'bt+moln'; r['bpm'] = round(bt['bpm'], 1)
             else: r['facitVotes'] = 'oense'; r['bpm'] = 0     # osakert facit: Pi:n domer inte, ingen ledtrad
-        if len(bt.get('beatsS') or []) >= 8:
+        if len(bt.get('beatsS') or []) >= 8 and r['bpm'] and tempo_class(bt['bpm'], r['bpm']) == 'lika':
+            # BT-slag som fasreferens BARA nar BT:s tempo = det slutliga facit (14:36: BT 114,6 mot facit 125,2 gav fel grid for fasen)
             beats = rigid_from_beats(bt['beatsS']); r['beatsSource'] = 'beatthis'
             r['btDownbeatsS'] = bt.get('downbeatsS')
     else:
