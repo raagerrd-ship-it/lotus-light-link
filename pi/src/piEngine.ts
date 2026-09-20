@@ -2777,11 +2777,20 @@ export class PiLightEngine {
         const wdb = 20 * Math.log10(Math.max(wlevel, 1e-4));
         let anchorDb = cal.anchorDb ?? -4;
         if ((cal.autoAnchor ?? 0) > 0) {
+          // ANKARET SAS BARA UR SIGNAL (2026-09-20 17:00): efter omstart/paus saddes wdbSlow fran forsta ramen = tystnad (-80 dB)
+          // och klattrade sedan med tau x3 (6 min) - ljuset lag klippt mot taket (shape 1,0 i 56 % av ramarna, 72-100 %) i
+          // over en kvart ("lite dynamik"). Nu: ingen uppdatering under tystnadsgrinden, forsta sadd = forsta ram med signal,
+          // och ligger signalen > windowDb over ankaret (helt utanfor fonstret) snapper ankaret med tau/10.
           const tauMs = Math.max(1000, (cal.autoAnchorSec ?? 60) * 1000);
-          const anchorUp = this._wdbSlow !== undefined && wdb > this._wdbSlow;
-          const anchorAlpha = 1 - Math.exp(-FRAME_MS / (anchorUp ? tauMs * 3 : tauMs));
-          this._wdbSlow = this._wdbSlow === undefined ? wdb : this._wdbSlow + anchorAlpha * (wdb - this._wdbSlow);
-          anchorDb = this._wdbSlow + (cal.anchorOffsetDb ?? 4);
+          const tickFloorA = cal.tickEnergyFloor ?? 0;
+          const silentA = tickFloorA > 0 && level < tickFloorA;
+          if (!silentA) {
+            const anchorUp = this._wdbSlow !== undefined && wdb > this._wdbSlow;
+            const farAbove = this._wdbSlow !== undefined && wdb - this._wdbSlow > Math.max(1, cal.windowDb ?? 18);
+            const anchorAlpha = 1 - Math.exp(-FRAME_MS / (farAbove ? tauMs / 10 : anchorUp ? tauMs * 3 : tauMs));
+            this._wdbSlow = this._wdbSlow === undefined ? wdb : this._wdbSlow + anchorAlpha * (wdb - this._wdbSlow);
+          }
+          anchorDb = (this._wdbSlow ?? wdb) + (cal.anchorOffsetDb ?? 4);
           _diag.wdbSlow = this._wdbSlow;
           _diag.anchorDb = anchorDb;
         }
