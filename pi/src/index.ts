@@ -517,6 +517,7 @@ async function startSonosSubsystem(): Promise<void> {
           const t0 = Date.now();
           console.log(`[tempo] fangst ${kind}: ${prerollS ? prerollS + ' s fore + ' : ''}${seconds} s @48 kHz for "${title}"`);
           const kicks = new Set<number>(); const bright: number[][] = []; const flags: number[][] = []; let lastFlag = '';
+          const phases: number[][] = []; let lastPhase = 0;   // analysatorns gridfas (beatPhaseMs, conf) nar den andras (4 Hz) - skiljer analysatorfel fran foljarfel (09-20 kvall: 2/8 latar i motfas)
           const tick = setInterval(() => {
             try {
               const now = Date.now(); const f: any = mic.getLatestFrame?.();
@@ -525,6 +526,7 @@ async function startSonosSubsystem(): Promise<void> {
                 const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.breaking ? 1 : 0}|${f.inZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
                 if (fl !== lastFlag) { lastFlag = fl; flags.push([now, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.breaking ? 1 : 0, f.inZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); }
               }
+              if (f && typeof f.beatPhaseMs === 'number' && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhase) { lastPhase = f.beatPhaseMs; phases.push([Math.round(f.beatPhaseMs), Math.round((f.beatPhaseConf ?? 0) * 100) / 100, f.bpm ?? 0]); }
               if (bright.length % 50 === 1) for (const k of (mic.getRecentKicks?.() ?? [])) kicks.add(k);
             } catch { /* loggen far aldrig falla motorn */ }
           }, 100);
@@ -539,7 +541,7 @@ async function startSonosSubsystem(): Promise<void> {
               const since = meta.startWallMs - 1000;
               const events = { id, key, kind, artist: artist || '', title, captureStartWallMs: meta.startWallMs, prerollSamples: meta.prerollSamples, rate: 48000,
                 seconds: (wav.length - 44) / 2 / 48000, beat: engineInstance!.getBeatInfo(), kicks: [...kicks].filter((k) => k >= since).sort((a, b) => a - b),
-                pulses: engineInstance!.getRecentPulses(since), bright, flags, ...(truncatedAtMs ? { truncatedAtMs } : {}) };
+                pulses: engineInstance!.getRecentPulses(since), bright, flags, phases, ...(truncatedAtMs ? { truncatedAtMs } : {}) };
               writeFileSync(dir + '/' + fname + '.wav', wav);
               writeFileSync(dir + '/' + fname + '.events.json', JSON.stringify(events));
               writeFileSync(dir + '/' + fname + '.json', JSON.stringify({ id, key, kind, artist: artist || '', title, capturedAt: Date.now(), rate: 48000, seconds: events.seconds, hasEvents: true }));
