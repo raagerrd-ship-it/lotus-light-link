@@ -201,3 +201,19 @@ Provat och förkastat 14:40: `LOTUS_EVID_BAND=both` (helbandsringen vägs in i k
 129/175, vikt 1,0 131/178 med en syntetförlust (3/2), baslinjen bas 131/178. Helbandet tillför inget och kostar en alignScore
 till per kandidat — kvar som opt-in. Filmmusikens tempofel (4/3, 3/2 på Two Steps from Hell, Trevor Jones) är alltså inte
 bandvalet; nästa spår är att titta på kandidatgenereringen (tempogrammets toppar saknar ofta rätt period helt på orkestralt).
+
+## Liveprov 3 fortsatt: fasföljaren mätt live (15:00–16:00) — MÄTFÄLLA 15 och PI-reglering
+
+`LOTUS_PHASE_TRACE=1` (tillfällig 4 Hz-spårlogg i motorn, `[fasspar]`) visade att bänkens följar-emulering INTE ser
+live-problemen: (1) motorns grid (12 s-median) låg kvar på förra låtens tempo i sekunder vid låtbyten → fasfel
+meningslöst → 903 flippar/2 h; (2) estimatet bytte halvslag var ~20 s på vissa låtar. Fix (bf3355e): följ bara när
+analysatorns bpm = gridets ±4 %, flip kräver kvot ≥ 2,0 i 4 raka, klistrig fas i analysatorn (byte bara när ny fas ≥ 1,25× förra
+i 6 raka analyser). Flippar 903/2 h → 19/15 min.
+Offline-dom (`result.beatsS` = tjänstens valda referens, rena snuttar, grid = facit ±4 %): kick-PLL 0,46 (n=55, motfas 8),
+följare v1 0,49 (n=10), v2 0,49 (n=7, motfas 0, IQR 91 ms). Alltså baslinjen, inte bättre — felet är **konstanta offsetar**
+50–100 ms per låt (Status del två +96 ms med IQR 15 ms): gridets tempo släpar 1–2 % efter analysatorns → följaren jagar med
+konstant släp. Bänken (analysatorn ensam): fasmätningens offset median +20 ms, |offset| 25 ms, 56 % inom 30 ms → estimatet
+duger, motorn är felet. 15:55 (287bf01): PI-reglering (bpm följer fasdriften, klamp ±4 %), bias 20 ms, kP 0,4/0,2. Döms med
+samma offline-mått (phase_verdict-logiken) på nästa låtar; mål |offset| ≤ 30 ms och on-beat ≥ 0,8 på de flesta.
+**Beat This! på svensk partypop:** fel tempo i 4/10 (184 mot 102, 120 mot 138) — trerösten höll (molnet avgjorde), men
+fasreferensen faller då tillbaka på PC-slag. Kvalitetsgrinden (brus) fångade 14:13–14:36.
