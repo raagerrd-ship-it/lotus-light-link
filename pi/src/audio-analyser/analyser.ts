@@ -252,6 +252,11 @@ export class Analyser {
   // korpus - verkliga baslinjer har toner pa manga delslag, sa slagpoangen skiljer inte grannkandidater. OPT-IN.
   private static readonly EVIDENCE_ON = typeof process !== 'undefined' && process.env?.LOTUS_TEMPO_EVIDENCE === '1';
   private static readonly EVIDENCE_K = 5;
+  /** EVIDENSBAND (09-20): kandidatvalets slagpoang mots BASringen (standard). 'both' vager in helbandsringen nar basen ar
+   *  svag - orkestral/akustisk musik (filmmusik, sjomansvisor) har ingen kick, sa baspoangen blir brus och valet slumpartat.
+   *  Vikt = hur mycket basringen sticker ut (basens poangspridning); kvot < EVID_FULL_MIN => helbandet far halva rosten. */
+  private static readonly EVID_BAND = (typeof process !== 'undefined' && process.env?.LOTUS_EVID_BAND) || 'bass';
+  private static readonly EVID_FULL_W = (typeof process !== 'undefined' && Number(process.env?.LOTUS_EVID_FULL_W)) || 0.5;
   /** KICKDETEKTOR-RATTAR (09-20, korbank tools/tempo-facit-pc/bench.mjs, BENCH_GRID=1, 107 latar med PC-basonsets/slag):
    *  troskelfaktor mot MAD (4,5), grinden mot eget grid (pa), cooldown (170 ms) och energigolv (0,06). Env for A/B.
    *  Svep 2026-09-20 (tempot orort i alla): baslinje kick-recall 0,48 / precision 0,84 / on-beat-recall 0,63;
@@ -284,7 +289,7 @@ export class Analyser {
   private evidChangeBpm = 0; private evidChangeVotes = 0; private localBpmF = 0; private evidLastLocal = 0;
   /** Antal evidensomlasningar (telemetri/korbank) + lasets senaste slagpoang. */
   evidenceRelocks = 0; evidenceLockScore = 0;
-  private candLag = new Int32Array(12); private candVal = new Float32Array(12); private candScore = new Float32Array(12); private candHalf = new Float32Array(12);
+  private candLag = new Int32Array(12); private candVal = new Float32Array(12); private candScore = new Float32Array(12); private candHalf = new Float32Array(12); private candFull = new Float32Array(12);
   /** Senaste evidensvalets telemetri: vald kandidats slagpoang, halvslagskvot, antal kandidater, tvaans poang. */
   evidenceScore = 0; evidenceHalf = 0; evidenceCands = 0; evidenceSecond = 0;
   /** Senaste RA-estimatet (vikt till 80..160) fore las/median - for korbanken. */
@@ -914,6 +919,13 @@ export class Analyser {
       }
       if (nc > 0) {
         let bi = -1, bs = -1;
+        if (Analyser.EVID_BAND === 'both') {
+          // bas + helband: bada normeras mot sin egen medelpoang sa de ar jamforbara, helbandet vagt EVID_FULL_W.
+          let mb = 0, mf = 0; const fS = this.candFull;
+          for (let i = 0; i < nc; i++) { const rb = this.alignScore(this.envBassRing, N, cL[i]); const rf = this.alignScore(this.envRing, N, cL[i]); cS[i] = rb.score; fS[i] = rf.score; cH[i] = rb.half; mb += rb.score; mf += rf.score; }
+          mb = mb / nc || 1; mf = mf / nc || 1;
+          for (let i = 0; i < nc; i++) { cS[i] = (cS[i] / mb + Analyser.EVID_FULL_W * (fS[i] / mf)) / (1 + Analyser.EVID_FULL_W) * mb; if (cS[i] > bs) { bs = cS[i]; bi = i; } }
+        } else
         for (let i = 0; i < nc; i++) { const r = this.alignScore(this.envBassRing, N, cL[i]); cS[i] = r.score; cH[i] = r.half; if (r.score > bs) { bs = r.score; bi = i; } }
         for (let i = 0; i < nc; i++) if (i !== bi && cS[i] >= bs * 0.9 && cV[i] > cV[bi] * 1.15) { bi = i; bs = cS[i]; }
         let second = 0; for (let i = 0; i < nc; i++) if (i !== bi && cS[i] > second) second = cS[i];

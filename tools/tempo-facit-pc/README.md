@@ -196,3 +196,8 @@ och trend (8 s) → `frame.section` = intro | low | build | high | break, `secti
 konsumentens). Bänk på snuttarna (sanity, inget facit): 157/167 låtar når 'high', median 4 byten per 30 s, intro→build→high→break
 ser rätt ut; upprepningsräknaren är för generös på 30 s (6–10 träffar) → tröskel/features trimmas mot helåtsfacit.
 Facit kräver hela låtar (all-in-one på 30 s-snuttar ger bara 'intro'): långfångster till datorn under inlärningen, aldrig i drift.
+
+Provat och förkastat 14:40: `LOTUS_EVID_BAND=both` (helbandsringen vägs in i kandidatvalet, för material utan kick): vikt 0,5
+129/175, vikt 1,0 131/178 med en syntetförlust (3/2), baslinjen bas 131/178. Helbandet tillför inget och kostar en alignScore
+till per kandidat — kvar som opt-in. Filmmusikens tempofel (4/3, 3/2 på Two Steps from Hell, Trevor Jones) är alltså inte
+bandvalet; nästa spår är att titta på kandidatgenereringen (tempogrammets toppar saknar ofta rätt period helt på orkestralt).
