@@ -217,9 +217,16 @@ export class Analyser {
   // korpus - verkliga baslinjer har toner pa manga delslag, sa slagpoangen skiljer inte grannkandidater. OPT-IN.
   private static readonly EVIDENCE_ON = typeof process !== 'undefined' && process.env?.LOTUS_TEMPO_EVIDENCE === '1';
   private static readonly EVIDENCE_K = 5;
-  /** KICKDETEKTOR-RATTAR (09-20, korbank): troskelfaktor mot MAD (4,5) och grinden mot eget grid (pa). Env for A/B. */
+  /** KICKDETEKTOR-RATTAR (09-20, korbank tools/tempo-facit-pc/bench.mjs, BENCH_GRID=1, 107 latar med PC-basonsets/slag):
+   *  troskelfaktor mot MAD (4,5), grinden mot eget grid (pa), cooldown (170 ms) och energigolv (0,06). Env for A/B.
+   *  Svep 2026-09-20 (tempot orort i alla): baslinje kick-recall 0,48 / precision 0,84 / on-beat-recall 0,63;
+   *  grind av 0,52/0,85/0,68; grind av + cooldown 120 -> 0,70/0,84/0,89; cooldown 100 -> 0,82/0,84/0,95 (LIVE sedan
+   *  10:23 via tempo-variant.conf); cooldown 80 -> 0,89/0,83/0,96. Orsak: en baston strax fore slaget skuggade slagets
+   *  kick i 170 ms, och grinden forkastade slagets kick nar gridet lag fel. K 3,0-3,5 gav inget (0,53/0,85). */
   private static readonly KICK_K = (typeof process !== 'undefined' && Number(process.env?.LOTUS_KICK_K)) || 4.5;
   private static readonly KICK_NOGATE = typeof process !== 'undefined' && process.env?.LOTUS_KICK_NOGATE === '1';
+  private static readonly KICK_COOLDOWN_MS = (typeof process !== 'undefined' && Number(process.env?.LOTUS_KICK_COOLDOWN)) || 170;
+  private static readonly KICK_EFLOOR = (typeof process !== 'undefined' && Number(process.env?.LOTUS_KICK_EFLOOR)) || 0.06;
   /** EVIDENSLAS (opt-in, LOTUS_TEMPO_EVIDLOCK=1): laset = median av evidensestimatet i stallet for den gamla lasapparaten.
    *  Korbank 09-19: SAMRE (syntet 4/8 mot 6/8, korpus 1/6 mot 3/6) - grannkandidater poangsatts nastan lika och medianen hoppar.
    *  Glid + commit i den gamla apparaten ger stabiliteten. Kvar for vidare matning. */
@@ -1603,8 +1610,8 @@ export class Analyser {
     }
     const kickThresh = this.kickMed + Analyser.KICK_K * this.kickMad;
     this.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.gain, rms: this.dbgRms, env: this.envelope, locked: this.gainLocked };   // korbank-telemetri
-    const KICK_COOLDOWN = 170;                     // ms → max ~350 BPM, hindrar sub-beat-dubbelfyr
-    let above = kickFlux > kickThresh && energy > 0.06;
+    const KICK_COOLDOWN = Analyser.KICK_COOLDOWN_MS;   // ms → max ~350 BPM, hindrar sub-beat-dubbelfyr
+    let above = kickFlux > kickThresh && energy > Analyser.KICK_EFLOOR;
     // ── TAKT-GRID-GRIND ──────────────────────────────────────────────────────
     // Morfologiska filter kan INTE skilja en synth-stot fran en bastrumma - matt
     // och forkastat tre ganger: SuperFlux (191->222 falska), relativ flux

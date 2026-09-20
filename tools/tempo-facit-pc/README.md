@@ -87,3 +87,30 @@ som 09-04-bygget tyst ignorerade medan `alsaMic` skickade `true`. Från 17:10 k�
 får bara slås på efter körbänksvinst enligt variantregeln (≥ +3 låtar på ≥ 36, ingen syntetförlust). **Metodregel:**
 "beteendeidentiskt" ska bevisas med körbänken mot den fil som faktiskt kör på Pi:n (hämta den, `pi/dist/audio-analyser-old/`),
 inte antas ur git-diffen mot HEAD.
+
+## Liveprov 2 — kickdetektorn (2026-09-20 10:23, "börja bygg")
+
+Rätt mått för kickdetektorn är **on-beat-recall** (andel PC-slag i valt tempo, `beatsS`, som fick en analysatorkick
+inom ±60 ms) — inte recall mot alla bastoner (`timesS`, PC:n räknar varje baston). Bänken kördes som live
+(`BENCH_GRID=1`, evidence + ring10) på 107 låtar, tempot orört i alla varianter:
+
+| variant | kick-recall | precision | on-beat-recall |
+|---|---|---|---|
+| baslinje (grind på, cooldown 170) | 0,48 | 0,84 | 0,63 |
+| grind av | 0,52 | 0,85 | 0,68 |
+| grind av + cooldown 120 | 0,70 | 0,84 | 0,89 |
+| **grind av + cooldown 100 (LIVE)** | 0,82 | 0,84 | 0,95 |
+| grind av + cooldown 80 | 0,89 | 0,83 | 0,96 |
+
+Orsak: en baston strax före slaget skuggade slagets kick i 170 ms, och grinden mot analysatorns eget grid förkastade
+slagets kick när gridet låg fel. Tröskelfaktorn K (3,0–3,5) gav inget. Deploy: nytt `analyser.js` (rattarna
+`LOTUS_KICK_NOGATE`, `LOTUS_KICK_COOLDOWN`, `LOTUS_KICK_K`, `LOTUS_KICK_EFLOOR`; standard identisk) med backup
+`analyser.js.bak-20260920-1016`, drop-in `tempo-variant.conf` fick de två KICK-raderna, en omstart. Första livelåten
+(Dua Lipa/Blexxter, 128): onset p 0,93 r 0,92 (samma förmiddag före: r 0,40–0,59). Nattjobbet bänkar nu `live`,
+`live-cd80`, `live-cd120` med kickmått i tavlan; kickvarianter döms på on-beat-recall utan precisionsförlust > 0,02.
+
+**Läxa 13 (deploy av `dist/audio-analyser/`):** bygget importerar syskonmoduler (`tempoTracker.js` sedan 09-20).
+Att bara kopiera `analyser.js` gav `ERR_MODULE_NOT_FOUND` och 69 kraschomstarter på 7 minuter (status 1 direkt,
+felet syns bara i `/var/log/pi-control-center/apps/lotus-light/engine.log`, inte i journalen). Deploya hela katalogen
+(`pi/scripts/deploy-analyser-dir.py`: md5-diff, `node --check`, importtest på Pi:n, backup, EN omstart) och verifiera
+med `systemctl is-active` + API:t, inte med att filen ligger där.

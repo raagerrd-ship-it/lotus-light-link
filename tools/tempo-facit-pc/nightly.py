@@ -7,7 +7,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PI = next((a for a in sys.argv[1:] if a.startswith('http')), 'http://192.168.1.174:3051')
 FORCE = '--force' in sys.argv
 TODAY = time.strftime('%Y-%m-%d')
-VARIANTS = {'standard': {}, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}}
+# 'live' = det som kor pa Pi:n (tempo-variant.conf: evidensval + 10 s ring + kickgrind av + cooldown 100, sedan 2026-09-20 10:23).
+# 'standard' = gamla vagen utan flaggor. BENCH_GRID=1 pa alla = som motorn (analysatorn grindar kickar mot sitt grid).
+LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100'}
+VARIANTS = {'standard': {}, 'live': LIVE, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'},
+            'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120')}
+GRID = {'BENCH_GRID': '1'}
 SB = os.path.join(HERE, 'scoreboard.jsonl'); MD = os.path.join(HERE, 'scoreboard.md'); DAILY = os.path.join(HERE, 'daily')
 
 
@@ -18,13 +23,17 @@ def already_done():
 
 
 def run_bench(env_extra):
-    env = dict(os.environ, **env_extra)
+    env = dict(os.environ, **GRID, **env_extra)
     p = subprocess.run(['node', 'bench.mjs'], cwd=HERE, env=env, capture_output=True, text=True, timeout=1800)
     out = p.stdout
-    res = {'rows': [], 'korpus': None, 'synt': None, 'error': p.stderr.strip()[-300:] if p.returncode else ''}
+    res = {'rows': [], 'korpus': None, 'synt': None, 'kick': None, 'onBeat': None, 'error': p.stderr.strip()[-300:] if p.returncode else ''}
     for line in out.splitlines():
         m = re.match(r'^(korpus|synt): (\d+)/(\d+) ratt \(lika\)\s+klasser (\{.*?\})\s+spann-median (\S+) BPM', line)
-        if m: res[m.group(1)] = {'ok': int(m.group(2)), 'n': int(m.group(3)), 'klasser': json.loads(m.group(4)), 'spann': m.group(5)}
+        if m: res[m.group(1)] = {'ok': int(m.group(2)), 'n': int(m.group(3)), 'klasser': json.loads(m.group(4)), 'spann': m.group(5)}; continue
+        mk = re.match(r'^korpus kick: recall (\S+) precision (\S+) bias (\S+) ms \(n=(\d+)', line)
+        if mk: res['kick'] = {'recall': float(mk.group(1)), 'precision': float(mk.group(2)), 'biasMs': float(mk.group(3)), 'n': int(mk.group(4))}; continue
+        mb = re.match(r'^korpus on-beat-recall: (\S+) \(median, n=(\d+)', line)
+        if mb: res['onBeat'] = {'recall': float(mb.group(1)), 'n': int(mb.group(2))}; continue
         elif line.startswith(('korpus ', 'synt   ')):
             parts = line.split()
             try: res['rows'].append({'set': parts[0], 'namn': line[7:49].strip(), 'facit': float(parts[-6]), 'analys': float(parts[-5]), 'ra': float(parts[-4]), 'klass': parts[-2], 'kvot': float(parts[-1])})
@@ -76,22 +85,26 @@ def main():
     t0 = time.time()
     bench = {name: run_bench(env) for name, env in VARIANTS.items()}
     pi = pi_stats()
-    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v[kk] for kk in ('korpus', 'synt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
+    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v[kk] for kk in ('korpus', 'synt', 'kick', 'onBeat', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
     os.makedirs(DAILY, exist_ok=True)
     with open(os.path.join(DAILY, TODAY + '.json'), 'w', encoding='utf-8') as f: json.dump({'entry': entry, 'benchRows': {k: v['rows'] for k, v in bench.items()}}, f, ensure_ascii=False, indent=1)
     with open(SB, 'a', encoding='utf-8') as f: f.write(json.dumps(entry, ensure_ascii=False) + '\n')
     # Markdown, senaste 14 dygn
     with open(SB, encoding='utf-8') as f: hist = [json.loads(l) for l in f if l.strip()][-14:]
     def cell(e, v):
-        b = (e.get('bench') or {}).get(v) or {}; k = b.get('korpus'); s = b.get('synt')
-        return f"{k['ok']}/{k['n']}" + (f" · {s['ok']}/{s['n']}" if s else '') if k else '–'
+        b = (e.get('bench') or {}).get(v) or {}; k = b.get('korpus'); s = b.get('synt'); ob = b.get('onBeat'); kk = b.get('kick')
+        if not k: return '–'
+        out = f"{k['ok']}/{k['n']}" + (f" · {s['ok']}/{s['n']}" if s else '')
+        if ob and kk: out += f" · slag {ob['recall']:.2f} p {kk['precision']:.2f}"
+        return out
     lines = ['# Resultattavla — analysatorns tempoval mot facit', '', f'Uppdaterad {TODAY} {entry["at"]}. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.', '',
-             '| datum | standard | evidence | evidlock | ring10 | live: dygnets låtar | ok-andel | grid-släp | onset recall | nivå r |', '|---|---|---|---|---|---|---|---|---|---|']
+             'Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).', '',
+             '| datum | standard | live | evidence | ring10 | live-cd80 | live-cd120 | live: dygnets låtar | ok-andel | grid-släp | onset recall | onset precision | nivå r |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|']
     for e in hist:
         p = e.get('pi') or {}
-        lines.append(f"| {e['date']} | {cell(e,'standard')} | {cell(e,'evidence')} | {cell(e,'evidlock')} | {cell(e,'ring10')} | {p.get('dygn','–')} ({p.get('medFacit','–')} facit) | {p.get('okAndel','–')} | {p.get('gridLagMs','–')} ms | {p.get('onsetRecall','–')} | {p.get('levelR','–')} |")
+        lines.append(f"| {e['date']} | {cell(e,'standard')} | {cell(e,'live')} | {cell(e,'evidence')} | {cell(e,'ring10')} | {cell(e,'live-cd80')} | {cell(e,'live-cd120')} | {p.get('dygn','–')} ({p.get('medFacit','–')} facit) | {p.get('okAndel','–')} | {p.get('gridLagMs','–')} ms | {p.get('onsetRecall','–')} | {p.get('onsetPrecision','–')} | {p.get('levelR','–')} |")
     lines += ['', f"Senaste dygnet: domar {json.dumps(pi.get('domar'), ensure_ascii=False)}; kick-bias {pi.get('kickBiasMs')} ms; nivå-lag {pi.get('levelLagMs')} ms; analysatorns spann inom låt {pi.get('anSpann')} BPM (median); tempoledtrådar ≠ 1: {pi.get('tempoHints')}; dropfångster {pi.get('drops')} {json.dumps(pi.get('dropDomar'))}.",
-              '', 'Standard = det som kör på Pi:n. En variant ska slå standard med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång).']
+              '', 'Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.']
     with open(MD, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
     print(json.dumps(entry, ensure_ascii=False)[:600]); print('skrev', MD)
 
