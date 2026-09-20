@@ -83,6 +83,12 @@ export interface Frame {
   /** TAKTFAS: hur många slag ankaret ska flyttas FRAMÅT för att landa på ettan
    *  (0..3), eller -1 när fasen ännu är osäker. Motorn äger ankaret och applicerar. */
   barShift: number;
+  /** GRIDFAS (09-20, opt-in LOTUS_GRID_PHASE=1): vaggklocka (ms) for ett NYLIGT TAKTSLAG enligt fasanalys pa basringen +
+   *  helbandsringen vid last tempo, med halvslagstest och hysteres. 0 = ej beraknad/olast. Motorn kan folja den
+   *  (LOTUS_PHASE_FOLLOW=1) i stallet for att lasa fasen pa forsta basta kick. */
+  beatPhaseMs: number;
+  /** Gridfasens on/half-kvot (>1 = slagfasen starkare an halvslagsfasen; ~1 = tvetydig). */
+  beatPhaseConf: number;
   /** Rikt spektrum + per-band onset (anslag) från dubbel-FFT:n (hög-upplöst). */
   spec: Spectrum;       // per-band NIVÅ (AGC 0..1)
   /** Absolut per-band magnitud före AGC, för Lotus ljusväg och bandandelar. */
@@ -185,6 +191,13 @@ export class Analyser {
   private static readonly ENV_LEN = 100 * Math.max(3, Math.min(20, (typeof process !== 'undefined' && Number(process.env?.LOTUS_TEMPO_ENV_S)) || 5));
   private envRing = new Float32Array(Analyser.ENV_LEN);
   private envPos = 0;
+  /** GRIDFAS (09-20): se computeGridPhase. Opt-in - standardbygget ar oforandrat. */
+  private static readonly GRID_PHASE_ON = typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE === '1';
+  private envLastWallMs = 0;
+  beatPhaseMs = 0; beatPhaseConf = 0; private phaseAnti = 0; private phaseLastBeatMs = 0; private phaseScratch = new Float32Array(128);
+  private phaseScratchB = new Float32Array(128); private phaseScratchF = new Float32Array(128);
+  /** Korbanks-telemetri for gridfasen: vald fas mot motfas per band. */
+  dbgPhase = { conf: 0, bassOn: 0, bassAnti: 0, fullOn: 0, fullAnti: 0, bestPh: 0, nPh: 0, pending: 0 };
   private envFilled = 0;
   private envAccum = 0;
   private envAccumT = 0;
@@ -690,6 +703,51 @@ export class Analyser {
     let hs = 0, nh = 0; for (let i = bestPh + (L >> 1); i < N; i += L) { hs += at(i); nh++; }
     const half = nh ? hs / nh : 0;
     return { score: (on / mean) * (0.5 + hit), half: on > 0 ? half / on : 0, hit };
+  }
+
+  /** GRIDFAS (2026-09-20). Korpusens handelseloggar (39 latar med ratt tempo i samma oktav): motorns pulser i fas i 5,
+   *  i MOTFAS i 9 (lampan pa off-beaten), resten daremellan. Orsak: motorns PLL initieras pa en kick och slapper bara
+   *  in kickar inom +-1/4 slag - ett grid pa attondelsbasen bekraftar sig sjalvt for alltid. Har mats fasen direkt:
+   *  vid last tempo laggs slagen ut med alla faser (1 env-sampel = 10 ms) over de senaste ~12 slagen pa BAS-ringen
+   *  (kickar) OCH helbandsringen (virvel/hi-hat/gitarr; PC-facit 09-20: helbandet ar 1,3-1,7x starkare pa slaget an
+   *  pa halvslaget i alla grupper, aven dar motorn lag i motfas). Vinnande fas = max av summan av de normerade
+   *  medelvardena (max over +-1 sampel, onsets ar nagra sampel breda). Utdata: vaggtiden for det senaste slaget i den
+   *  fasen + on/half-kvot. Hysteres: en fas >0,3 slag fran forra estimatet kravs i 3 raka analyser (0,75 s) innan
+   *  den tas - annars foljs forra fasen. Kostnad: ~nPh x 12 x 2 uppslag = ~2 000 per anrop, 4 Hz. */
+  private computeGridPhase(): void {
+    const bpm = this.localBpmF > 0 ? this.localBpmF : this.localBpm;
+    if (bpm <= 0 || this.envFilled < 200 || this.envLastWallMs <= 0) { this.beatPhaseMs = 0; this.beatPhaseConf = 0; return; }
+    const LEN = Analyser.ENV_LEN, HZ = Analyser.ENV_HZ;
+    const Lf = (HZ * 60) / bpm;                                            // period i env-sampel (flyttal)
+    const N = Math.min(this.envFilled, Math.round(Lf * 12), 600);         // ~12 slag, hogst 6 s
+    if (N < Lf * 4) return;
+    const start = (this.envPos - N + LEN) % LEN;
+    const bass = this.envBassRing, full = this.envRing;
+    let mb = 0, mf = 0; for (let i = 0; i < N; i++) { const j = (start + i) % LEN; mb += bass[j]; mf += full[j]; }
+    mb = mb / N || 1e-9; mf = mf / N || 1e-9;
+    const at = (ring: Float32Array, i: number): number => {
+      const c = ring[(start + i) % LEN]; const a = i > 0 ? ring[(start + i - 1) % LEN] : c; const b = i + 1 < N ? ring[(start + i + 1) % LEN] : c;
+      return c > a ? (c > b ? c : b) : (a > b ? a : b);
+    };
+    const nPh = Math.max(4, Math.min(128, Math.round(Lf))); const scores = this.phaseScratch, sB = this.phaseScratchB, sF = this.phaseScratchF; let bestPh = 0, bestS = -1;
+    for (let p = 0; p < nPh; p++) {
+      const ph = (p * Lf) / nPh; let sb = 0, sf = 0, n = 0;
+      for (let x = ph; x < N; x += Lf) { const i = Math.round(x); if (i >= N) break; sb += at(bass, i); sf += at(full, i); n++; }
+      sB[p] = n ? sb / n / mb : 0; sF[p] = n ? sf / n / mf : 0;
+      const sc = sB[p] + sF[p]; scores[p] = sc;
+      if (sc > bestS) { bestS = sc; bestPh = p; }
+    }
+    const anti = (bestPh + (nPh >> 1)) % nPh; const conf = scores[anti] > 1e-6 ? bestS / scores[anti] : 9;
+    this.dbgPhase.conf = conf; this.dbgPhase.bassOn = sB[bestPh]; this.dbgPhase.bassAnti = sB[anti]; this.dbgPhase.fullOn = sF[bestPh]; this.dbgPhase.fullAnti = sF[anti]; this.dbgPhase.bestPh = bestPh; this.dbgPhase.nPh = nPh; this.dbgPhase.pending = this.phaseAnti;
+    const ph0 = (bestPh * Lf) / nPh; const kLast = Math.floor((N - 1 - ph0) / Lf); const iLast = ph0 + kLast * Lf;
+    const beatMs = this.envLastWallMs - (N - 1 - iLast) * (1000 / HZ);
+    const per = 60000 / bpm;
+    if (this.phaseLastBeatMs > 0) {
+      const d = ((((beatMs - this.phaseLastBeatMs) % per) + per) % per) / per; const err = d < 0.5 ? d : d - 1;
+      if (Math.abs(err) > 0.3 && ++this.phaseAnti < 3) { this.beatPhaseConf = conf; return; }   // motfas: krav 3 raka analyser
+      this.phaseAnti = 0;
+    }
+    this.phaseLastBeatMs = beatMs; this.beatPhaseMs = beatMs; this.beatPhaseConf = conf;
   }
 
   private computeBpm() {
@@ -1315,7 +1373,7 @@ export class Analyser {
     this.lastConfMs = 0;
     this.lastSongVoteMs = 0;
     this.reacqUntilMs = 0;
-    this.beatAnchorMs = 0;
+    this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0;
     this.lastT = 0;
   }
   /** KORBANK (09-20): flytta bara den virtuella klockan, utan att nolla nagra ankare. setVirtualClock() ar ett
@@ -1439,7 +1497,7 @@ export class Analyser {
       level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
       dropCount: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
-      kickAtMs: 0, barShift: -1,
+      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0,
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
   }
@@ -1667,7 +1725,7 @@ export class Analyser {
         this.silenceArmed = true;
         this.localBpmConfidence = 0;
         this.clearLockVotes();
-        this.envFilled = 0; this.beatAnchorMs = 0; this.pendingKickMs = 0;
+        this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.pendingKickMs = 0;
         this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
         for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
         this.envBassAccum = 0;
@@ -1715,6 +1773,7 @@ export class Analyser {
       this.envRing[this.envPos] = _e;
       this.envBassRing[this.envPos] = this.envBassAccum;
       this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
+      if (Analyser.GRID_PHASE_ON) this.envLastWallMs = this.wallNow();
       this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
       this.envAccum = 0;
       this.envBassAccum = 0;
@@ -1734,7 +1793,7 @@ export class Analyser {
       // De första ~1,5 s körs fortfarande i full takt — time-to-first-lock orörd.
       const stride = this.localBpm !== 0 ? Analyser.ENV_HZ / 4
         : this.envFilled < 150 ? 1 : 10;
-      if (++this.bpmCounter >= stride) { this.bpmCounter = 0; this.computeBpm(); }
+      if (++this.bpmCounter >= stride) { this.bpmCounter = 0; this.computeBpm(); if (Analyser.GRID_PHASE_ON && this.localBpm > 0) this.computeGridPhase(); }
 
     }
     // #2 Förfina förra kickens fas: nu har vi y(-1)=kfPrev2, y(0)=kfPrev, y(+1)=kickFlux
@@ -2194,7 +2253,7 @@ export class Analyser {
     f.centroid = this.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.dropCount = this.dropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
-    f.kickAtMs = kickAtMs; f.barShift = barShift;
+    f.kickAtMs = kickAtMs; f.barShift = barShift; f.beatPhaseMs = this.beatPhaseMs; f.beatPhaseConf = this.beatPhaseConf;
     return f;
   }
 }

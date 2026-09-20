@@ -107,6 +107,12 @@ const SYNC_PROBE_ON = process.env.LOTUS_SYNC_PROBE === '1';
  *  snabbare tempo (skenade till 2x). Motorns onset vid ticktid har i stallet en KONSTANT fordrojning
  *  (err -5..-35 @124, drift = bara analysatorns heltalskvantisering) som beatLeadMs absorberar. */
 const PLL_RING_ON = process.env.LOTUS_PLL_RING === '1';
+/** GRIDFAS-FOLJARE (2026-09-20, opt-in LOTUS_PHASE_FOLLOW=1): analysatorns beatPhaseMs (fasanalys pa bas- + helbandsringen,
+ *  LOTUS_GRID_PHASE=1) styr gridets fas i stallet for enskilda kickar. Korpusens handelseloggar: pulserna i motfas (lampan pa
+ *  off-beaten) i 9 av 39 latar med ratt tempo - kick-PLL:en slapper bara in kickar inom +-1/4 slag och bekraftar darfor ett
+ *  grid pa attondelsbasen for alltid. Foljaren tillater fel upp till ett halvt slag (tva raka matningar med kvot >= 1,3
+ *  flyttar fasen), annars sma steg (0,3 av felet per ny matning, 4 Hz). Kick-PLL:en ar AV nar foljaren ar pa. */
+const PHASE_FOLLOW_ON = process.env.LOTUS_PHASE_FOLLOW === '1';
 
 /**
  * Var landmarkena for en pagaende inspelning laggs.
@@ -784,6 +790,7 @@ export class PiLightEngine {
   private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
   private _pllLastKick = 0;            // senaste ring-kick PLL:en konsumerat (LOTUS_PLL_RING)
+  private _phaseLastMs = 0; private _phaseFlipVotes = 0; private _phaseFlips = 0;   // gridfas-foljaren (LOTUS_PHASE_FOLLOW)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
   private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
   private _subdivLevel = 0;             // -1 = ½×, 0 = 1×, 1 = 2×
@@ -1704,6 +1711,28 @@ export class PiLightEngine {
     // och det fick beatLeadMs (132 = 87 stigtid + 45 utlatens) aldrig kompensera.
     // Ringen bar analysatorns sub-hop-tid (+-1,3 ms) for VARJE slag; hogst ett nytt
     // per tick (slag >=100 ms isar). LOTUS_PLL_RING=0 ger gamla vagen for A/B.
+    if (PHASE_FOLLOW_ON) {
+      const pm = frame?.beatPhaseMs ?? 0;
+      if (pm <= 0 || pm === this._phaseLastMs) return;            // ingen ny fasmatning (4 Hz) - kickar styr inte
+      this._phaseLastMs = pm;
+      const beatMsNow = 60000 / this._beat.bpm;
+      const ph = ((((pm - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+      const err = ph < 0.5 ? ph : ph - 1;                          // -0,5..0,5 slag: + = analysatorns slag ligger EFTER gridet
+      const pconf = frame?.beatPhaseConf ?? 1;
+      this._beatErr = this._beatErr * 0.85 + err * 0.15;
+      if (Math.abs(err) > 0.35) {
+        if (pconf >= 1.3 && ++this._phaseFlipVotes >= 2) {
+          this._beat.anchorMs += err * beatMsNow; this._phaseFlipVotes = 0; this._phaseFlips++;
+          console.log(`[takt] gridfas: fasen flyttad ${Math.round(err * beatMsNow)} ms (kvot ${pconf.toFixed(2)}, byte ${this._phaseFlips})`);
+        }
+        return;
+      }
+      this._phaseFlipVotes = 0;
+      const kf = pconf >= 1.3 ? 0.3 : 0.15;
+      this._beat.anchorMs += err * beatMsNow * kf;
+      this._clock.trimToBeat(-err * beatMsNow * kf, beatMsNow);
+      return;
+    }
     let nowRef: number;
     if (PLL_RING_ON) {
       const rk = getLatestKickAt();
