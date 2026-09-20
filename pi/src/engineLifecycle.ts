@@ -24,6 +24,11 @@ export type LifecycleState = 'IGNITION' | 'MOTOR_ON' | 'IGNITION_OFF';
 
 const OVERRIDE_KEY = 'lifecycle-override';
 const IGNITION_REENTRY_GRACE_MS = 180_000;
+/** LJUSPAUS (2026-09-20, anvandaren: "skickar Sonos PAUSE sa kan du ga in i IDLE direkt ... lagg till 2 sek"): PAUSED -> efter
+ *  PAUSE_LIGHT_GRACE_MS gar motorn i idle (loop av, vilofarg, keep-alive haller BLE) i stallet for att lyssna pa rummet i
+ *  3 min tills nedstangningen. Nedstangningen (mic + BLE av) ligger kvar pa IGNITION_REENTRY_GRACE_MS. PLAYING cancellerar. */
+const PAUSE_LIGHT_GRACE_MS = Number(process.env.LOTUS_PAUSE_LIGHT_MS) || 2000;
+let pauseLightTimer: ReturnType<typeof setTimeout> | null = null;
 
 let state: LifecycleState = 'IGNITION';
 let pendingShutdownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -257,6 +262,8 @@ export async function ignite(deps: IgniteDeps): Promise<void> {
     if (state === 'IGNITION_OFF') return;
     if (playing) {
       cancelScheduledShutdown();
+      if (pauseLightTimer) { clearTimeout(pauseLightTimer); pauseLightTimer = null; }
+      if (state === 'MOTOR_ON') { try { _deps?.getEngineInstance()?.setPlaying(true); } catch {} }   // ljuset igang igen (toMotorOn early-returnar i MOTOR_ON)
       await toMotorOn();
       // Om en PAUSED-grace hann cancella auto-reconnect och lampan fortfarande
       // är nere: återaktivera loopen (toMotorOn early-returnar i MOTOR_ON).
@@ -265,7 +272,15 @@ export async function ignite(deps: IgniteDeps): Promise<void> {
       }
     } else {
       // PAUSED: schemalägg nedrivning (cancelleras om PLAYING kommer tillbaka).
-      if (state === 'MOTOR_ON') scheduleShutdownToIgnition();
+      if (state === 'MOTOR_ON') {
+        scheduleShutdownToIgnition();
+        if (!pauseLightTimer) pauseLightTimer = setTimeout(() => {
+          pauseLightTimer = null;
+          if (state !== 'MOTOR_ON') return;
+          console.log(`[Lifecycle] PAUSED ${PAUSE_LIGHT_GRACE_MS} ms — ljuset i idle (vilofärg, BLE kvar till shutdown)`);
+          try { _deps?.getEngineInstance()?.setPlaying(false); } catch {}
+        }, PAUSE_LIGHT_GRACE_MS);
+      }
     }
   });
 
