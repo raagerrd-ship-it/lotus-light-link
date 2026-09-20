@@ -108,6 +108,13 @@ slagets kick när gridet låg fel. Tröskelfaktorn K (3,0–3,5) gav inget. Depl
 `analyser.js.bak-20260920-1016`, drop-in `tempo-variant.conf` fick de två KICK-raderna, en omstart. Första livelåten
 (Dua Lipa/Blexxter, 128): onset p 0,93 r 0,92 (samma förmiddag före: r 0,40–0,59). Nattjobbet bänkar nu `live`,
 `live-cd80`, `live-cd120` med kickmått i tavlan; kickvarianter döms på on-beat-recall utan precisionsförlust > 0,02.
+Full bänk på live-konfigurationen 10:35 (110 låtar): tempo 62/110, kick 0,82/0,84, on-beat 0,95, syntet 6/8 — en
+körning tar 64 s, nattjobbets sju varianter ≈ 8 min. Motorns PLL ignorerar kickar med |fel| ≥ 0,25 slag, så de extra
+kickarna (2 → 4,5 per slag) når fasregleringen bara nära gridet; gridkvaliteten döms live på `pc.phase.pulse.onBeat`,
+`offBeatShare` och `iqrMs` över minst 8 låtar.
+Live 10:23–10:45, 6 låtar mot 118 låtar dygnet före: onset recall 0,94 mot 0,39, precision 0,83 = 0,83; pulsernas
+on-beat 29,5 mot 26,0, offBeatShare 0,49 mot 0,50, iqr 85 = 85 ms — kickdetektorn bättre, gridkvaliteten oförändrad
+(gridLag-medianen per låt spretar mer, −20…+85 ms, men n = 6; morgonagentens leadregel kräver ≥ 8 ok-låtar).
 
 **Läxa 13 (deploy av `dist/audio-analyser/`):** bygget importerar syskonmoduler (`tempoTracker.js` sedan 09-20).
 Att bara kopiera `analyser.js` gav `ERR_MODULE_NOT_FOUND` och 69 kraschomstarter på 7 minuter (status 1 direkt,
