@@ -172,7 +172,8 @@ def onset_analysis(ev: dict, onset_lo: np.ndarray, sr: int) -> dict:
     d = _nearest_offsets(kicks, ow); hit = np.abs(d) <= 50
     d2 = _nearest_offsets(ow, kicks); rec = float((np.abs(d2) <= 50).mean())
     return {'onsets': int(len(ow)), 'kicks': int(len(kicks)), 'precision': round(float(hit.mean()), 2), 'recall': round(rec, 2),
-            'biasMs': round(float(np.median(d[hit])), 1) if hit.any() else None, 'onsetsPerS': round(len(ow) / max(1e-6, (ow[-1] - ow[0]) / 1000), 2)}
+            'biasMs': round(float(np.median(d[hit])), 1) if hit.any() else None, 'onsetsPerS': round(len(ow) / max(1e-6, (ow[-1] - ow[0]) / 1000), 2),
+            'timesS': [round(float(t), 3) for t in on]}   # PC:ns basonsets (s fran snuttens start) - korbankens kick-facit
 
 
 def drop_scan(y: np.ndarray, sr: int, ev: dict) -> dict:
@@ -249,6 +250,11 @@ def process_one(row: dict) -> bool:
         except Exception as e: analysis['onset'] = {'error': str(e)}
         try: analysis['drop'] = drop_scan(y, sr, ev)
         except Exception as e: analysis['drop'] = {'error': str(e)}
+    if 'onset' not in analysis:
+        try:
+            on = librosa.onset.onset_detect(onset_envelope=onset_lo, sr=sr, hop_length=HOP, units='time', backtrack=False)
+            analysis['onset'] = {'onsets': int(len(on)), 'timesS': [round(float(t), 3) for t in on]}
+        except Exception as e: analysis['onset'] = {'error': str(e)}
     try: analysis['descr'] = descriptors(y, sr, onset_lo)
     except Exception as e: analysis['descr'] = {'error': str(e)}
     r.update({'id': sid, 'key': key, 'kind': kind, 'artist': artist, 'title': title, 'analysis': analysis})

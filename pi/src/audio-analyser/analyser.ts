@@ -6,6 +6,7 @@
  * external beat grid is supplied through `setBeatGrid()`.
  */
 
+import { TempoTracker } from './tempoTracker.js';
 import FFT from "fft.js";
 
 export interface BeatGrid { bpm: number; anchorMs: number; }
@@ -220,6 +221,15 @@ export class Analyser {
    *  Korbank 09-19: SAMRE (syntet 4/8 mot 6/8, korpus 1/6 mot 3/6) - grannkandidater poangsatts nastan lika och medianen hoppar.
    *  Glid + commit i den gamla apparaten ger stabiliteten. Kvar for vidare matning. */
   private static readonly EVIDLOCK_ON = typeof process !== 'undefined' && process.env?.LOTUS_TEMPO_EVIDLOCK === '1';
+  /** TEMPOFOLJARE MED TILLSTAND (opt-in LOTUS_TEMPO_HMM=1): se tempoTracker.ts. Ersatter argmax+vikning+lasapparaten. */
+  private static readonly HMM_ON = typeof process !== 'undefined' && process.env?.LOTUS_TEMPO_HMM === '1';
+  private tracker = new TempoTracker();
+  private trkTg = new Float32Array(this.tracker.n); private trkAlign = new Float32Array(this.tracker.n); private trkHalf = new Float32Array(this.tracker.n);
+  private hmmConf = 0; private hmmReacqStamp = 0; private hmmLastLocal = 0;
+  /** Telemetri: foljarens senaste svar. */
+  hmmBpm = 0; hmmStable = 0;
+  /** Korbank: tempogrammets argmax-lag och sokfonster i senaste anropet. */
+  dbgBestLag = 0; dbgLagMin = 0; dbgLagMax = 0; dbgTgAt = (lag: number): number => this.tempoGram[lag] ?? 0;
   /** Evidensomlasning: sa manga computeBpm-anrop i rad (4 Hz lasta = ~2 s) med tydlig, sammanhallen evidens for annat tempo. */
   private static readonly EVID_RELOCK_N = 8;
   evidRelockVotes = 0; private evidRelockBpm = 0;
@@ -228,7 +238,7 @@ export class Analyser {
   private evidChangeBpm = 0; private evidChangeVotes = 0; private localBpmF = 0; private evidLastLocal = 0;
   /** Antal evidensomlasningar (telemetri/korbank) + lasets senaste slagpoang. */
   evidenceRelocks = 0; evidenceLockScore = 0;
-  private candLag = new Int32Array(8); private candVal = new Float32Array(8); private candScore = new Float32Array(8); private candHalf = new Float32Array(8);
+  private candLag = new Int32Array(12); private candVal = new Float32Array(12); private candScore = new Float32Array(12); private candHalf = new Float32Array(12);
   /** Senaste evidensvalets telemetri: vald kandidats slagpoang, halvslagskvot, antal kandidater, tvaans poang. */
   evidenceScore = 0; evidenceHalf = 0; evidenceCands = 0; evidenceSecond = 0;
   /** Senaste RA-estimatet (vikt till 80..160) fore las/median - for korbanken. */
@@ -709,6 +719,7 @@ export class Analyser {
       if (v > bestVal) { bestVal = v; bestLag = lag; }
     }
     const envPos = this.envPosScratch;   // helbandets rektifierade envelope (scoreEnv körde sist)
+    this.dbgBestLag = bestLag; this.dbgLagMin = lagMin; this.dbgLagMax = lagMax;
 
     // ── EVIDENSVAL (2026-09-19) ───────────────────────────────────────────────
     // Rapporten "Tio latar mot facit" (korpus med PC-facit): argmax pa tempogrammet gav ratt tempo i
@@ -719,7 +730,7 @@ export class Analyser {
     // vars slag traffar kickarna; tie inom 10 % -> hogre tempogramvarde. Samma metod som PC-facit
     // (6/6 pa syntet dar librosas default gav 2/6). Korbank: tools/tempo-facit-pc/bench.mjs.
     // Oktaven lamnas at vikningen (80..160) - under den ar alla fel icke-oktav-fantomer.
-    if (Analyser.EVIDENCE_ON) {
+    if (Analyser.EVIDENCE_ON || Analyser.HMM_ON) {
       const K = Analyser.EVIDENCE_K; const cL = this.candLag, cV = this.candVal, cS = this.candScore, cH = this.candHalf; let nc = 0;
       for (let lag = lagMin + 1; lag < lagMax; lag++) {
         const v = tg[lag];
@@ -730,13 +741,23 @@ export class Analyser {
         if (nc < K) { cL[nc] = lag; cV[nc] = v; nc++; }
         else { let mi = 0; for (let i = 1; i < K; i++) if (cV[i] < cV[mi]) mi = i; if (v > cV[mi]) { cL[mi] = lag; cV[mi] = v; } }
       }
+      // OKTAVPARTNER (09-20): tempogrammet la "To Keep from Missing You" (facit 160,7) pa lag 75 = 80 BPM (tg 0,53)
+      // med 160 pa bara 0,2 - 160 fanns inte bland kandidaterna alls, sa varken evidensval eller foljare KUNDE
+      // valja den (gamla vagen fick 159,8 av vikningens kant: 79,9 < 80 -> x2, tur). Varje kandidats L/2 och 2L
+      // laggs darfor till (inom fonstret, tak 8), sa slagpoang och halvslagsbevis raknas for bada oktaverna.
+      const nc0 = nc;
+      for (let i = 0; i < nc0 && nc < 8; i++) for (const L2 of [cL[i] >> 1, cL[i] * 2]) {
+        if (L2 < lagMin || L2 > lagMax) continue;
+        let dup = false; for (let j = 0; j < nc; j++) if (Math.abs(L2 / cL[j] - 1) < 0.03) { dup = true; break; }
+        if (!dup) { cL[nc] = L2; cV[nc] = tg[L2] > 0 ? tg[L2] : 0; nc++; }
+      }
       if (nc > 0) {
         let bi = -1, bs = -1;
         for (let i = 0; i < nc; i++) { const r = this.alignScore(this.envBassRing, N, cL[i]); cS[i] = r.score; cH[i] = r.half; if (r.score > bs) { bs = r.score; bi = i; } }
         for (let i = 0; i < nc; i++) if (i !== bi && cS[i] >= bs * 0.9 && cV[i] > cV[bi] * 1.15) { bi = i; bs = cS[i]; }
         let second = 0; for (let i = 0; i < nc; i++) if (i !== bi && cS[i] > second) second = cS[i];
         this.evidenceScore = bs; this.evidenceHalf = cH[bi]; this.evidenceCands = nc; this.evidenceSecond = second;
-        bestLag = cL[bi]; bestVal = tg[bestLag];
+        if (Analyser.EVIDENCE_ON) { bestLag = cL[bi]; bestVal = tg[bestLag]; }
       }
     }
 
@@ -841,7 +862,7 @@ export class Analyser {
     //   "En del av mitt hjarta" 130 -> 99 (facit 98)
     //   "Hon gor allt..."       137 -> 105 (facit 104)
     // Kostar 240 ms laslatens (499 -> 739 ms). Syntetsviten oforandrad 7/10.
-    if (!Analyser.EVIDLOCK_ON) {   // ── LASAPPARATEN (rost-median, glid, oktavroster, grannrattning, latbytesvakt) ──
+    if (!Analyser.EVIDLOCK_ON && !Analyser.HMM_ON) {   // ── LASAPPARATEN (rost-median, glid, oktavroster, grannrattning, latbytesvakt) ──
     if (this.localBpm === 0 && this.warmCalls++ < Analyser.WARM_N) return;
     // ── EVIDENSOMLASNING (2026-09-19) ─────────────────────────────────────────
     // Korbanken visade ra-estimatet RATT i 8/8 med evidensvalet (92,3 for 92, 122,4 for 123 ...) medan det
@@ -1090,6 +1111,38 @@ export class Analyser {
     // på läge — och den grindar kick-gridet (>0.5), PLL-frekvenstermen (>0.4) och
     // hjärtslagets djup. Tidskonstanterna (25 ms upp, 120 ms ner) är valda så att
     // beteendet i OLÅST läge är exakt som förut.
+    } else if (Analyser.HMM_ON) {
+      // ── TEMPOFOLJARE MED TILLSTAND (2026-09-20) ──────────────────────────────
+      // Observation over tillstanden 56..185 BPM (ingen vikning): tempogrammets varde vid tillstandets lag
+      // (linjart interpolerat, normaliserat), slagpoang-stod +-3 % kring kandidattopparna, och halvslagsbevis
+      // som stod for DUBBLA tempot (PC-facit-regeln: kvot >= 0,6). Foljaren (Viterbi i logdomanen) ager laset.
+      if (this.localBpm === 0 && this.hmmLastLocal > 0) this.tracker.reset();          // tystnad/latbyte nollade laset
+      if (this.reacqUntilMs > 0 && this.reacqUntilMs !== this.hmmReacqStamp && voteNow < this.reacqUntilMs) { this.hmmReacqStamp = this.reacqUntilMs; this.tracker.reset(); }
+      const T = this.tracker, tgO = this.trkTg, alO = this.trkAlign, hfO = this.trkHalf;
+      let tgMax = 0;
+      for (let s2 = 0; s2 < T.n; s2++) {
+        const lagF = (HZ * 60) / T.bpmOf[s2]; let v = 0;
+        if (lagF >= lagMin && lagF <= lagMax) { const l0 = Math.floor(lagF), l1 = Math.min(lagMax, l0 + 1), f = lagF - l0; v = tg[l0] * (1 - f) + tg[l1] * f; }
+        tgO[s2] = v > 0 ? v : 0; if (tgO[s2] > tgMax) tgMax = tgO[s2];
+        alO[s2] = 0; hfO[s2] = 0;
+      }
+      if (tgMax > 0) for (let s2 = 0; s2 < T.n; s2++) tgO[s2] /= tgMax;
+      const nc = this.evidenceCands; let sMax = 0;
+      for (let i = 0; i < nc; i++) if (this.candScore[i] > sMax) sMax = this.candScore[i];
+      if (nc > 0 && sMax > 0) for (let s2 = 0; s2 < T.n; s2++) {
+        const lagS = (HZ * 60) / T.bpmOf[s2];
+        for (let i = 0; i < nc; i++) {
+          const L = this.candLag[i];
+          if (Math.abs(lagS / L - 1) <= 0.03) { const a = this.candScore[i] / sMax; if (a > alO[s2]) alO[s2] = a; }
+          if (Math.abs(lagS / (L / 2) - 1) <= 0.03 && this.candHalf[i] >= TempoTracker.HALF_THR) { const h = Math.min(1, (this.candHalf[i] - TempoTracker.HALF_THR) / (1 - TempoTracker.HALF_THR)); if (h > hfO[s2]) hfO[s2] = h; }
+        }
+      }
+      const r = T.update({ tg: tgO, align: alO, half: hfO }, voteNow);
+      if (r) {
+        this.hmmBpm = r.bpm; this.hmmStable = r.stable; this.hmmConf = r.conf;
+        if (this.localBpm > 0 || r.stable >= 2 || r.conf >= 0.3) { this.localBpm = Math.round(r.bpm); this.lockPeak = bestVal; }
+      }
+      this.hmmLastLocal = this.localBpm;
     } else {
       // ── EVIDENSLAS (2026-09-19) ─────────────────────────────────────────────
       // Korbanken: evidensestimatet (kandidater + slagpoang pa basonseten) ar ratt i 8/8 syntetfall,
@@ -1137,9 +1190,10 @@ export class Analyser {
     const dt = this.lastConfMs > 0 ? Math.min(0.5, (voteNow - this.lastConfMs) / 1000) : 0.01;
     this.lastConfMs = voteNow;
 
+    const confUse = Analyser.HMM_ON ? this.hmmConf : conf;
     const cA = this.localBpmConfidence;
-    const aC = 1 - Math.exp(-dt / (conf > cA ? 0.025 : 0.120));
-    this.localBpmConfidence = cA + (conf - cA) * aC;
+    const aC = 1 - Math.exp(-dt / (confUse > cA ? 0.025 : 0.120));
+    this.localBpmConfidence = cA + (confUse - cA) * aC;
     // ── KONFIDENSBASERAD LÅSSLÄPPNING ─────────────────────────────────────────
     // Sista utvägen ur ett fel lås. Oktav- och grannrättning stänger vid
     // BPM_COMMIT, och låtbytesvakten kräver FRISK takt (conf ≥ 0.9) — ett lås som
