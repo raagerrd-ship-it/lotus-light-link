@@ -561,7 +561,8 @@ async function startSonosSubsystem(): Promise<void> {
             if (title !== lastTrackName || !tempoCacheRef) return;
             const { songKey } = await import('./songStore.js');
             const row: any = tempoCacheRef.get(songKey(artist || '', title));
-            if (SECTION_CAPTURE_S > 0 && !(row && row.secAt) && _sectionCaptures < SECTION_CAPTURE_MAX && !(engineInstance as any)?.isTvMode?.()) {
+            if (SECTION_CAPTURE_S > 0 && !(row && row.secAt) && _sectionCaptures < SECTION_CAPTURE_MAX && !(engineInstance as any)?.isTvMode?.() && !_captureBusy) {
+              // raknas bara nar fangsten faktiskt startar (busy/aktiv fangst -> vanlig tempofangst nasta gang i stallet)
               _sectionCaptures++; _saveSectionCount();
               (tempoCacheRef as any).update?.(songKey(artist || '', title), { secAt: Date.now() });
               void runCapture('section', artist, title, SECTION_CAPTURE_S, 0);
