@@ -106,7 +106,7 @@ def cloud_tiebreak(wav_bytes: bytes) -> float:
         a1 = importlib.import_module('allin1_facit')
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as fh: fh.write(wav_bytes); tmp = fh.name
         try:
-            res, pt, wall_s = a1.analyse(tmp)
+            res, pt, wall_s = a1.analyse(tmp, deadline_s=150)
         finally:
             try: os.remove(tmp)
             except OSError: pass
@@ -420,7 +420,7 @@ def process_one(row: dict) -> bool:
     r['beatsS'] = [round(float(t), 3) for t in beats]    # PC:ns slagtider (s) - korbankens on-beat-recall for kickdetektorn
     analysis = {}
     if ev:
-        try: analysis['phase'] = phase_analysis(ev, beats, r.get('bpm', 0))
+        try: analysis['phase'] = phase_analysis(ev, beats, (60.0 / float(np.median(np.diff(beats))) if len(beats) >= 8 else r.get('bpm', 0)))   # slagens eget tempo (BT-grid), aven vid osakert facit
         except Exception as e: analysis['phase'] = {'error': str(e)}
         try: analysis['level'] = level_analysis(y, sr, ev)
         except Exception as e: analysis['level'] = {'error': str(e)}

@@ -31,13 +31,13 @@ def upload(path):
     return (d.get('urls') or {}).get('get')
 
 
-def analyse(path):
+def analyse(path, deadline_s=900):
     url = upload(path)
     if not url: raise RuntimeError('uppladdningen gav ingen URL')
     pred = req('POST', API + '/predictions', json.dumps({'version': VERSION, 'input': {'music_input': url, 'visualize': False, 'sonify': False}}).encode(), {'Content-Type': 'application/json'})
     t0 = time.time()
     while pred.get('status') in ('starting', 'processing'):
-        if time.time() - t0 > 900: raise RuntimeError('tidsgrans')
+        if time.time() - t0 > deadline_s: raise RuntimeError('tidsgrans')
         time.sleep(5); pred = req('GET', pred['urls']['get'])
     if pred.get('status') != 'succeeded': raise RuntimeError('korning ' + str(pred.get('status')) + ' ' + str(pred.get('error'))[:120])
     out = pred['output'] if isinstance(pred['output'], list) else [pred['output']]
@@ -47,31 +47,34 @@ def analyse(path):
     return res, (pred.get('metrics') or {}).get('predict_time'), time.time() - t0
 
 
-files = sorted(glob.glob(os.path.join(HERE, 'corpus', '*.json')))
-todo = []
-for f in files:
-    m = json.load(open(f, encoding='utf-8'))
-    if m.get('allin1') and m['allin1'].get('bpm'): continue
-    if not os.path.exists(f[:-5] + '.wav'): continue
-    name = f"{(m.get('row') or {}).get('artist', '')} - {(m.get('row') or {}).get('title', '')}"
-    if ONLY and ONLY not in name.lower(): continue
-    todo.append((f, name))
-print(f'{len(files)} korpusfiler, {len(todo)} utan allin1, kor {min(LIMIT, len(todo))}{" (torrkorning)" if DRY else ""}')
-ok = fail = 0; tot_pt = 0.0
-for f, name in todo[:LIMIT]:
-    if DRY: print('  ', name[:70]); continue
-    try:
-        res, pt, wall = analyse(f[:-5] + '.wav')
-        beats = [float(x) for x in (res.get('beats') or [])]; downs = [float(x) for x in (res.get('downbeats') or [])]
-        iv = sorted(b - a for a, b in zip(beats, beats[1:])); bpm_beats = 60 / iv[len(iv) // 2] if len(iv) >= 8 else 0
+
+
+if __name__ == '__main__':   # BUGG 13:31: import fran tempo_facit korde hela korpusloopen (5 molnkorningar, 315 s) - nu bara som skript
+    files = sorted(glob.glob(os.path.join(HERE, 'corpus', '*.json')))
+    todo = []
+    for f in files:
         m = json.load(open(f, encoding='utf-8'))
-        m['allin1'] = {'bpm': round(bpm_beats or float(res.get('bpm') or 0), 2), 'bpmScalar': res.get('bpm'), 'beatsS': [round(b, 3) for b in beats], 'downbeatsS': [round(b, 3) for b in downs],
-                       'beatPositions': res.get('beat_positions'), 'segments': [{'start': s.get('start'), 'end': s.get('end'), 'label': s.get('label')} for s in (res.get('segments') or [])],
-                       'predictTimeS': pt, 'version': VERSION[:12], 'at': int(time.time())}
-        json.dump(m, open(f, 'w', encoding='utf-8'), ensure_ascii=False)
-        ok += 1; tot_pt += float(pt or 0)
-        pc = (m.get('result') or {}).get('bpm'); cat = (m.get('catalog') or {}).get('bpm')
-        print(f"  OK {name[:44]:44} allin1 {m['allin1']['bpm']:6.1f} (skalar {res.get('bpm')}) | PC {pc} | katalog {cat or '-'} | {len(beats)} slag, gpu {pt}s, vagg {wall:.0f}s", flush=True)
-    except Exception as e:
-        fail += 1; print(f'  FEL {name[:44]}: {str(e)[:140]}', flush=True)
-print(f'klart: {ok} ok, {fail} fel, gpu-tid totalt {tot_pt:.0f} s')
+        if m.get('allin1') and m['allin1'].get('bpm'): continue
+        if not os.path.exists(f[:-5] + '.wav'): continue
+        name = f"{(m.get('row') or {}).get('artist', '')} - {(m.get('row') or {}).get('title', '')}"
+        if ONLY and ONLY not in name.lower(): continue
+        todo.append((f, name))
+    print(f'{len(files)} korpusfiler, {len(todo)} utan allin1, kor {min(LIMIT, len(todo))}{" (torrkorning)" if DRY else ""}')
+    ok = fail = 0; tot_pt = 0.0
+    for f, name in todo[:LIMIT]:
+        if DRY: print('  ', name[:70]); continue
+        try:
+            res, pt, wall = analyse(f[:-5] + '.wav')
+            beats = [float(x) for x in (res.get('beats') or [])]; downs = [float(x) for x in (res.get('downbeats') or [])]
+            iv = sorted(b - a for a, b in zip(beats, beats[1:])); bpm_beats = 60 / iv[len(iv) // 2] if len(iv) >= 8 else 0
+            m = json.load(open(f, encoding='utf-8'))
+            m['allin1'] = {'bpm': round(bpm_beats or float(res.get('bpm') or 0), 2), 'bpmScalar': res.get('bpm'), 'beatsS': [round(b, 3) for b in beats], 'downbeatsS': [round(b, 3) for b in downs],
+                           'beatPositions': res.get('beat_positions'), 'segments': [{'start': s.get('start'), 'end': s.get('end'), 'label': s.get('label')} for s in (res.get('segments') or [])],
+                           'predictTimeS': pt, 'version': VERSION[:12], 'at': int(time.time())}
+            json.dump(m, open(f, 'w', encoding='utf-8'), ensure_ascii=False)
+            ok += 1; tot_pt += float(pt or 0)
+            pc = (m.get('result') or {}).get('bpm'); cat = (m.get('catalog') or {}).get('bpm')
+            print(f"  OK {name[:44]:44} allin1 {m['allin1']['bpm']:6.1f} (skalar {res.get('bpm')}) | PC {pc} | katalog {cat or '-'} | {len(beats)} slag, gpu {pt}s, vagg {wall:.0f}s", flush=True)
+        except Exception as e:
+            fail += 1; print(f'  FEL {name[:44]}: {str(e)[:140]}', flush=True)
+    print(f'klart: {ok} ok, {fail} fel, gpu-tid totalt {tot_pt:.0f} s')
