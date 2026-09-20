@@ -1010,6 +1010,13 @@ let lgWinSec = 4;
 let lgLockAfterMs = 1_200_000;  // 20 min gate:ad musik → lås
 const LG_SETTLE_MS = 3000;      // frys efter volymbyte
 const LG_NOISE_FLOOR = 0.0015;  // under detta = tystnad
+/** ROBUST INLARNING (2026-09-20 16:40). Brus i rummet 14:13-14:36 (bredbandigt, RMS 0,12-0,19 mot musikens 0,04) lardes in
+ *  i vol 21: ref 0,157 mot grannarna 0,043/0,075 -> gain 3,8 i stallet for ~12 -> nivan under taket, motorn i permanent
+ *  'breaking', ljuset platt ("lite dynamik"). Tva skydd: (1) ref = MEDIAN av fonstrens p90 (bunden ring), inte lopande medel;
+ *  (2) ett fonster vars implicerade gain avviker > LG_PRIOR_RATIO fran tvapunktskurvan (manuell kalibrering) forkastas. */
+const LG_PRIOR_RATIO = 2.5;
+const LG_RING_MAX = 400;        // 400 x 4 s = 27 min fonster -> medianen tacker laset (20 min)
+const lgWinHist = new Map<number, number[]>();   // vol -> fonstrens p90 (bunden)
 
 const lgTable = new Map<number, LgEntry>();   // volym → tillstånd (persisteras)
 
@@ -1059,11 +1066,18 @@ function learnGainSample(blockRms: number, blockSec: number): void {
   const s = [...lgRing].sort((a, b) => a - b);
   const measured = s[Math.floor(s.length * 0.9)];
   if (!(measured > 0) || !Number.isFinite(measured)) return;
+  // (2) RIMLIGHET mot tvapunktskurvan: brus/mattning ger fonster langt fran priorn -> raknas inte
+  if (calPoint1 && calPoint2) {
+    const prior = interpolateGain(v); const implied = gainFromRef(measured);
+    if (prior > 0 && (implied / prior > LG_PRIOR_RATIO || prior / implied > LG_PRIOR_RATIO)) { lgRing.length = 0; return; }
+  }
   if (!e) e = { ref: measured, sum: 0, count: 0, learnMs: 0, locked: false };
-  // AGGREGAT: löpande medel av p90 över alla låtar (ej EMA mot senaste låten)
+  // (1) AGGREGAT: median av fonstrens p90 (bunden ring) - ett langt avvikande parti (brus) far inte dra referensen
+  let h = lgWinHist.get(v); if (!h) { h = []; lgWinHist.set(v, h); }
+  h.push(measured); if (h.length > LG_RING_MAX) h.shift();
+  const hs = [...h].sort((a, b) => a - b); e.ref = hs[hs.length >> 1];
   e.sum += measured;
   e.count += 1;
-  e.ref = e.sum / e.count;
   e.learnMs += blockSec * 1000;
   if (e.learnMs >= lgLockAfterMs) {
     e.locked = true;
@@ -1091,8 +1105,8 @@ function learnedGainFor(v: number): number | null {
 
 /** Lås upp en volym (eller alla) → lär om från prior. För rums-/uppställningsändring. */
 export function relearnGain(vol?: number): void {
-  if (vol == null) lgTable.clear();
-  else lgTable.delete(vol);
+  if (vol == null) { lgTable.clear(); lgWinHist.clear(); }
+  else { lgTable.delete(vol); lgWinHist.delete(vol); }
   lgRing.length = 0;
   lgRingVol = null;
   saveMicState();
