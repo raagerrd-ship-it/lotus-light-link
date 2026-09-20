@@ -8,3 +8,6 @@ daily/
 scoreboard.jsonl
 morning-artifact.txt
 bench-old/
+refacit-*.json
+catalog_backfill.log
+allin1_facit.log

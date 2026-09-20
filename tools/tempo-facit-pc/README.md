@@ -137,3 +137,22 @@ nu facit till analysatorns [80,160) (7 "dubbla" var bara vikningen). Provat: tä
 fel tempo, så fel kandidater får hög precision och täckning. Nästa prov: stelt grid med finsökt period (`FACIT_METHOD=rigid`,
 `refacit.py` + `compare.py` mot katalog och analysator). Regel: facit får bara styra ledtrådar när det bevisligen slår
 analysatorn mot katalogen.
+
+## Stelt grid = facit i produktion (2026-09-20 12:05) + fasfyndet
+
+`FACIT_METHOD=rigid` (standard nu): period finsökt ±4 % kring tempogrammets kandidater (+ oktavpartner), fas i 32 steg,
+poäng = medel av basonset på slagen (max ±2 ramar)/p95, ingen täckning (`FACIT_RIG_REC_EXP=0`; täckning 1 gav 27/46).
+Mot Deezer-katalogen **37/46** (gamla evidensvalet 31/46, analysatorn 32/46), lika analysatorn 83/110 → korpusen omräknad
+(`refacit.py --write`, `prevBpm` kvar) och bänken mot det nya facit: **analysatorn 116/144 rätt tempo (81 %)**, klasser
+annat 14, 4/3 5, 3/4 4, 2/3 3. Kvar hos rigid: tre 160–178-låtar väljs på halva (oktavvalet) — ofarligt för lampan (vikningen).
+`compare.py gammalt rigid0` visar raderna; `catalog_backfill.py` ger katalogreferensen; `allin1_facit.py` kör Replicates
+all-in-one-modell (ML-slagföljare, ~27 GPU-s ≈ 1–2 cent per låt) som tredje, oberoende referens — körs för hand, en gång per låt.
+
+**Fasfyndet (offline ur korpusens händelseloggar, 39 låtar där gridet = facit i samma oktav):** motorns pulser i fas (≥ 80 %
+inom ±¼ slag) i bara 5 låtar, i MOTFAS (≤ 20 %) i 9 (Geo Da Silva ×3, Kaylee Bell, Dolly Style, Grönwalls, Smokie …), resten
+däremellan (drift/omankring). Helbandsonseten är starkare på PC-fasen än på halvslagsfasen i alla grupper (kvot 0,60 i
+motfasgruppen) ⇒ PC-fasen är slaget och lampan pulserar på off-beaten där. Orsak (kod): motorns PLL initieras på en kick
+och släpper bara in kickar inom ±¼ slag — hamnar gridet på off-beat-basen (åttondelsbas) bekräftar den sig själv för alltid.
+Bänkens nya `fas`-kolumn mäter analysatorns `beatAnchorMs` — men den är BARA senaste kicken (analyser.ts 1751), så 0,98 där
+säger bara att kickarna träffar slagen. Nästa steg: en riktig gridfas i analysatorn (alignScore-fas på basringen + halvslagstest
+mot helbandet) som motorn följer, mätbar i bänken mot PC-slagen.

@@ -20,8 +20,9 @@ ONCE = '--once' in sys.argv
 POLL_S = 20
 HOP = 512
 REC_EXP = float(os.environ.get('FACIT_REC_EXP', '0'))   # tackningens vikt i estimate_evidens(); 0 = gamla precision-valet (omfacit 09-20: exp 1 SAMRE, 62->51 mot analysatorn)
-RIG_REC_EXP = float(os.environ.get('FACIT_RIG_REC_EXP', '1'))
-METHOD = os.environ.get('FACIT_METHOD', 'evidens')       # 'evidens' = tracker-pinnade slag (produktion), 'rigid' = stelt grid med finsokt period (prov 09-20)
+RIG_REC_EXP = float(os.environ.get('FACIT_RIG_REC_EXP', '0'))   # tackning i det stela gridet: 1 var SAMRE (27/46 mot katalogen), 0 = ren precision (37/46)
+METHOD = os.environ.get('FACIT_METHOD', 'rigid')          # PRODUKTION sedan 2026-09-20 12:05: 'rigid' (stelt grid, finsokt period) - 37/46 mot Deezer-katalogen,
+                                                          # 83/110 lika analysatorn, 8/8 syntet; 'evidens' (tracker-pinnade slag) gav 31/46, 62/110, 6/8 (kvar for A/B)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
 log = logging.getLogger('facit')
 
@@ -40,7 +41,7 @@ def estimate(y: np.ndarray, sr: int) -> dict:
 
 
 def estimate_rigid(y: np.ndarray, sr: int) -> dict:
-    """STELT GRID (prov 2026-09-20). Laxa fran omfacit med tackning: librosas beat_track SNAPPAR slagen mot onseten aven
+    """STELT GRID (PRODUKTION sedan 2026-09-20 12:05; var prov). Laxa fran omfacit med tackning: librosas beat_track SNAPPAR slagen mot onseten aven
     nar tempot ar pinnat fel (tightness 400) - da far fel kandidater hog precision OCH hog tackning, och valet blir slump
     bland tempogrambins (93,8/100,5/104,2 dok upp for 20 latar). Har laggs i stallet ett STELT grid: period finsokt
     +-4 % kring varje kandidat (0,2 %-steg), fas i 32 steg, poang = medel av basonset pa slagen (max +-2 ramar) / p95.
