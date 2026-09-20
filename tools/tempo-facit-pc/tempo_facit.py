@@ -429,6 +429,7 @@ def process_one(row: dict) -> bool:
     beats, onset_lo = r.pop('_beats'), r.pop('_onset_lo')
     # ── TRE ROSTER ────────────────────────────────────────────────────────────
     bt = beatthis_track(wav)
+    if bt and not (40 <= float(bt.get('bpm') or 0) <= 220): log.info('beatthis orimligt tempo %s - ignoreras', bt.get('bpm')); bt = None   # 'Age of War': 6,2 BPM
     r['pcBpm'] = r.get('bpm', 0); r['btBpm'] = (bt or {}).get('bpm', 0); r['beatsSource'] = 'pc'
     if bt and bt.get('bpm'):
         c = tempo_class(r['pcBpm'], bt['bpm']); r['voteClass'] = c
