@@ -1675,8 +1675,9 @@ export class PiLightEngine {
           if (!reacq && Math.abs(bpm - this._beat.bpm) < bpm * (this.cal.beatBpmKeep ?? 0.25)) bpmNew = this._beat.bpm;
           // Bevara nuvarande fas vid tempoändring så pulsen inte hoppar.
           const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpmNew;
-          const ph = ((((nowMs - this._beat.anchorMs) % oldMs) + oldMs) % oldMs) / oldMs;
-          anchor = nowMs - ph * newMs;
+          // Bevara slagindex + fas (k = (now - anchor)/period), inte bara fasen - annars nollstalls beatIndex och gridpulsen fyrar (17:15)
+          const kk = (nowMs - this._beat.anchorMs) / oldMs;
+          anchor = nowMs - kk * newMs;
         }
         this._beat = { anchorMs: anchor, bpm: bpmNew, confidence: conf };
       } else {
@@ -1752,7 +1753,9 @@ export class PiLightEngine {
       if (PHASE_KI_BPM > 0) {
         const lo = anB * 0.96, hi = anB * 1.04; let nb = this._beat.bpm - err * PHASE_KI_BPM;
         if (nb < lo) nb = lo; else if (nb > hi) nb = hi;
-        if (nb !== this._beat.bpm) { const ph2 = ((((nowMs - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow; this._beat.bpm = nb; this._beat.anchorMs = nowMs - ph2 * (60000 / nb); }   // bevara fasen vid tempobyte
+        // SPOKPULSER (17:15): 'nowMs - fas*period' nollstallde slagINDEXET (beatIndex) vid varje tempobyte (4 Hz) -> gridpulsen
+        // fyrade pa index-hoppet: 2,47 pulser/s pa 95 BPM (1,59 slag/s). Bevara hela k = index + fas.
+        if (nb !== this._beat.bpm) { const kk = (nowMs - this._beat.anchorMs) / beatMsNow; this._beat.bpm = nb; this._beat.anchorMs = nowMs - kk * (60000 / nb); }
       }
       return;
     }
