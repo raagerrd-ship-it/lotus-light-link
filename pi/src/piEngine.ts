@@ -117,6 +117,13 @@ const PHASE_TRACE = process.env.LOTUS_PHASE_TRACE === '1';   // tillfallig sparl
 /** Halvslagsflip i foljaren: kvot >= 2,0 i 4 raka matningar (1 s). Var 1,3/2 - 903 flippar pa 2 h. Korbank f3 (1,6/4) = f1 i fas, sa strangt kostar inget. */
 const PHASE_FLIP_CONF = Number(process.env.LOTUS_PHASE_FLIP_CONF) || 2.0;
 const PHASE_FLIP_VOTES = Number(process.env.LOTUS_PHASE_FLIP_VOTES) || 4;
+/** Live 15:14-15:45: pulserna lag KONSTANT 50-100 ms fel per lat (Status del tva +96 ms, IQR 15) = gridets tempo (12 s-median)
+ *  slapar 1-2 % efter analysatorns -> foljaren jagar med konstant slap (err_ss = drift/kP). Integralterm: bpm foljer fasdriften,
+ *  klampad till +-4 % av analysatorns bpm. Bias: analysatorns fasmatning ligger 20 ms sen mot Beat This! (bank, 136 latar). */
+const PHASE_KP_HI = Number(process.env.LOTUS_PHASE_KP_HI) || 0.4;
+const PHASE_KP_LO = Number(process.env.LOTUS_PHASE_KP_LO) || 0.2;
+const PHASE_KI_BPM = Number(process.env.LOTUS_PHASE_KI_BPM) || 0.8;      // BPM per slag fasfel per matning (4 Hz)
+const PHASE_BIAS_MS = Number(process.env.LOTUS_PHASE_BIAS_MS ?? 20);
 
 /**
  * Var landmarkena for en pagaende inspelning laggs.
@@ -1725,7 +1732,7 @@ export class PiLightEngine {
       const anB = frame?.bpm ?? 0;
       if (anB <= 0 || Math.abs(anB / this._beat.bpm - 1) >= 0.04) { this._phaseFlipVotes = 0; return; }
       const beatMsNow = 60000 / this._beat.bpm;
-      const ph = ((((pm - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+      const ph = ((((pm - PHASE_BIAS_MS - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
       const err = ph < 0.5 ? ph : ph - 1;                          // -0,5..0,5 slag: + = analysatorns slag ligger EFTER gridet
       const pconf = frame?.beatPhaseConf ?? 1;
       this._beatErr = this._beatErr * 0.85 + err * 0.15;
@@ -1738,9 +1745,15 @@ export class PiLightEngine {
         return;
       }
       this._phaseFlipVotes = 0;
-      const kf = pconf >= 1.3 ? 0.3 : 0.15;
+      const kf = pconf >= 1.3 ? PHASE_KP_HI : PHASE_KP_LO;
       this._beat.anchorMs += err * beatMsNow * kf;
       this._clock.trimToBeat(-err * beatMsNow * kf, beatMsNow);
+      // INTEGRAL: ihallande fel at samma hall = tempofel. err > 0 = analysatorns slag ligger EFTER gridet = gridet gar for fort -> bpm ner.
+      if (PHASE_KI_BPM > 0) {
+        const lo = anB * 0.96, hi = anB * 1.04; let nb = this._beat.bpm - err * PHASE_KI_BPM;
+        if (nb < lo) nb = lo; else if (nb > hi) nb = hi;
+        if (nb !== this._beat.bpm) { const ph2 = ((((nowMs - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow; this._beat.bpm = nb; this._beat.anchorMs = nowMs - ph2 * (60000 / nb); }   // bevara fasen vid tempobyte
+      }
       return;
     }
     let nowRef: number;

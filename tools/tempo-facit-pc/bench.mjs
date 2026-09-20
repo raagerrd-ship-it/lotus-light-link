@@ -156,7 +156,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     const grid = []; for (let i = -2; i < n + 3; i++) grid.push(c0 + slope * i);
     const offs = pulses.filter((t) => t > 10).map((t) => { let best = Infinity; for (const gg of grid) { const d = t - gg; if (Math.abs(d) < Math.abs(best)) best = d; } return best; });
     const on = offs.filter((d) => Math.abs(d) < per / 4).map((d) => d * 1000).sort((a, b) => a - b);
-    return { share: offs.length ? on.length / offs.length : null, iqr: on.length >= 4 ? on[Math.floor(on.length * 0.75)] - on[Math.floor(on.length * 0.25)] : null, n: offs.length };
+    return { share: offs.length ? on.length / offs.length : null, iqr: on.length >= 4 ? on[Math.floor(on.length * 0.75)] - on[Math.floor(on.length * 0.25)] : null, med: on.length >= 4 ? on[on.length >> 1] : null, n: offs.length };
   };
   const FOLLOWERS = { raw: { mode: 'raw' }, f1: { mode: 'f', kHi: 0.3, kLo: 0.15, holdConf: 0, flipConf: 1.3, flipVotes: 2 }, f2: { mode: 'f', kHi: 0.2, kLo: 0.05, holdConf: 1.15, flipConf: 1.5, flipVotes: 3 }, f3: { mode: 'f', kHi: 0.15, kLo: 0, holdConf: 1.3, flipConf: 1.6, flipVotes: 4 } };
   const follow = {}; for (const [name, p] of Object.entries(FOLLOWERS)) follow[name] = followerRun(p);
@@ -198,7 +198,8 @@ for (const set of ['korpus', 'synt']) {
     const fr = rs.filter((r) => r.follow && r.follow[name] && typeof r.follow[name].share === 'number');
     if (!fr.length) continue;
     const sh = fr.map((r) => r.follow[name].share).sort((a, b) => a - b); const iq = fr.filter((r) => r.follow[name].iqr !== null).map((r) => r.follow[name].iqr).sort((a, b) => a - b);
-    console.log(`${set} foljare ${name}: puls on-beat median ${sh[sh.length >> 1].toFixed(2)}, i fas (>=0,8) ${sh.filter((v) => v >= 0.8).length}, motfas (<=0,2) ${sh.filter((v) => v <= 0.2).length}, IQR median ${iq.length ? iq[iq.length >> 1].toFixed(0) : '-'} ms (n=${fr.length})`);
+    const md = fr.filter((r) => r.follow[name].med !== null).map((r) => r.follow[name].med); const mdS = [...md].sort((a, b) => a - b); const absS = md.map(Math.abs).sort((a, b) => a - b);
+    console.log(`${set} foljare ${name}: puls on-beat median ${sh[sh.length >> 1].toFixed(2)}, i fas (>=0,8) ${sh.filter((v) => v >= 0.8).length}, motfas (<=0,2) ${sh.filter((v) => v <= 0.2).length}, IQR median ${iq.length ? iq[iq.length >> 1].toFixed(0) : '-'} ms, offset median ${mdS.length ? mdS[mdS.length >> 1].toFixed(0) : '-'} ms, |offset| median ${absS.length ? absS[absS.length >> 1].toFixed(0) : '-'} ms, andel |offset| <= 30 ms ${md.length ? (md.filter((v) => Math.abs(v) <= 30).length / md.length).toFixed(2) : '-'} (n=${fr.length})`);
   }
   const sf = rs.filter((r) => typeof r.secAgree === 'number');
   if (sf.length) console.log(`${set} sektionsfacit (langfangster n=${sf.length}): gransfel-traff median ${[...sf].filter((r) => r.secBound !== null).map((r) => r.secBound).sort((a, b) => a - b)[sf.filter((r) => r.secBound !== null).length >> 1]?.toFixed(2)}, high==high andel median ${[...sf].map((r) => r.secAgree).sort((a, b) => a - b)[sf.length >> 1].toFixed(2)}, refrang-recall median ${[...sf].filter((r) => r.secRecall !== null).map((r) => r.secRecall).sort((a, b) => a - b)[sf.filter((r) => r.secRecall !== null).length >> 1]?.toFixed(2)}, falsk-high median ${[...sf].filter((r) => r.secFalse !== null).map((r) => r.secFalse).sort((a, b) => a - b)[sf.filter((r) => r.secFalse !== null).length >> 1]?.toFixed(2)}`);
