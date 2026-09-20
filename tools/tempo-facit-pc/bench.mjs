@@ -66,7 +66,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
   const meta = JSON.parse(readFileSync(join(DIR, f), 'utf8')); const wav = join(DIR, f.replace(/\.json$/, '.wav'));
   if (!existsSync(wav)) continue;
   let facit = meta.result?.bpm || 0; if (!facit) continue;
-  while (facit > 180) facit /= 2; while (facit < 70) facit *= 2;      // samma vikning som Pi:n (PC:ns egen oktav ar inte facit)
+  while (facit >= 160) facit /= 2; while (facit < 80) facit *= 2;     // ANALYSATORNS vikning [80,160) (BPM_MIN/MAX): facit 160-180 halveras - lampan pulserar pa halva takten dar med avsikt (09-20: 7 'dubbla' var bara vikningen)
   const { y, rate } = readWav(wav); runOne.current = f; const r = runOne(y, rate);
   const [cls, ratio] = classify(facit, r.med);
   const pcOn = (meta.result?.analysis?.onset?.timesS) || [];

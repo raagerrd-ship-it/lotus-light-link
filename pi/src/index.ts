@@ -20,6 +20,8 @@ logDebugBanner();
 // B2: minimal crash-handler REDAN här. main() installerar de fullständiga
 // (med restart-logg) långt senare — en krasch under boot-importerna lämnade
 // tidigare bara ett tomt systemd-exit utan reason.
+/** Tempoledtradar ur facit (tempoHint/octaveHint) - PARKERADE 2026-09-20, se learn-saver. LOTUS_TEMPO_HINTS=1 slar pa. */
+const TEMPO_HINTS_ON = process.env.LOTUS_TEMPO_HINTS === '1';
 const bootCrash = (tag: string) => (e: unknown) => {
   console.error(`[Fatal/boot:${tag}]`, e);
   process.exit(1);
@@ -248,8 +250,13 @@ async function ensureEngineInstance(): Promise<void> {
       // AUTOMATISK JUSTERING (09-19): domen blir en oktavledtrad pa laten. Nasta spelning rattar
       // motorn presentationens oktav sjalv (setOctaveHint) - analysatorn ger fas och tempo som forr.
       // Samma klass tva ganger i rad = stabil; en avvikande dom nollar rakningen (inte ledtraden).
+      // PARKERAD 2026-09-20 (LOTUS_TEMPO_HINTS=1 slar pa): mot Deezer-katalogen (46 korpuslatar) var PC-facit ratt
+      // 31/46 och analysatorn 32/42 - dar de skiljer med fantomklass (3/2, 4/3, 2/3, 3/4) hade analysatorn ratt 5/5,
+      // och PC:ns tva oktavfel (Froken karlek 165 mot 83, Tell Me Why 161 mot 80) hade hog conf. En ledtrad ur ett
+      // samre facit drar gridet FEL nasta spelning (~15 % av latarna). Domar och lardata sparas som forr (statistik);
+      // bara ledtradarna (skapande + tillampning) ar avstangda tills facit ar bevisat battre an analysatorn.
       let hintPatch: Partial<import('./tempoLookup.js').TempoCacheEntry> = {};
-      if (verdictEnd) {
+      if (verdictEnd && TEMPO_HINTS_ON) {
         const cls = verdictEnd === 'ok-oktav-2' ? 2 : verdictEnd === 'ok-oktav-0.5' ? 0.5 : verdictEnd === 'ok' ? 1 : 0;
         if (cls > 0) {
           const same = e?.octaveHint === cls;
@@ -257,7 +264,7 @@ async function ensureEngineInstance(): Promise<void> {
         }
       }
       // TEMPOLEDTRAD: klassen (aven fantomer 3/2, 4/3 ...) + analysatorns median -> nasta spelning (piEngine.setTempoHint).
-      if (verdictEnd && verdictEnd !== 'avvisat' && e && e.bpm > 0 && med > 0) {
+      if (verdictEnd && verdictEnd !== 'avvisat' && e && e.bpm > 0 && med > 0 && TEMPO_HINTS_ON) {
         const r = e.bpm / med; const cls = [0.5, 1, 2, 2 / 3, 1.5, 4 / 3, 0.75].find((x) => Math.abs(r / x - 1) < 0.05);
         if (cls !== undefined) {
           const prev = e.tempoHint; const same = prev && Math.abs(prev.ratio / cls - 1) < 0.01;
@@ -568,7 +575,9 @@ async function startSonosSubsystem(): Promise<void> {
           // Lard oktavledtrad fran forra spelningen (automatisk justering, se learn-saver).
           const { songKey: sk } = await import('./songStore.js');
           const row = tempoCacheRef.get(sk(artist || '', title)) ?? null;
-          if (row?.tempoHint && Math.abs(row.tempoHint.ratio - 1) > 0.01) engineInstance.setTempoHint(row.tempoHint.ratio, row.tempoHint.anBpm, artist || '', title);
+          if (!TEMPO_HINTS_ON && row && ((row.tempoHint && Math.abs(row.tempoHint.ratio - 1) > 0.01) || row.octaveHint === 2 || row.octaveHint === 0.5))
+            console.log(`[takt] ledtrad ignorerad (LOTUS_TEMPO_HINTS av): x${row.tempoHint?.ratio ?? row.octaveHint} for "${title}"`);
+          else if (row?.tempoHint && Math.abs(row.tempoHint.ratio - 1) > 0.01) engineInstance.setTempoHint(row.tempoHint.ratio, row.tempoHint.anBpm, artist || '', title);
           else if (row && (row.octaveHint === 2 || row.octaveHint === 0.5)) engineInstance.setOctaveHint(row.octaveHint, artist || '', title);
           else console.log(`[tempo] inget katalogtempo for "${artist ?? '?'} - ${title}"${cached ? ' (cache)' : ''}`);
         } catch (e) { console.log('[tempo] uppslag misslyckades:', (e as Error).message); }

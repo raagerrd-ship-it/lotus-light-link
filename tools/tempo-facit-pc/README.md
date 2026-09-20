@@ -121,3 +121,19 @@ Att bara kopiera `analyser.js` gav `ERR_MODULE_NOT_FOUND` och 69 kraschomstarter
 felet syns bara i `/var/log/pi-control-center/apps/lotus-light/engine.log`, inte i journalen). Deploya hela katalogen
 (`pi/scripts/deploy-analyser-dir.py`: md5-diff, `node --check`, importtest på Pi:n, backup, EN omstart) och verifiera
 med `systemctl is-active` + API:t, inte med att filen ligger där.
+
+## Facit mot katalogen: analysatorn slår PC-facit — ledtrådarna parkerade (2026-09-20 11:40)
+
+`catalog_backfill.py` slår upp Deezer-tempo för korpusen (46/138 träffar, sparas i `corpus/<id>.json` under `catalog`) som
+OBEROENDE referens (Pi:ns cache skriver över katalogvärdet med PC-facit). Mot de 46: **PC-facit rätt 31/46, analysatorn
+32/42** — och räknar man analysatorns 4 "halva" som vikningen (facit 162–178 ≥ 160 → lampan pulserar på halva takten med
+avsikt) är analysatorn rätt 84 %. Där PC och analysator skiljer sig med fantomklass (3/2, 4/3, 2/3, 3/4) hade analysatorn
+rätt 5/5 (Carlene Carter, Lotta Engberg, Drängarna ×2, E-Type); PC:ns två oktavfel (Fröken kärlek 165 mot 83, Tell Me Why
+161 mot 80) kom direkt ur trackern med hög conf. **Slutsats:** en tempoledtråd ur PC-facit drar gridet fel nästa spelning i
+~15 % av låtarna → `tempoHint`/`octaveHint` (skapande + tillämpning) är parkerade i `pi/src/index.ts` bakom
+`LOTUS_TEMPO_HINTS=1` (deployad 11:37, backup `index.js.bak-20260920-1137`; domar och lärdata sparas som förr). Bänken viker
+nu facit till analysatorns [80,160) (7 "dubbla" var bara vikningen). Provat: täckning (recall) i evidensvalet
+(`FACIT_REC_EXP=1`) blev SÄMRE (62 → 51 lika analysatorn) — librosas beat_track snappar slagen mot onseten även vid pinnat
+fel tempo, så fel kandidater får hög precision och täckning. Nästa prov: stelt grid med finsökt period (`FACIT_METHOD=rigid`,
+`refacit.py` + `compare.py` mot katalog och analysator). Regel: facit får bara styra ledtrådar när det bevisligen slår
+analysatorn mot katalogen.

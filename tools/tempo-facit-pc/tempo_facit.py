@@ -19,6 +19,9 @@ CORPUS_MAX_WAV = int(os.environ.get('LOTUS_CORPUS_MAX') or 600)   # ~1,7 GB; ald
 ONCE = '--once' in sys.argv
 POLL_S = 20
 HOP = 512
+REC_EXP = float(os.environ.get('FACIT_REC_EXP', '0'))   # tackningens vikt i estimate_evidens(); 0 = gamla precision-valet (omfacit 09-20: exp 1 SAMRE, 62->51 mot analysatorn)
+RIG_REC_EXP = float(os.environ.get('FACIT_RIG_REC_EXP', '1'))
+METHOD = os.environ.get('FACIT_METHOD', 'evidens')       # 'evidens' = tracker-pinnade slag (produktion), 'rigid' = stelt grid med finsokt period (prov 09-20)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
 log = logging.getLogger('facit')
 
@@ -33,6 +36,69 @@ def http(method: str, path: str, body=None, timeout=30):
 # ───────────────────────────── tempo ─────────────────────────────
 
 def estimate(y: np.ndarray, sr: int) -> dict:
+    return estimate_rigid(y, sr) if METHOD == 'rigid' else estimate_evidens(y, sr)
+
+
+def estimate_rigid(y: np.ndarray, sr: int) -> dict:
+    """STELT GRID (prov 2026-09-20). Laxa fran omfacit med tackning: librosas beat_track SNAPPAR slagen mot onseten aven
+    nar tempot ar pinnat fel (tightness 400) - da far fel kandidater hog precision OCH hog tackning, och valet blir slump
+    bland tempogrambins (93,8/100,5/104,2 dok upp for 20 latar). Har laggs i stallet ett STELT grid: period finsokt
+    +-4 % kring varje kandidat (0,2 %-steg), fas i 32 steg, poang = medel av basonset pa slagen (max +-2 ramar) / p95.
+    Ett stelt grid med fel tempo driver bort fran slagen inom nagra sekunder -> lag poang; fantomer 3/2, 4/3, 2/3 traffar
+    kickarna bara delvis. Tackning (andel basonset-toppar inom +-50 ms fran slag/halvslag) multipliceras in med RIG_REC_EXP.
+    Oktav: halvslagskvot >= 0,6 => x2 (som forr). Kandidater: tempogrammets topp-6 + oktavpartner (x2, /2 inom 55-210)."""
+    onset = librosa.onset.onset_strength(y=y, sr=sr, hop_length=HOP)
+    onset_lo = librosa.onset.onset_strength(y=y, sr=sr, hop_length=HOP, fmax=220, n_mels=12)
+    tg = librosa.feature.tempogram(onset_envelope=onset, sr=sr, hop_length=HOP)
+    ac = tg.mean(axis=1); bpms = librosa.tempo_frequencies(len(ac), sr=sr, hop_length=HOP)
+    mask = np.isfinite(bpms) & (bpms >= 55) & (bpms <= 210); acm, bpmm = ac[mask], bpms[mask]
+    cands = []
+    for i in np.argsort(acm)[::-1]:
+        b = float(bpmm[i])
+        if all(abs(b / c['bpm'] - 1) > 0.03 for c in cands): cands.append({'bpm': round(b, 1), 'strength': round(float(acm[i]), 4)})
+        if len(cands) >= 6: break
+    for c in list(cands):
+        for m in (2.0, 0.5):
+            b = c['bpm'] * m
+            if 55 <= b <= 210 and all(abs(b / d['bpm'] - 1) > 0.03 for d in cands): cands.append({'bpm': round(b, 1), 'strength': 0.0})
+    ft = HOP / sr; n = len(onset_lo); env = np.maximum.reduce([np.roll(onset_lo, k) for k in (-2, -1, 0, 1, 2)])   # max +-2 ramar
+    norm = float(np.percentile(onset_lo, 95)) or 1.0
+    lo_peaks = librosa.onset.onset_detect(onset_envelope=onset_lo, sr=sr, hop_length=HOP, units='time', backtrack=False)
+    def grid_mean(p: float, ph: float, half: bool = False) -> float:
+        g = np.arange(ph + (p / 2 if half else 0.0), n * ft, p); idx = np.round(g / ft).astype(int); idx = idx[idx < n]
+        return float(env[idx].mean()) / norm if len(idx) else 0.0
+    def recall_at(p: float, ph: float) -> float:
+        if len(lo_peaks) < 4: return 1.0
+        grid = np.arange(ph, n * ft, p / 2); idx = np.clip(np.searchsorted(grid, lo_peaks), 1, len(grid) - 1)
+        d = np.minimum(np.abs(lo_peaks - grid[idx - 1]), np.abs(lo_peaks - grid[idx])); return float(np.mean(d <= 0.05))
+    scored = []
+    for c in cands:
+        best = (-1.0, 0.0, 0.0)
+        for f in np.arange(0.96, 1.0401, 0.002):
+            p = 60.0 / (c['bpm'] * f)
+            for ph in np.arange(0.0, p, p / 32):
+                v = grid_mean(p, ph)
+                if v > best[0]: best = (v, p, ph)
+        prec, p, ph = best
+        if prec <= 0: continue
+        bpm_real = 60.0 / p
+        if any(abs(bpm_real / s_['bpm'] - 1) <= 0.02 for s_ in scored): continue
+        half = grid_mean(p, ph, half=True) / prec; rec = recall_at(p, ph)
+        scored.append({'bpm': round(bpm_real, 1), 'cand': c['bpm'], 'beatScore': round(prec, 3), 'recall': round(rec, 3), 'score': round(prec * rec ** RIG_REC_EXP, 3),
+                       'halfRatio': round(half, 2), 'strength': c['strength'], '_p': p, '_ph': ph})
+    method = 'librosa-' + librosa.__version__ + f'-rigid{RIG_REC_EXP:g}'
+    if not scored: return {'bpm': 0, 'candidates': cands, 'method': method, '_beats': np.array([]), '_onset_lo': onset_lo}
+    scored.sort(key=lambda s_: s_['score'], reverse=True); best = scored[0]
+    bpm_final, octave = best['bpm'], 1
+    if best['halfRatio'] >= 0.6 and best['bpm'] * 2 <= 200: bpm_final, octave = best['bpm'] * 2, 2
+    conf = best['score'] / scored[1]['score'] if len(scored) > 1 and scored[1]['score'] > 0 else 1.0
+    p, ph = best['_p'], best['_ph']; beats = np.arange(ph, n * ft, p / 2 if octave == 2 else p)
+    return {'bpm': round(bpm_final, 1), 'bpmTracker': best['bpm'], 'octave': octave, 'halfRatio': best['halfRatio'], 'beatScore': best['beatScore'],
+            'conf': round(float(conf), 2), 'beats': int(len(beats)), 'candidates': [{k: v for k, v in s_.items() if not k.startswith('_')} for s_ in scored[:6]],
+            'method': method, '_beats': beats, '_onset_lo': onset_lo}
+
+
+def estimate_evidens(y: np.ndarray, sr: int) -> dict:
     """Tempo ur hela snutten, valt pa EVIDENS - inte pa trackerns prior.
 
     Klicktest 09-19 (kick 80 Hz + hi-hat): librosas beat_track med default-prior gav 168 -> 112,5 (2/3),
@@ -60,6 +126,18 @@ def estimate(y: np.ndarray, sr: int) -> dict:
         idx = np.clip(np.round(ts * sr / HOP).astype(int), 0, len(env) - 1)
         return float(np.median(env[idx])) if len(idx) else 0.0
     lo_norm = float(np.percentile(onset_lo, 95)) or 1.0
+    # TACKNING (2026-09-20): beatScore ar en PRECISION (median pa slagen) och belonar glesa fantomgrid: for latar med
+    # bas pa varje attondel (eurodance, disco polo, dansband) traffar 2/3-gridet (90,7 for 136) bara bastoner och vann
+    # (Dr. Alban 90,7 mot 137,2: 0,75 mot 0,47) fast det forklarar bara var tredje baston. Darfor vags en RECALL in:
+    # andelen basonsets (toppar i onset_lo) som ligger inom +-50 ms fran ett slag eller halvslag i kandidatens grid.
+    # Fantomer 3/2, 4/3 och 2/3 tacker 1/3-1/2 av onseten, ratt tempo nastan alla. Vikt: score = beatScore * recall**REC_EXP.
+    lo_peaks = librosa.onset.onset_detect(onset_envelope=onset_lo, sr=sr, hop_length=HOP, units='time', backtrack=False)
+    def recall_at(bts: np.ndarray) -> float:
+        if len(lo_peaks) < 4 or len(bts) < 2: return 1.0
+        grid = np.sort(np.concatenate([bts, (bts[:-1] + bts[1:]) / 2]))
+        idx = np.clip(np.searchsorted(grid, lo_peaks), 1, len(grid) - 1)
+        d = np.minimum(np.abs(lo_peaks - grid[idx - 1]), np.abs(lo_peaks - grid[idx]))
+        return float(np.mean(d <= 0.05))
     scored = []
     for c in cands:
         try:
@@ -72,16 +150,18 @@ def estimate(y: np.ndarray, sr: int) -> dict:
         if any(abs(bpm_real / s['bpm'] - 1) <= 0.03 for s in scored): continue   # samma verkliga tempo
         s_beat = strength_at(onset_lo, bts) / lo_norm
         s_half = strength_at(onset_lo, (bts[:-1] + bts[1:]) / 2) / lo_norm
-        scored.append({'bpm': round(bpm_real, 1), 'cand': c['bpm'], 'beatScore': round(s_beat, 3),
+        rec = recall_at(bts)
+        scored.append({'bpm': round(bpm_real, 1), 'cand': c['bpm'], 'beatScore': round(s_beat, 3), 'recall': round(rec, 3),
+                       'score': round(s_beat * rec ** REC_EXP, 3),
                        'halfRatio': round(s_half / s_beat, 2) if s_beat > 0 else 0.0, 'strength': c['strength'], '_beats': bts})
-    method = 'librosa-' + librosa.__version__ + '-evidens'
+    method = 'librosa-' + librosa.__version__ + ('-evidens' if REC_EXP == 0 else f'-evidens-tackning{REC_EXP:g}')
     if not scored:
         return {'bpm': 0, 'candidates': cands, 'method': method, '_beats': np.array([]), '_onset_lo': onset_lo}
-    scored.sort(key=lambda s: s['beatScore'], reverse=True)
+    scored.sort(key=lambda s: s['score'], reverse=True)
     best = scored[0]
     bpm_final, octave = best['bpm'], 1
     if best['halfRatio'] >= 0.6 and best['bpm'] * 2 <= 200: bpm_final, octave = best['bpm'] * 2, 2
-    conf = best['beatScore'] / scored[1]['beatScore'] if len(scored) > 1 and scored[1]['beatScore'] > 0 else 1.0
+    conf = best['score'] / scored[1]['score'] if len(scored) > 1 and scored[1]['score'] > 0 else 1.0
     beats = best['_beats']
     if octave == 2 and len(beats) > 1:               # slaggridet i det valda tempot: mittpunkter in
         beats = np.sort(np.concatenate([beats, (beats[:-1] + beats[1:]) / 2]))
