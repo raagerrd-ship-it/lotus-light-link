@@ -42,7 +42,7 @@ function runOne(y, rate) {
   const HOP = 128;
   const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015, onsetEnhancements: process.env.BENCH_ENH === '1' });   // standard AV = som Pi:n; BENCH_ENH=1 = 09-07-mergens onset-DSP (12/64 mot 30/64)
   an.setGainLock?.(false);
-  const buf = new Float32Array(HOP); const bpms = []; const confs = []; const raws = []; const kicks = []; const grids = []; const sections = []; let lastSec = ''; let repeats = 0; let lastKick = 0; let hopCount = 0; const warm = Math.floor(10 * rate / HOP);
+  const buf = new Float32Array(HOP); const bpms = []; const confs = []; const raws = []; const kicks = []; const grids = []; const sections = []; let lastSec = ''; let repeats = 0; let lastPhaseMs = 0; let lastKick = 0; let hopCount = 0; const warm = Math.floor(10 * rate / HOP);
   const dbg = process.env.BENCH_DEBUG && runOne.name && runOne.current && runOne.current.includes(process.env.BENCH_DEBUG);
   for (let i = 0; i + HOP <= y.length; i += HOP) {
     buf.set(y.subarray(i, i + HOP));
@@ -54,7 +54,7 @@ function runOne(y, rate) {
     if (hopCount > warm && hopCount % 38 === 0 && f && f.bpm > 0) { bpms.push(f.bpm); confs.push(f.bpmConfidence ?? 0); if (an.rawBpmLast > 0) raws.push(an.rawBpmLast); }   // ~10 Hz
     if (f && f.section && f.section !== lastSec) { lastSec = f.section; sections.push([+(hopCount * HOP / rate).toFixed(1), f.section]); }
     if (f && f.repeatSim >= 0.92 && hopCount % 375 === 0) repeats++;
-    if (hopCount > warm && f && f.bpm > 0 && f.beatPhaseMs > 0) grids.push({ t: hopCount * HOP / rate, bpm: f.bpm, anchor: (f.beatPhaseMs > 1e11 ? f.beatPhaseMs - 1700000000000 : f.beatPhaseMs) / 1000 });   // analysatorns GRIDFAS (LOTUS_GRID_PHASE=1; s fran start) per hop - beatAnchorMs ar bara senaste kicken
+    if (hopCount > warm && f && f.bpm > 0 && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhaseMs) { lastPhaseMs = f.beatPhaseMs; grids.push({ t: hopCount * HOP / rate, bpm: f.bpm, anchor: (f.beatPhaseMs > 1e11 ? f.beatPhaseMs - 1700000000000 : f.beatPhaseMs) / 1000, conf: f.beatPhaseConf ?? 1 }); }   // analysatorns GRIDFAS (LOTUS_GRID_PHASE=1; s fran start) per hop - beatAnchorMs ar bara senaste kicken
     if (dbg && hopCount % (375 * 5) === 0 && an.dbgPhase) { const d = an.dbgPhase; console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s GRIDFAS conf ${d.conf.toFixed(2)} bas on/anti ${d.bassOn.toFixed(2)}/${d.bassAnti.toFixed(2)} hel on/anti ${d.fullOn.toFixed(2)}/${d.fullAnti.toFixed(2)} fas ${d.bestPh}/${d.nPh} vantande ${d.pending} beatPhaseMs ${f.beatPhaseMs > 0 ? ((f.beatPhaseMs - 1700000000000) / 1000).toFixed(3) : 0}`); }
     if (dbg && hopCount % (375 * 5) === 0) console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s lockad ${f.bpm} ra ${an.rawBpmLast?.toFixed(1)} argmax-lag ${an.dbgBestLag} (${an.dbgBestLag ? (6000 / an.dbgBestLag).toFixed(1) : '-'} BPM, tg ${an.dbgTgAt?.(an.dbgBestLag)?.toFixed(3)}) fonster ${an.dbgLagMin}-${an.dbgLagMax} tg@37 ${an.dbgTgAt?.(37)?.toFixed(3)} tg@38 ${an.dbgTgAt?.(38)?.toFixed(3)} vinnare ${an.evidenceScore?.toFixed(2)} las ${an.evidenceLockScore?.toFixed(2)} roster ${an.evidRelockVotes} omlas ${an.evidenceRelocks} kandidater ${JSON.stringify(an.debugCandidates?.().map((c) => [c.bpm, +c.tg.toFixed(3), +c.score.toFixed(2), +c.half.toFixed(2)]))}`);
   }
@@ -126,6 +126,35 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
   const [phaseA1] = phaseVs(a1Beats);
   const btBeats = meta.beatthis?.beatsS || [];                            // Beat This! (lokal ML-slagfoljare, beatthis_facit.py)
   const [phaseBt] = phaseVs(btBeats);
+  // FOLJAR-EMULERING (09-20): motorns gridfas-foljare (piEngine LOTUS_PHASE_FOLLOW) korts pa analysatorns fasmatningar
+  // (4 Hz) och de resulterande PULSERNA mats mot Beat This!-slagen (stelt grid): on-beat-andel + IQR. Live 12:42-14:50
+  // (Melody: pulserna hoppade +-50 %, IQR 139 ms) visade att foljaren forstor fasen nar matningen flimrar.
+  const followerRun = (p) => {
+    if (btBeats.length < 8 || r.grids.length < 20) return null;
+    const iv = btBeats.slice(1).map((x, i) => x - btBeats[i]).sort((a, b) => a - b); const per = iv[iv.length >> 1];
+    const k = btBeats.map((_, i) => i); const n = k.length; const sx = k.reduce((a, c) => a + c, 0), sy = btBeats.reduce((a, c) => a + c, 0), sxx = k.reduce((a, c) => a + c * c, 0), sxy = k.reduce((a, c, i) => a + c * btBeats[i], 0);
+    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx), c0 = (sy - slope * sx) / n;
+    let anchor = -1, bpm = 0, flipVotes = 0, lastT = 0; const pulses = [];
+    for (const g of r.grids) {
+      const gp = 60 / g.bpm;
+      if (Math.abs(gp / slope - 1) >= 0.04) { anchor = -1; continue; }             // annan oktav/tempo: fasen saknar mening
+      if (anchor < 0 || bpm !== g.bpm) { anchor = g.anchor; bpm = g.bpm; lastT = g.t; flipVotes = 0; continue; }
+      const ph = (((g.anchor - anchor) % gp) + gp) % gp / gp; const err = ph < 0.5 ? ph : ph - 1;
+      if (p.mode === 'raw') { anchor = g.anchor; }
+      else if (Math.abs(err) > 0.35) { if (g.conf >= p.flipConf && ++flipVotes >= p.flipVotes) { anchor += err * gp; flipVotes = 0; } }
+      else { flipVotes = 0; if (g.conf >= p.holdConf) anchor += err * gp * (g.conf >= 1.3 ? p.kHi : p.kLo); }
+      // pulser mellan lastT och g.t ur aktuellt anker
+      let kk = Math.ceil((lastT - anchor) / gp); for (let t = anchor + kk * gp; t < g.t; t += gp) pulses.push(t);
+      lastT = g.t;
+    }
+    if (pulses.length < 8) return null;
+    const grid = []; for (let i = -2; i < n + 3; i++) grid.push(c0 + slope * i);
+    const offs = pulses.filter((t) => t > 10).map((t) => { let best = Infinity; for (const gg of grid) { const d = t - gg; if (Math.abs(d) < Math.abs(best)) best = d; } return best; });
+    const on = offs.filter((d) => Math.abs(d) < per / 4).map((d) => d * 1000).sort((a, b) => a - b);
+    return { share: offs.length ? on.length / offs.length : null, iqr: on.length >= 4 ? on[Math.floor(on.length * 0.75)] - on[Math.floor(on.length * 0.25)] : null, n: offs.length };
+  };
+  const FOLLOWERS = { raw: { mode: 'raw' }, f1: { mode: 'f', kHi: 0.3, kLo: 0.15, holdConf: 0, flipConf: 1.3, flipVotes: 2 }, f2: { mode: 'f', kHi: 0.2, kLo: 0.05, holdConf: 1.15, flipConf: 1.5, flipVotes: 3 }, f3: { mode: 'f', kHi: 0.15, kLo: 0, holdConf: 1.3, flipConf: 1.6, flipVotes: 4 } };
+  const follow = {}; for (const [name, p] of Object.entries(FOLLOWERS)) follow[name] = followerRun(p);
   let pcVsA1 = null;                                                      // PC-facit-slagen mot allin1-slagen (samma oktav): vem har fasen?
   if (a1Beats.length >= 8 && pcBeats.length >= 8) {
     const ivp = pcBeats.slice(1).map((x, i) => x - pcBeats[i]).sort((a, b) => a - b); const pp = ivp[ivp.length >> 1];
@@ -137,7 +166,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     let hitB = 0; for (const g of pcBeats) { let best = Infinity; for (const k of r.kicks) { const d = Math.abs(k - g); if (d < best) best = d; } if (best <= 0.06) hitB++; }
     beatR = hitB / pcBeats.length;
   }
-  rows.push({ set: 'korpus', secAgree, secRecall, secFalse, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
+  rows.push({ set: 'korpus', follow, secAgree, secRecall, secFalse, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
 }
 if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWith('.wav'))) {
   const facit = parseFloat(f); if (!facit) continue;
@@ -160,6 +189,12 @@ for (const set of ['korpus', 'synt']) {
   if (pa.length) console.log(`${set} fas mot allin1: on-beat-andel median ${[...pa].map((r) => r.phaseA1).sort((a, b) => a - b)[pa.length >> 1].toFixed(2)}, motfas ${pa.filter((r) => r.phaseA1 <= 0.2).length}, i fas ${pa.filter((r) => r.phaseA1 >= 0.8).length} (n=${pa.length})`);
   const pb = rs.filter((r) => typeof r.phaseBt === 'number');
   if (pb.length) console.log(`${set} fas mot Beat This!: on-beat-andel median ${[...pb].map((r) => r.phaseBt).sort((a, b) => a - b)[pb.length >> 1].toFixed(2)}, motfas ${pb.filter((r) => r.phaseBt <= 0.2).length}, i fas ${pb.filter((r) => r.phaseBt >= 0.8).length}, mellan ${pb.filter((r) => r.phaseBt > 0.2 && r.phaseBt < 0.8).length} (n=${pb.length})`);
+  for (const name of ['raw', 'f1', 'f2', 'f3']) {
+    const fr = rs.filter((r) => r.follow && r.follow[name] && typeof r.follow[name].share === 'number');
+    if (!fr.length) continue;
+    const sh = fr.map((r) => r.follow[name].share).sort((a, b) => a - b); const iq = fr.filter((r) => r.follow[name].iqr !== null).map((r) => r.follow[name].iqr).sort((a, b) => a - b);
+    console.log(`${set} foljare ${name}: puls on-beat median ${sh[sh.length >> 1].toFixed(2)}, i fas (>=0,8) ${sh.filter((v) => v >= 0.8).length}, motfas (<=0,2) ${sh.filter((v) => v <= 0.2).length}, IQR median ${iq.length ? iq[iq.length >> 1].toFixed(0) : '-'} ms (n=${fr.length})`);
+  }
   const sf = rs.filter((r) => typeof r.secAgree === 'number');
   if (sf.length) console.log(`${set} sektionsfacit (langfangster n=${sf.length}): high==chorus andel median ${[...sf].map((r) => r.secAgree).sort((a, b) => a - b)[sf.length >> 1].toFixed(2)}, refrang-recall median ${[...sf].filter((r) => r.secRecall !== null).map((r) => r.secRecall).sort((a, b) => a - b)[sf.filter((r) => r.secRecall !== null).length >> 1]?.toFixed(2)}, falsk-high median ${[...sf].filter((r) => r.secFalse !== null).map((r) => r.secFalse).sort((a, b) => a - b)[sf.filter((r) => r.secFalse !== null).length >> 1]?.toFixed(2)}`);
   const sec = rs.filter((r) => r.sections && r.sections.length);

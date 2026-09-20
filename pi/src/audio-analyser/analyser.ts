@@ -206,6 +206,11 @@ export class Analyser {
   /** Fasval: 'sum' = bas+helband (standard), 'bass' = basringen forst, helbandet bara nar basen ar tvetydig (kvot < BASS_MIN). Korbank-A/B. */
   private static readonly GRID_PHASE_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_MODE) || 'sum';
   private static readonly GRID_PHASE_BASS_MIN = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_BASS_MIN)) || 1.2;
+  /** KLISTRIG FAS (09-20 15:10, live-spar): estimatet bytte halvslag var ~20 s pa NORTHMAN Remix med kvot 1,5 och foljaren hangde med.
+   *  Ny fas > 0,3 slag fran forra tas bara nar dess poang slar forra fasens poang med STICKY_K under STICKY_N raka analyser (1,5 s).
+   *  Sma justeringar (< 0,3 slag) gar igenom som forr. LOTUS_GRID_PHASE_STICKY=0 stanger av (gamla: 3 raka, ingen marginal). */
+  private static readonly STICKY_K = (typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_STICKY === '0') ? 1.0 : ((typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_STICKY_K)) || 1.25);
+  private static readonly STICKY_N = (typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_STICKY === '0') ? 3 : ((typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_STICKY_N)) || 6);
   private envLastWallMs = 0;
   // ── SEKTION (opt-in LOTUS_SECTION=1) ──────────────────────────────────────
   private static readonly SECTION_ON = typeof process !== 'undefined' && process.env?.LOTUS_SECTION === '1';
@@ -841,7 +846,19 @@ export class Analyser {
     const per = 60000 / bpm;
     if (this.phaseLastBeatMs > 0) {
       const d = ((((beatMs - this.phaseLastBeatMs) % per) + per) % per) / per; const err = d < 0.5 ? d : d - 1;
-      if (Math.abs(err) > 0.3 && ++this.phaseAnti < 3) { this.beatPhaseConf = conf; return; }   // motfas: krav 3 raka analyser
+      if (Math.abs(err) > 0.3) {
+        // forra fasens poang i dagens matning: fasbinet narmast forra slaget
+        const prevPh = ((((this.phaseLastBeatMs - this.envLastWallMs) / (1000 / HZ)) % Lf) + Lf) % Lf;   // env-sampel-offset for forra fasen
+        const prevBin = Math.round((prevPh / Lf) * nPh) % nPh; const prevScore = scores[prevBin];
+        const strongEnough = prevScore <= 1e-6 || bestS >= prevScore * Analyser.STICKY_K;
+        if (!strongEnough || ++this.phaseAnti < Analyser.STICKY_N) {
+          // hall forra fasen: rapportera senaste slaget i DEN fasen (sa foljaren inte ser ett hopp)
+          const kPrev = Math.round((beatMs - this.phaseLastBeatMs) / per); const held = this.phaseLastBeatMs + kPrev * per;
+          this.phaseLastBeatMs = held; this.beatPhaseMs = held; this.beatPhaseConf = prevScore > 1e-6 ? prevScore / Math.max(1e-6, scores[(prevBin + (nPh >> 1)) % nPh]) : conf;
+          if (!strongEnough) this.phaseAnti = 0;
+          return;
+        }
+      }
       this.phaseAnti = 0;
     }
     this.phaseLastBeatMs = beatMs; this.beatPhaseMs = beatMs; this.beatPhaseConf = conf;

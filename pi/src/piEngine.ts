@@ -113,6 +113,10 @@ const PLL_RING_ON = process.env.LOTUS_PLL_RING === '1';
  *  grid pa attondelsbasen for alltid. Foljaren tillater fel upp till ett halvt slag (tva raka matningar med kvot >= 1,3
  *  flyttar fasen), annars sma steg (0,3 av felet per ny matning, 4 Hz). Kick-PLL:en ar AV nar foljaren ar pa. */
 const PHASE_FOLLOW_ON = process.env.LOTUS_PHASE_FOLLOW === '1';
+const PHASE_TRACE = process.env.LOTUS_PHASE_TRACE === '1';   // tillfallig sparlogg (4 Hz, forsta 400 matningarna)
+/** Halvslagsflip i foljaren: kvot >= 2,0 i 4 raka matningar (1 s). Var 1,3/2 - 903 flippar pa 2 h. Korbank f3 (1,6/4) = f1 i fas, sa strangt kostar inget. */
+const PHASE_FLIP_CONF = Number(process.env.LOTUS_PHASE_FLIP_CONF) || 2.0;
+const PHASE_FLIP_VOTES = Number(process.env.LOTUS_PHASE_FLIP_VOTES) || 4;
 
 /**
  * Var landmarkena for en pagaende inspelning laggs.
@@ -790,7 +794,7 @@ export class PiLightEngine {
   private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
   private _pllLastKick = 0;            // senaste ring-kick PLL:en konsumerat (LOTUS_PLL_RING)
-  private _phaseLastMs = 0; private _phaseFlipVotes = 0; private _phaseFlips = 0;   // gridfas-foljaren (LOTUS_PHASE_FOLLOW)
+  private _phaseLastMs = 0; private _phaseFlipVotes = 0; private _phaseFlips = 0; private _phaseTraceN = 0;   // gridfas-foljaren (LOTUS_PHASE_FOLLOW)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
   private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
   private _subdivLevel = 0;             // -1 = ½×, 0 = 1×, 1 = 2×
@@ -1715,13 +1719,19 @@ export class PiLightEngine {
       const pm = frame?.beatPhaseMs ?? 0;
       if (pm <= 0 || pm === this._phaseLastMs) return;            // ingen ny fasmatning (4 Hz) - kickar styr inte
       this._phaseLastMs = pm;
+      // SAMMA TEMPO (15:10, live-spar): vid latbyten ligger gridet kvar pa forra tempot (150 mot analysatorns 101) i
+      // sekunder - fasfelet ar da meningslost och flyttade ankaret slumpmassigt (flip var 0,75 s). Folj bara nar
+      // analysatorns tempo = gridets (+-4 %); annars hall.
+      const anB = frame?.bpm ?? 0;
+      if (anB <= 0 || Math.abs(anB / this._beat.bpm - 1) >= 0.04) { this._phaseFlipVotes = 0; return; }
       const beatMsNow = 60000 / this._beat.bpm;
       const ph = ((((pm - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
       const err = ph < 0.5 ? ph : ph - 1;                          // -0,5..0,5 slag: + = analysatorns slag ligger EFTER gridet
       const pconf = frame?.beatPhaseConf ?? 1;
       this._beatErr = this._beatErr * 0.85 + err * 0.15;
+      if (PHASE_TRACE && this._phaseTraceN < 400) { this._phaseTraceN++; console.log(`[fasspar] now ${nowMs} pm ${Math.round(pm)} anchor ${Math.round(this._beat.anchorMs)} bpm ${this._beat.bpm.toFixed(2)} anBpm ${frame?.bpm} err ${err.toFixed(3)} conf ${pconf.toFixed(2)} kick ${Math.round(frame?.beatAnchorMs ?? 0)}`); }
       if (Math.abs(err) > 0.35) {
-        if (pconf >= 1.3 && ++this._phaseFlipVotes >= 2) {
+        if (pconf >= PHASE_FLIP_CONF && ++this._phaseFlipVotes >= PHASE_FLIP_VOTES) {
           this._beat.anchorMs += err * beatMsNow; this._phaseFlipVotes = 0; this._phaseFlips++;
           console.log(`[takt] gridfas: fasen flyttad ${Math.round(err * beatMsNow)} ms (kvot ${pconf.toFixed(2)}, byte ${this._phaseFlips})`);
         }
