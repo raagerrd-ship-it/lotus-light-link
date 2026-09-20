@@ -453,7 +453,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
   windowDb: 10,              // LÅST — ett reglage här förstör hela tuningen
-  lightSmoothMs: 55,         // release-avbrusning på energivägen
+  lightSmoothMs: 350,        // release pa nivavagen ~ett slag (2026-09-20, anvandaren: "attack 0, slapp nastan hela slaget") - 55 ms lat ljuset rita av sangens stavelser; attacken (lightRiseMs 0) ar orord sa slagen landar direkt
 
   buildUpGain: 0.25,
   beatDepth: 0.62,           // intrimmat 2026-08-30
