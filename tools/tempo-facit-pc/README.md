@@ -185,3 +185,14 @@ all-in-one 117/123, alla tre lika 110/123; mot katalogen all-in-one 37/40, PC 41
 all-in-one i fas 77/111, motfas 1; PC ↔ all-in-one motfas 12/68. Bänk, analysatorns gridfas: mot all-in-one i fas 80/107,
 motfas 4; mot Beat This! 93/127, motfas 3. Bugg 13:31 rättad: `import allin1_facit` körde korpusloopen (5 molnanalyser,
 315 s per låt) — nu under `__main__`; fasanalysen använder slagens eget tempo även vid osäkert facit (bpm 0).
+
+## Sektioner i realtid (2026-09-20 13:55, opt-in `LOTUS_SECTION=1`, delad analysator → DMX)
+
+Slutläget är att båda Pi-systemen kör allt i realtid, så sektionsdetektorn använder bara låtens egen historik: `intensity`
+(nivå relativt låtens robusta baslinje) + `buildUp`/`breaking`/drop + 1 s-blockstatistik → tier (låg/mellan/hög, 3 s hysteres)
+och trend (8 s) → `frame.section` = intro | low | build | high | break, `sectionAgeMs`, `sectionIndex` (refräng nr),
+`sectionTier`. Upprepning: klangavtryck var 4:e s (8 band normerade + centroid + kicktäthet + intensitet, L2) mot alla avtryck
+≥ 16 s tillbaka (max 96) → `repeatSim`, `repeatAgoMs`, `repeatSection` (≥ 0,92 mot 'high' = refrängen är tillbaka; tröskeln är
+konsumentens). Bänk på snuttarna (sanity, inget facit): 157/167 låtar når 'high', median 4 byten per 30 s, intro→build→high→break
+ser rätt ut; upprepningsräknaren är för generös på 30 s (6–10 träffar) → tröskel/features trimmas mot helåtsfacit.
+Facit kräver hela låtar (all-in-one på 30 s-snuttar ger bara 'intro'): långfångster till datorn under inlärningen, aldrig i drift.

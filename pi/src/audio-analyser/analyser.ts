@@ -89,6 +89,16 @@ export interface Frame {
   beatPhaseMs: number;
   /** Gridfasens on/half-kvot (>1 = slagfasen starkare an halvslagsfasen; ~1 = tvetydig). */
   beatPhaseConf: number;
+  /** SEKTION (09-20, opt-in LOTUS_SECTION=1) - realtidens sektionstillstand relativt LATENS EGEN historik, for
+   *  orkestrering (DMX-dirigenten, Lotus show): 'intro' | 'low' (vers/lugnt) | 'build' (uppbyggnad) | 'high' (refrang/drop)
+   *  | 'break' (svacka efter topp). Ingen latkunskap kravs; refrangen kanns igen som upprepning (repeat*). */
+  section: string;
+  sectionAgeMs: number;     // ms sedan sektionen borjade
+  sectionIndex: number;     // antal 'high'-partier hittills i laten (refrang nr)
+  sectionTier: number;      // 0 lag / 1 mellan / 2 hog (stabil niva-tier, hysteres 3 s)
+  /** UPPREPNING: likhet (cosinus, 0..1) mellan de senaste 4 s och det mest lika partiet >= 16 s tillbaka i laten,
+   *  och hur langt tillbaka det lag samt vilken sektion det hade. repeatSim >= 0,92 mot 'high' = refrangen ar tillbaka. */
+  repeatSim: number; repeatAgoMs: number; repeatSection: string;
   /** Rikt spektrum + per-band onset (anslag) från dubbel-FFT:n (hög-upplöst). */
   spec: Spectrum;       // per-band NIVÅ (AGC 0..1)
   /** Absolut per-band magnitud före AGC, för Lotus ljusväg och bandandelar. */
@@ -197,6 +207,15 @@ export class Analyser {
   private static readonly GRID_PHASE_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_MODE) || 'sum';
   private static readonly GRID_PHASE_BASS_MIN = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_BASS_MIN)) || 1.2;
   private envLastWallMs = 0;
+  // ── SEKTION (opt-in LOTUS_SECTION=1) ──────────────────────────────────────
+  private static readonly SECTION_ON = typeof process !== 'undefined' && process.env?.LOTUS_SECTION === '1';
+  section = 'intro'; sectionStartMs = 0; sectionIndex = 0; sectionTier = 1; repeatSim = 0; repeatAgoMs = 0; repeatSection = '';
+  private secBlkMs = 0; private secBlkN = 0; private secBlkInt = 0; private secBlkKicks = 0; private secBlkCent = 0; private secBlkSpec = new Float32Array(8);
+  private secTierRun = 0; private secTierCand = 1; private secSongStartMs = 0; private secHighSeen = false; private secDropSeen = 0; private secSilentBlocks = 0;
+  private secHist = new Float32Array(16); private secHistPos = 0; private secHistN = 0;
+  private static readonly FP_DIM = 11; private static readonly FP_MAX = 96;
+  private secFp = new Float32Array(Analyser.FP_MAX * Analyser.FP_DIM); private secFpT = new Float64Array(Analyser.FP_MAX); private secFpLab: string[] = [];
+  private secFpN = 0; private secFpPos = 0; private secFpAcc = new Float32Array(Analyser.FP_DIM); private secFpAccN = 0;
   beatPhaseMs = 0; beatPhaseConf = 0; private phaseAnti = 0; private phaseLastBeatMs = 0; private phaseScratch = new Float32Array(128);
   private phaseScratchB = new Float32Array(128); private phaseScratchF = new Float32Array(128);
   /** Korbanks-telemetri for gridfasen: vald fas mot motfas per band. */
@@ -706,6 +725,66 @@ export class Analyser {
     let hs = 0, nh = 0; for (let i = bestPh + (L >> 1); i < N; i += L) { hs += at(i); nh++; }
     const half = nh ? hs / nh : 0;
     return { score: (on / mean) * (0.5 + hit), half: on > 0 ? half / on : 0, hit };
+  }
+
+  /** SEKTION (2026-09-20). Realtidens sektionstillstand ur latens EGEN historik - inget latminne, ingen PC, inget moln
+   *  (slutlaget: bada Pi-systemen kor allt i realtid). Bygger pa intensity (niva relativt latens robusta baslinje),
+   *  buildUp/breaking/drop-detektorn och en 1 s-blockstatistik. Tier (lag/mellan/hog) med 3 s hysteres; trend = skillnad
+   *  mot 8 s tidigare. Upprepning: ett klangavtryck per 4 s (8 band normerade + centroid + kicktathet + intensitet, L2)
+   *  jamfors med alla avtryck >= 16 s tillbaka (max 96 = 6,4 min); bast cosinus -> repeatSim/repeatAgoMs/repeatSection.
+   *  Kostnad: nagra adds per hop, ~100 punktprodukter a 11 var fjarde sekund. Facit for bansken: all-in-one pa hela latar. */
+  private sectionReset(): void {
+    this.section = 'intro'; this.sectionStartMs = 0; this.sectionIndex = 0; this.sectionTier = 1; this.repeatSim = 0; this.repeatAgoMs = 0; this.repeatSection = '';
+    this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0);
+    this.secTierRun = 0; this.secTierCand = 1; this.secSongStartMs = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
+    this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
+  }
+
+  private sectionHop(intensity: number, kick: boolean, breaking: boolean, nowMs: number, dtHopMs: number): void {
+    if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount; }
+    this.secBlkMs += dtHopMs; this.secBlkN++; this.secBlkInt += intensity; if (kick) this.secBlkKicks++; this.secBlkCent += this.centSmooth;
+    const A = this.bandAbs; for (let i = 0; i < 8; i++) this.secBlkSpec[i] += A[i];
+    if (this.secBlkMs < 1000) return;
+    const n = this.secBlkN || 1; const bInt = this.secBlkInt / n; const bKicks = this.secBlkKicks; const bCent = this.secBlkCent / n;
+    // tystnad mellan latar: 3 tysta block -> ny lat
+    if (this.activeMs === 0) { if (++this.secSilentBlocks >= 3) { this.sectionReset(); return; } }
+    else this.secSilentBlocks = 0;
+    // tier med hysteres
+    const tier = bInt >= 0.62 ? 2 : bInt <= 0.40 ? 0 : 1;
+    if (tier === this.secTierCand) this.secTierRun++; else { this.secTierCand = tier; this.secTierRun = 1; }
+    if (this.secTierRun >= 3) this.sectionTier = this.secTierCand;
+    const st = this.sectionTier;
+    // trend mot 8 s sedan
+    this.secHist[this.secHistPos] = bInt; this.secHistPos = (this.secHistPos + 1) & 15; if (this.secHistN < 16) this.secHistN++;
+    const rise = this.secHistN >= 9 ? bInt - this.secHist[(this.secHistPos - 9 + 16) & 15] : 0;
+    const sinceStart = nowMs - this.secSongStartMs; const dropped = this.dropCount !== this.secDropSeen; this.secDropSeen = this.dropCount;
+    const prev = this.section; let label: string;
+    if (dropped || st === 2) label = 'high';
+    else if (prev === 'high' && (breaking || rise <= -0.2)) label = 'break';
+    else if (this.buildUp > 0.5 || (rise >= 0.12 && bInt > 0.45)) label = 'build';
+    else if (st === 0) label = (!this.secHighSeen && sinceStart < 30000) ? 'intro' : (prev === 'break' ? 'break' : 'low');
+    else label = (prev === 'intro' && !this.secHighSeen && sinceStart < 30000) ? 'intro' : 'low';
+    if (label !== prev) { this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; } this.section = label; }
+    // klangavtryck var 4:e sekund
+    let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
+    const acc = this.secFpAcc; for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
+    acc[8] += bCent; acc[9] += Math.min(1, bKicks / 4); acc[10] += bInt; this.secFpAccN++;
+    if (this.secFpAccN >= 4) {
+      const D = Analyser.FP_DIM; let nrm = 0; for (let i = 0; i < D; i++) { acc[i] /= this.secFpAccN; nrm += acc[i] * acc[i]; }
+      nrm = Math.sqrt(nrm) || 1; for (let i = 0; i < D; i++) acc[i] /= nrm;
+      let best = 0, bestAt = 0, bestLab = '';
+      for (let k = 0; k < this.secFpN; k++) {
+        if (nowMs - this.secFpT[k] < 16000) continue;
+        let dot = 0; const o = k * D; for (let i = 0; i < D; i++) dot += acc[i] * this.secFp[o + i];
+        if (dot > best) { best = dot; bestAt = this.secFpT[k]; bestLab = this.secFpLab[k]; }
+      }
+      this.repeatSim = best; this.repeatAgoMs = best > 0 ? nowMs - bestAt : 0; this.repeatSection = bestLab;
+      const o = this.secFpPos * D; for (let i = 0; i < D; i++) this.secFp[o + i] = acc[i];
+      this.secFpT[this.secFpPos] = nowMs; this.secFpLab[this.secFpPos] = this.section;
+      this.secFpPos = (this.secFpPos + 1) % Analyser.FP_MAX; if (this.secFpN < Analyser.FP_MAX) this.secFpN++;
+      acc.fill(0); this.secFpAccN = 0;
+    }
+    this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0);
   }
 
   /** GRIDFAS (2026-09-20). Korpusens handelseloggar (39 latar med ratt tempo i samma oktav): motorns pulser i fas i 5,
@@ -1383,7 +1462,7 @@ export class Analyser {
     this.lastConfMs = 0;
     this.lastSongVoteMs = 0;
     this.reacqUntilMs = 0;
-    this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0;
+    this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.sectionReset();
     this.lastT = 0;
   }
   /** KORBANK (09-20): flytta bara den virtuella klockan, utan att nolla nagra ankare. setVirtualClock() ar ett
@@ -1507,7 +1586,7 @@ export class Analyser {
       level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
       dropCount: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
-      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0,
+      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '',
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
   }
@@ -1735,7 +1814,7 @@ export class Analyser {
         this.silenceArmed = true;
         this.localBpmConfidence = 0;
         this.clearLockVotes();
-        this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.pendingKickMs = 0;
+        this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.sectionReset(); this.pendingKickMs = 0;
         this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
         for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
         this.envBassAccum = 0;
@@ -2264,6 +2343,9 @@ export class Analyser {
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.dropCount = this.dropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
     f.kickAtMs = kickAtMs; f.barShift = barShift; f.beatPhaseMs = this.beatPhaseMs; f.beatPhaseConf = this.beatPhaseConf;
+    if (Analyser.SECTION_ON) this.sectionHop(intensity, kick, breaking, nowWallA, dtHop * 1000);
+    f.section = this.section; f.sectionAgeMs = this.sectionStartMs > 0 ? nowWallA - this.sectionStartMs : 0; f.sectionIndex = this.sectionIndex; f.sectionTier = this.sectionTier;
+    f.repeatSim = this.repeatSim; f.repeatAgoMs = this.repeatAgoMs; f.repeatSection = this.repeatSection;
     return f;
   }
 }
