@@ -217,6 +217,9 @@ export class Analyser {
   // korpus - verkliga baslinjer har toner pa manga delslag, sa slagpoangen skiljer inte grannkandidater. OPT-IN.
   private static readonly EVIDENCE_ON = typeof process !== 'undefined' && process.env?.LOTUS_TEMPO_EVIDENCE === '1';
   private static readonly EVIDENCE_K = 5;
+  /** KICKDETEKTOR-RATTAR (09-20, korbank): troskelfaktor mot MAD (4,5) och grinden mot eget grid (pa). Env for A/B. */
+  private static readonly KICK_K = (typeof process !== 'undefined' && Number(process.env?.LOTUS_KICK_K)) || 4.5;
+  private static readonly KICK_NOGATE = typeof process !== 'undefined' && process.env?.LOTUS_KICK_NOGATE === '1';
   /** EVIDENSLAS (opt-in, LOTUS_TEMPO_EVIDLOCK=1): laset = median av evidensestimatet i stallet for den gamla lasapparaten.
    *  Korbank 09-19: SAMRE (syntet 4/8 mot 6/8, korpus 1/6 mot 3/6) - grannkandidater poangsatts nastan lika och medianen hoppar.
    *  Glid + commit i den gamla apparaten ger stabiliteten. Kvar for vidare matning. */
@@ -229,6 +232,7 @@ export class Analyser {
   /** Telemetri: foljarens senaste svar. */
   hmmBpm = 0; hmmStable = 0;
   /** Korbank: tempogrammets argmax-lag och sokfonster i senaste anropet. */
+  dbgKick: { flux: number; thresh: number; med: number; mad: number; energy: number; gain: number; rms: number; env: number; locked: boolean } | null = null; dbgRms = 0;
   dbgBestLag = 0; dbgLagMin = 0; dbgLagMax = 0; dbgTgAt = (lag: number): number => this.tempoGram[lag] ?? 0;
   /** Evidensomlasning: sa manga computeBpm-anrop i rad (4 Hz lasta = ~2 s) med tydlig, sammanhallen evidens for annat tempo. */
   private static readonly EVID_RELOCK_N = 8;
@@ -1307,6 +1311,10 @@ export class Analyser {
     this.beatAnchorMs = 0;
     this.lastT = 0;
   }
+  /** KORBANK (09-20): flytta bara den virtuella klockan, utan att nolla nagra ankare. setVirtualClock() ar ett
+   *  LAGESBYTE (nollar lastT/lastKick/pendingKickMs/lastVoteMs...) och far bara anropas en gang - anropad per hop
+   *  fros AGC:n (dt=0), kickar forfinades aldrig (0 kickar) och rosterna foll varje anrop. */
+  advanceVirtualClock(ms: number): void { this.virtualMs = ms; }
   private perfNow(): number { return this.virtualMs ?? performance.now(); }
   /**
    * LJUDKLOCKAN — ms sedan start raknat ur ANTALET BEARBETADE SAMPEL, satt av
@@ -1543,6 +1551,7 @@ export class Analyser {
     // över ~2 s, inte en EMA av den gainade momentannivån. Målet är ett TAK för
     // topparna. Långsam attack (tauUp×2) så uppbyggnader får höras, snabb retreat
     // (tauDown×0.25) eftersom AGC:n inte kan ta bort redan inbränd klippning.
+    this.dbgRms = rms;
     if (!this.gainLocked && rms > d.noiseFloor) {
       const env = this.agcEnvelope(rms, now);
       if (env > 0) {
@@ -1592,7 +1601,8 @@ export class Analyser {
       if (this.kickMed < 0) this.kickMed = 0;
       if (this.kickMad < 0) this.kickMad = 0;
     }
-    const kickThresh = this.kickMed + 4.5 * this.kickMad;
+    const kickThresh = this.kickMed + Analyser.KICK_K * this.kickMad;
+    this.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.gain, rms: this.dbgRms, env: this.envelope, locked: this.gainLocked };   // korbank-telemetri
     const KICK_COOLDOWN = 170;                     // ms → max ~350 BPM, hindrar sub-beat-dubbelfyr
     let above = kickFlux > kickThresh && energy > 0.06;
     // ── TAKT-GRID-GRIND ──────────────────────────────────────────────────────
@@ -1618,7 +1628,7 @@ export class Analyser {
 
       const distToGrid = Math.min(offset, gridMs - offset);
       const tolerance = Math.max(30, beatMs * 0.15);   // 60 ms vid 150 BPM (0.15*400)
-      if (distToGrid > tolerance) above = false;    // skarp transient, men felplacerad
+      if (distToGrid > tolerance && !Analyser.KICK_NOGATE) above = false;    // skarp transient, men felplacerad
     }
     // ─────────────────────────────────────────────────────────────────────────
     let kick = false;

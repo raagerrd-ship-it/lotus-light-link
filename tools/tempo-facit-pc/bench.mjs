@@ -47,9 +47,10 @@ function runOne(y, rate) {
   for (let i = 0; i + HOP <= y.length; i += HOP) {
     buf.set(y.subarray(i, i + HOP));
     an.setAudioClockMs?.(hopCount * HOP / rate * 1000);
-    an.setVirtualClock?.(hopCount * HOP / rate * 1000);   // all tidsstyrd logik (roster, commit, konfidens) foljer LJUDET, inte vaggklockan
+    if (hopCount === 0) an.setVirtualClock?.(0); else an.advanceVirtualClock?.(hopCount * HOP / rate * 1000);   // setVirtualClock EN gang (lagesbyte nollar ankare), sedan bara advance
     const f = an.process(buf); hopCount++;
-    if (f && f.kickAtMs > 0 && f.kickAtMs !== lastKick) { lastKick = f.kickAtMs; kicks.push(f.kickAtMs / 1000); }   // analysatorns kickar (virtuell klocka = sekunder fran start)
+    if (process.env.BENCH_GRID === '1' && f && f.bpm > 0 && f.beatAnchorMs > 0) an.setBeatGrid?.({ bpm: f.bpm, anchorMs: f.beatAnchorMs });   // som motorn: analysatorn grindar kickar mot gridet
+    if (f && f.kickAtMs > 0 && f.kickAtMs !== lastKick) { lastKick = f.kickAtMs; kicks.push((f.kickAtMs > 1e11 ? f.kickAtMs - 1700000000000 : f.kickAtMs) / 1000); }   // virtuell epok (1,7e12) bort -> sekunder fran start   // analysatorns kickar (virtuell klocka = sekunder fran start)
     if (hopCount > warm && hopCount % 38 === 0 && f && f.bpm > 0) { bpms.push(f.bpm); confs.push(f.bpmConfidence ?? 0); if (an.rawBpmLast > 0) raws.push(an.rawBpmLast); }   // ~10 Hz
     if (dbg && hopCount % (375 * 5) === 0) console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s lockad ${f.bpm} ra ${an.rawBpmLast?.toFixed(1)} argmax-lag ${an.dbgBestLag} (${an.dbgBestLag ? (6000 / an.dbgBestLag).toFixed(1) : '-'} BPM, tg ${an.dbgTgAt?.(an.dbgBestLag)?.toFixed(3)}) fonster ${an.dbgLagMin}-${an.dbgLagMax} tg@37 ${an.dbgTgAt?.(37)?.toFixed(3)} tg@38 ${an.dbgTgAt?.(38)?.toFixed(3)} vinnare ${an.evidenceScore?.toFixed(2)} las ${an.evidenceLockScore?.toFixed(2)} roster ${an.evidRelockVotes} omlas ${an.evidenceRelocks} kandidater ${JSON.stringify(an.debugCandidates?.().map((c) => [c.bpm, +c.tg.toFixed(3), +c.score.toFixed(2), +c.half.toFixed(2)]))}`);
   }
@@ -69,6 +70,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
   const { y, rate } = readWav(wav); runOne.current = f; const r = runOne(y, rate);
   const [cls, ratio] = classify(facit, r.med);
   const pcOn = (meta.result?.analysis?.onset?.timesS) || [];
+  if (process.env.BENCH_DEBUG && f.includes(process.env.BENCH_DEBUG)) console.log(`  kick-debug: analysator-kickar ${r.kicks.length} (forsta ${r.kicks[0]?.toFixed(2)}, sista ${r.kicks[r.kicks.length-1]?.toFixed(2)}) | PC-onsets ${pcOn.length} (forsta ${pcOn[0]}, sista ${pcOn[pcOn.length-1]})`);
   let kickP = null, kickR = null, kickBias = null;
   if (pcOn.length >= 5 && r.kicks.length >= 3) {
     const near = (ts, grid) => ts.map((x) => { let best = Infinity; for (const g of grid) { const d = x - g; if (Math.abs(d) < Math.abs(best)) best = d; } return best; });
@@ -77,7 +79,13 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     kickP = hit.length / dk.length; kickR = dp.filter((d) => Math.abs(d) <= 0.05).length / dp.length;
     kickBias = hit.length ? hit.sort((a, b) => a - b)[hit.length >> 1] * 1000 : null;
   }
-  rows.push({ set: 'korpus', kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
+  const pcBeats = meta.result?.beatsS || [];
+  let beatR = null;   // ON-BEAT-RECALL: andel PC-slag (i valt tempo) som fick en analysator-kick inom +-60 ms
+  if (pcBeats.length >= 8 && r.kicks.length >= 3) {
+    let hitB = 0; for (const g of pcBeats) { let best = Infinity; for (const k of r.kicks) { const d = Math.abs(k - g); if (d < best) best = d; } if (best <= 0.06) hitB++; }
+    beatR = hitB / pcBeats.length;
+  }
+  rows.push({ set: 'korpus', beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
 }
 if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWith('.wav'))) {
   const facit = parseFloat(f); if (!facit) continue;
@@ -93,6 +101,7 @@ for (const set of ['korpus', 'synt']) {
   const ok = rs.filter((r) => r.cls === 'lika').length;
   const kr = rs.filter((r) => typeof r.kickR === 'number'); const medk = (k) => kr.length ? [...kr].map((r) => r[k]).sort((a, b) => a - b)[kr.length >> 1] : null;
   if (kr.length) console.log(`${set} kick: recall ${medk('kickR')?.toFixed(2)} precision ${medk('kickP')?.toFixed(2)} bias ${medk('kickBias')?.toFixed(0)} ms (n=${kr.length} latar med PC-onsets)`);
+  const br = rs.filter((r) => typeof r.beatR === 'number'); if (br.length) console.log(`${set} on-beat-recall: ${[...br].map((r) => r.beatR).sort((a, b) => a - b)[br.length >> 1].toFixed(2)} (median, n=${br.length} latar med PC-slag)`);
   const cls = {}; for (const r of rs) cls[r.cls] = (cls[r.cls] || 0) + 1;
   console.log(`${set}: ${ok}/${rs.length} ratt (lika)  klasser ${JSON.stringify(cls)}  spann-median ${[...rs].map((r) => r.max - r.min).sort((a, b) => a - b)[rs.length >> 1]?.toFixed(0)} BPM`);
 }

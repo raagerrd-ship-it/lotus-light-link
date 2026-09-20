@@ -240,6 +240,7 @@ def process_one(row: dict) -> bool:
         return False
     r = estimate(y, sr)
     beats, onset_lo = r.pop('_beats'), r.pop('_onset_lo')
+    r['beatsS'] = [round(float(t), 3) for t in beats]    # PC:ns slagtider (s) - korbankens on-beat-recall for kickdetektorn
     analysis = {}
     if ev:
         try: analysis['phase'] = phase_analysis(ev, beats, r.get('bpm', 0))
