@@ -179,3 +179,9 @@ också att "motfas 9/39" i förmiddagens mätning till stor del var PC-fasens fe
 Variant `LOTUS_GRID_PHASE_MODE=bass` (basringen först, helbandet bara när basen är tvetydig, kvot < 1,2): mot Beat This! i fas
 96/127, motfas 2, median 1,00 (summan: 93/127, 3, 0,95); mot all-in-one 45/62 mot 35/50. Marginellt bättre (Tequila/hardstyle:
 helbandet röstade på off-beat-leaden), inom bruset — kvar som opt-in, byts inte mitt i liveprov 3.
+
+**Slutsiffror referenser (13:40, all-in-one klar 145/162, `compare_refs.py`):** tempo Beat This! ↔ all-in-one 115/123, PC ↔
+all-in-one 117/123, alla tre lika 110/123; mot katalogen all-in-one 37/40, PC 41/46, Beat This! 41/46. Fas: Beat This! ↔
+all-in-one i fas 77/111, motfas 1; PC ↔ all-in-one motfas 12/68. Bänk, analysatorns gridfas: mot all-in-one i fas 80/107,
+motfas 4; mot Beat This! 93/127, motfas 3. Bugg 13:31 rättad: `import allin1_facit` körde korpusloopen (5 molnanalyser,
+315 s per låt) — nu under `__main__`; fasanalysen använder slagens eget tempo även vid osäkert facit (bpm 0).
