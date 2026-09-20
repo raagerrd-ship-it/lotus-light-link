@@ -69,8 +69,10 @@ const rows = [];
 if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('.json'))) {
   const meta = JSON.parse(readFileSync(join(DIR, f), 'utf8')); const wav = join(DIR, f.replace(/\.json$/, '.wav'));
   if (!existsSync(wav)) continue;
-  let facit = meta.result?.bpm || 0; if (!facit) continue;
-  while (facit >= 160) facit /= 2; while (facit < 80) facit *= 2;     // ANALYSATORNS vikning [80,160) (BPM_MIN/MAX): facit 160-180 halveras - lampan pulserar pa halva takten dar med avsikt (09-20: 7 'dubbla' var bara vikningen)
+  let facit = meta.result?.bpm || 0;
+  const hasSections = !!(meta.result?.analysis?.sections?.segments?.length);
+  if (!facit && !hasSections) continue;                                   // langfangst med sektionsfacit far vara med utan tempofacit (osakert = bpm 0)
+  if (facit) { while (facit >= 160) facit /= 2; while (facit < 80) facit *= 2; }     // ANALYSATORNS vikning [80,160) (BPM_MIN/MAX): facit 160-180 halveras - lampan pulserar pa halva takten dar med avsikt (09-20: 7 'dubbla' var bara vikningen)
   const { y, rate } = readWav(wav); runOne.current = f; const r = runOne(y, rate);
   const [cls, ratio] = classify(facit, r.med);
   const pcOn = (meta.result?.analysis?.onset?.timesS) || [];

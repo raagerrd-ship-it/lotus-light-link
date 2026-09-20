@@ -764,7 +764,10 @@ export class Analyser {
     else if (this.buildUp > 0.5 || (rise >= 0.12 && bInt > 0.45)) label = 'build';
     else if (st === 0) label = (!this.secHighSeen && sinceStart < 30000) ? 'intro' : (prev === 'break' ? 'break' : 'low');
     else label = (prev === 'intro' && !this.secHighSeen && sinceStart < 30000) ? 'intro' : 'low';
-    if (label !== prev) { this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; } this.section = label; }
+    // UPPEHALLSTID (09-20, forsta langfangsten: build/intro/low bytte var 1-3 s): ett byte kravs ha statt >= 4 s i nuvarande
+    // sektion, utom in i 'high' (drop/topp ska synas direkt) och ur 'high' till 'break' (svackan ar en flank).
+    const dwellOk = nowMs - this.sectionStartMs >= 4000 || label === 'high' || (prev === 'high' && label === 'break');
+    if (label !== prev && dwellOk) { this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; } this.section = label; }
     // klangavtryck var 4:e sekund
     let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
     const acc = this.secFpAcc; for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
