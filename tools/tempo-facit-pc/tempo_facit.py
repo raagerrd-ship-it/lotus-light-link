@@ -435,6 +435,9 @@ def process_one(row: dict) -> bool:
         except Exception as e: analysis['onset'] = {'error': str(e)}
     try: analysis['descr'] = descriptors(y, sr, onset_lo)
     except Exception as e: analysis['descr'] = {'error': str(e)}
+    # rosterna foljer med i analysen (Pi:ns cache sparar bara 'pc' = analysis, inte losa falt pa r)
+    analysis['votes'] = {k: r.get(k) for k in ('facitVotes', 'voteClass', 'pcBpm', 'btBpm', 'cloudBpm', 'beatsSource') if k in r}
+    analysis['beatsSource'] = r.get('beatsSource'); analysis['facitVotes'] = r.get('facitVotes')
     r.update({'id': sid, 'key': key, 'kind': kind, 'artist': artist, 'title': title, 'analysis': analysis})
     http('PUT', '/api/tempo/facit', r)
     # KORPUS (09-19): snutten + handelselogg + resultat sparas pa PC:n (Pi:n raderar sin kopia nar facit
