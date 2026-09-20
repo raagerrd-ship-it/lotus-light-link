@@ -1268,7 +1268,7 @@ export class PiLightEngine {
     this._learnLastAt = now;
     if (!this._learnStartAt) this._learnStartAt = now;
     const b = frame?.bpm ?? 0, c = frame?.bpmConfidence ?? 0;
-    if (b > 0 && this._learnBpm.length < 900) { this._learnBpm.push(b); this._learnConf.push(c); }
+    if (!this._tvMode && b > 0 && this._learnBpm.length < 900) { this._learnBpm.push(b); this._learnConf.push(c); }   // TV-lage lar inte (09-20)
     if (now - this._learnLastRingAt >= 5000) {
       this._learnLastRingAt = now;
       const ks = getRecentKicks();
@@ -2167,6 +2167,16 @@ export class PiLightEngine {
   setTvMode(on: boolean): void {
     if (on === this._tvMode) return;
     this._tvMode = on;
+    // TV-LAGE LAR INTE (2026-09-20, anvandaren): TV har inget latnamn, sa notifyTrackChange kors aldrig och forra latens
+    // larackumulatorer skulle annars fyllas med TV-ljud tills nasta riktiga lat (och dess dom/facit-rad forgiftas).
+    // Vid TV-start skrivs forra latens rad (om >= 10 s data) och allt nollas; under TV ackumuleras inget (se learnPush).
+    // Fangster/facit/katalog ar redan gatade: TV = tomt namn = inget latbyte (index.ts noteTrackName).
+    if (on) {
+      if (this._songTitle && this._learnBpm.length >= 10) {
+        try { this._learnSaver?.(this._songArtist, this._songTitle, this.learnSummary()); } catch { /* cachen far aldrig falla motorn */ }
+      }
+      this.learnReset();
+    }
     this.applyCal();
     console.log(`[Engine] TV-kalibrering ${on ? 'PA' : 'AV'} (bassWeight=${this.cal.bassWeight}, tickEnergyFloor=${this.cal.tickEnergyFloor}, floor=${this.cal.brightnessFloor})`);
   }
