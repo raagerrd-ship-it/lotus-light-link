@@ -85,6 +85,29 @@ def beatthis_track(wav_bytes: bytes) -> dict | None:
             except OSError: pass
 
 
+def cloud_sections(y: np.ndarray, sr: int):
+    """all-in-one pa hela klippet -> [{'start','end','label'}] + tempo. Raknas mot molnets dygnstak. None om ej tillgangligt."""
+    if not CLOUD_TIEBREAK: return None
+    today = time.strftime('%Y-%m-%d')
+    if _cloud_day['d'] != today: _cloud_day['d'] = today; _cloud_day['n'] = 0
+    if _cloud_day['n'] >= CLOUD_MAX_PER_DAY: log.info('molnet (sektioner): dygnstaket natt'); return None
+    import tempfile, importlib
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    a1 = importlib.import_module('allin1_facit')
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as fh:
+        sf.write(fh, y, sr, subtype='PCM_16'); tmp = fh.name
+    try:
+        res, pt, wall_s = a1.analyse(tmp, deadline_s=300)
+    finally:
+        try: os.remove(tmp)
+        except OSError: pass
+    _cloud_day['n'] += 1
+    segs = [{'start': round(float(x.get('start') or 0), 2), 'end': round(float(x.get('end') or 0), 2), 'label': str(x.get('label') or '')} for x in (res.get('segments') or [])]
+    beats = [float(b) for b in (res.get('beats') or [])]
+    log.info('sektionsfacit: %d segment %s (gpu %s s)', len(segs), '/'.join(dict.fromkeys(x['label'] for x in segs)), pt)
+    return {'segments': segs, 'bpm': res.get('bpm'), 'beatsS': [round(b, 3) for b in beats], 'downbeatsS': [round(float(d), 3) for d in (res.get('downbeats') or [])], 'predictTimeS': pt}
+
+
 def rigid_from_beats(beats: list) -> np.ndarray:
     """Stelt grid genom en slaglista (linjar anpassning index -> tid): tar bort 20 ms-kvantiseringen i Beat This!."""
     b = np.asarray(beats, dtype=float)
@@ -395,6 +418,9 @@ def process_one(row: dict) -> bool:
     if row.get('hasEvents'):
         try: ev = json.loads(http('GET', '/api/tempo/events?key=' + urllib.parse.quote(sid), timeout=30))
         except Exception as e: log.warning('handelselogg saknas for %s: %s', sid, e)
+    if ev and ev.get('truncatedAtMs') and ev.get('captureStartWallMs'):          # langfangst: laten bytte mitt i - klipp
+        cut = (float(ev['truncatedAtMs']) - float(ev['captureStartWallMs'])) / 1000.0
+        if cut >= 20: y = y[:int(cut * sr)]; log.info('langfangst klippt vid %.0f s (latbyte)', cut)
     if len(y) < sr * 5:
         log.info('for kort snutt (%.1f s) for %s - %s', len(y) / sr, artist, title)
         http('PUT', '/api/tempo/facit', {'id': sid, 'key': key, 'kind': kind, 'artist': artist, 'title': title, 'bpm': 0, 'method': 'kort'})
@@ -435,6 +461,13 @@ def process_one(row: dict) -> bool:
         except Exception as e: analysis['onset'] = {'error': str(e)}
     try: analysis['descr'] = descriptors(y, sr, onset_lo)
     except Exception as e: analysis['descr'] = {'error': str(e)}
+    if kind == 'section':
+        # SEKTIONSFACIT (09-20): all-in-one pa hela langfangsten -> etiketter (intro/verse/chorus/bridge/inst/outro/break/solo).
+        # Analysatorns egna realtidssektioner ligger i handelseloggens flags (kolumn 6-9). Banken jamfor (bench.mjs).
+        try:
+            segs = cloud_sections(y, sr)
+            if segs is not None: analysis['sections'] = segs
+        except Exception as e: analysis['sections'] = {'error': str(e)}
     # rosterna foljer med i analysen (Pi:ns cache sparar bara 'pc' = analysis, inte losa falt pa r)
     analysis['votes'] = {k: r.get(k) for k in ('facitVotes', 'voteClass', 'pcBpm', 'btBpm', 'cloudBpm', 'beatsSource') if k in r}
     analysis['beatsSource'] = r.get('beatsSource'); analysis['facitVotes'] = r.get('facitVotes')

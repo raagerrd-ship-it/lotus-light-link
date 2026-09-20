@@ -103,6 +103,22 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     return n >= 8 ? [hit / n, n] : [null, 0];
   };
   const [phaseOn, phaseN] = phaseVs(pcBeats);
+  // SEKTIONSFACIT (09-20): langfangst med all-in-one-segment -> andel sekunder dar analysatorns 'high' == facit 'chorus',
+  // samt hur stor andel av facit-refrangerna analysatorn markerar som 'high' (recall) och hur mycket 'high' som ar utanfor (falsk).
+  let secAgree = null, secRecall = null, secFalse = null;
+  const segs = meta.result?.analysis?.sections?.segments || [];
+  if (segs.length >= 2 && r.sections && r.sections.length >= 1 && y.length / rate > 60) {
+    const total = Math.floor(y.length / rate); let agree = 0, chorusS = 0, chorusHit = 0, highS = 0, highOut = 0;
+    const labAt = (t) => { let l = r.sections[0][1]; for (const [ts, ll] of r.sections) { if (ts <= t) l = ll; else break; } return l; };
+    for (let t = 10; t < total; t++) {
+      const seg = segs.find((g) => g.start <= t && t < g.end); if (!seg) continue;
+      const isChorus = seg.label === 'chorus'; const isHigh = labAt(t) === 'high';
+      if (isChorus === isHigh) agree++;
+      if (isChorus) { chorusS++; if (isHigh) chorusHit++; }
+      if (isHigh) { highS++; if (!isChorus) highOut++; }
+    }
+    const n = Math.max(1, total - 10); secAgree = agree / n; secRecall = chorusS ? chorusHit / chorusS : null; secFalse = highS ? highOut / highS : null;
+  }
   const a1Beats = meta.allin1?.beatsS || [];                              // all-in-one (ML-slagfoljare via Replicate) som tredje referens
   const [phaseA1] = phaseVs(a1Beats);
   const btBeats = meta.beatthis?.beatsS || [];                            // Beat This! (lokal ML-slagfoljare, beatthis_facit.py)
@@ -118,7 +134,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     let hitB = 0; for (const g of pcBeats) { let best = Infinity; for (const k of r.kicks) { const d = Math.abs(k - g); if (d < best) best = d; } if (best <= 0.06) hitB++; }
     beatR = hitB / pcBeats.length;
   }
-  rows.push({ set: 'korpus', phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
+  rows.push({ set: 'korpus', secAgree, secRecall, secFalse, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
 }
 if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWith('.wav'))) {
   const facit = parseFloat(f); if (!facit) continue;
@@ -141,6 +157,8 @@ for (const set of ['korpus', 'synt']) {
   if (pa.length) console.log(`${set} fas mot allin1: on-beat-andel median ${[...pa].map((r) => r.phaseA1).sort((a, b) => a - b)[pa.length >> 1].toFixed(2)}, motfas ${pa.filter((r) => r.phaseA1 <= 0.2).length}, i fas ${pa.filter((r) => r.phaseA1 >= 0.8).length} (n=${pa.length})`);
   const pb = rs.filter((r) => typeof r.phaseBt === 'number');
   if (pb.length) console.log(`${set} fas mot Beat This!: on-beat-andel median ${[...pb].map((r) => r.phaseBt).sort((a, b) => a - b)[pb.length >> 1].toFixed(2)}, motfas ${pb.filter((r) => r.phaseBt <= 0.2).length}, i fas ${pb.filter((r) => r.phaseBt >= 0.8).length}, mellan ${pb.filter((r) => r.phaseBt > 0.2 && r.phaseBt < 0.8).length} (n=${pb.length})`);
+  const sf = rs.filter((r) => typeof r.secAgree === 'number');
+  if (sf.length) console.log(`${set} sektionsfacit (langfangster n=${sf.length}): high==chorus andel median ${[...sf].map((r) => r.secAgree).sort((a, b) => a - b)[sf.length >> 1].toFixed(2)}, refrang-recall median ${[...sf].filter((r) => r.secRecall !== null).map((r) => r.secRecall).sort((a, b) => a - b)[sf.filter((r) => r.secRecall !== null).length >> 1]?.toFixed(2)}, falsk-high median ${[...sf].filter((r) => r.secFalse !== null).map((r) => r.secFalse).sort((a, b) => a - b)[sf.filter((r) => r.secFalse !== null).length >> 1]?.toFixed(2)}`);
   const sec = rs.filter((r) => r.sections && r.sections.length);
   if (sec.length && sec.some((r) => r.sections.length > 1)) { const cnt = {}; let hi = 0, rep = 0; for (const r of sec) { for (const [, l] of r.sections) cnt[l] = (cnt[l] || 0) + 1; if (r.sections.some(([, l]) => l === 'high')) hi++; if (r.repeats > 0) rep++; }
     console.log(`${set} sektioner: byten per lat median ${[...sec].map((r) => r.sections.length - 1).sort((a, b) => a - b)[sec.length >> 1]}, latar med 'high' ${hi}/${sec.length}, med upprepning ${rep}, etiketter ${JSON.stringify(cnt)}`); }

@@ -606,7 +606,7 @@ let rawAcc = 0;
 /** Starta full-rate rå-capture. Allokerar först vid anrop — annars ligger 8,6 MB
  *  och skräpar i en process med MemoryMax 300 MB. */
 export function startRawCapture(seconds: number, label?: string, fullRate = false, prerollS = 0): number {
-  const sec = Math.max(1, Math.min(fullRate ? 60 : RAW_MAX_SECONDS, Math.round(seconds)));   // 60 s @48 kHz = 5,8 MB tak
+  const sec = Math.max(1, Math.min(fullRate ? 150 : RAW_MAX_SECONDS, Math.round(seconds)));   // 150 s @48 kHz = 14,4 MB tak (langfangst for sektionsfacit 09-20; motorn ~100 MB av 300)
   rawLabel = (label ?? '').slice(0, 120);
   rawRate = fullRate ? SAMPLE_RATE : RAW_RATE; rawDecimN = fullRate ? 1 : RAW_DECIM;
   // Forbuffert forst: de senaste `pre` samplen ur ringen, i ordning, sa WAV:en borjar prerollS fore nu.

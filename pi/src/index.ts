@@ -22,6 +22,12 @@ logDebugBanner();
 // tidigare bara ett tomt systemd-exit utan reason.
 /** Tempoledtradar ur facit (tempoHint/octaveHint) - PARKERADE 2026-09-20, se learn-saver. LOTUS_TEMPO_HINTS=1 slar pa. */
 const TEMPO_HINTS_ON = process.env.LOTUS_TEMPO_HINTS === '1';
+/** LANGFANGST FOR SEKTIONSFACIT (2026-09-20, BARA inlarning - aldrig i drift): LOTUS_SECTION_CAPTURE_S (max 150) slar pa; i stallet
+ *  for 30 s-tempofangsten tas en lang snutt fran 5 s in i laten for hogst LOTUS_SECTION_CAPTURE_MAX latar (40). PC:n kor
+ *  all-in-one pa hela snutten -> sektionsetiketter som facit for analysatorns realtidssektioner (frame.section). Byter laten
+ *  mitt i behalls snutten och events.truncatedAtMs sager var PC:n ska klippa. Raknaren ligger i DATA_DIR/section-captures.json. */
+const SECTION_CAPTURE_S = Math.min(150, Number(process.env.LOTUS_SECTION_CAPTURE_S) || 0);
+const SECTION_CAPTURE_MAX = Number(process.env.LOTUS_SECTION_CAPTURE_MAX) || 40;
 const bootCrash = (tag: string) => (e: unknown) => {
   console.error(`[Fatal/boot:${tag}]`, e);
   process.exit(1);
@@ -472,6 +478,7 @@ async function startSonosSubsystem(): Promise<void> {
       const noteTrackName = (name: string | null, artist?: string | null) => {
         if (artist !== undefined) lastArtist = artist;
         if (name === lastTrackName) return;
+        if (_captureBusy && !_captureTrackChangeMs) _captureTrackChangeMs = Date.now();
         lastTrackName = name;
         if (trackDebounce) clearTimeout(trackDebounce);
         if (!name) return;                       // TV/tomt namn är inget låtbyte
@@ -491,20 +498,21 @@ async function startSonosSubsystem(): Promise<void> {
       // drop/riser-flaggorna -> <id>.events.json bredvid WAV:en. PC:n raknar slagfas, kickbias, nivakorrelation
       // med lag, onset-precision, dropdom och deskriptorer mot SAMMA ljud. Ko max 30 (PC:n borta -> vanta).
       let _captureBusy = false; let _dropCapturesThisSong = 0; let _lastDropCount = -1;
-      const runCapture = async (kind: 'tempo' | 'drop', artist: string | null, title: string, seconds: number, prerollS: number) => {
+      let _captureTrackChangeMs = 0;
+      const runCapture = async (kind: 'tempo' | 'drop' | 'section', artist: string | null, title: string, seconds: number, prerollS: number) => {
         if (!tempoCacheRef || !engineInstance || !alsaMic || _captureBusy) return;
         try {
           const mic: any = alsaMic; const st = mic.getRawCaptureStatus?.();
           if (st?.active) return;
           const { songKey } = await import('./songStore.js'); const key = songKey(artist || '', title);
-          const id = kind === 'tempo' ? key : key + '#d' + Date.now().toString(36);
+          const id = kind === 'tempo' ? key : key + (kind === 'drop' ? '#d' : '#s') + Date.now().toString(36);
           const fname = id.replace(/\|/g, '__').replace(/#/g, '_');
           const { readdirSync, mkdirSync, writeFileSync } = await import('node:fs');
           const dir = (await import('./storage.js')).DATA_DIR + '/snippets'; mkdirSync(dir, { recursive: true });
           const pending = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.events.json'));
           if (pending.includes(fname + '.json') || pending.length >= 30) return;
           const { getLastSent } = await import('./ble-driver/protocol.js');
-          _captureBusy = true;
+          _captureBusy = true; _captureTrackChangeMs = 0;
           mic.startRawCapture(seconds, title, true, prerollS);
           const t0 = Date.now();
           console.log(`[tempo] fangst ${kind}: ${prerollS ? prerollS + ' s fore + ' : ''}${seconds} s @48 kHz for "${title}"`);
@@ -514,8 +522,8 @@ async function startSonosSubsystem(): Promise<void> {
               const now = Date.now(); const f: any = mic.getLatestFrame?.();
               const pct = getLastSent()?.pct; if (typeof pct === 'number') bright.push([now, Math.round(pct) / 100]);
               if (f) {
-                const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.breaking ? 1 : 0}|${f.inZone ? 1 : 0}`;
-                if (fl !== lastFlag) { lastFlag = fl; flags.push([now, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.breaking ? 1 : 0, f.inZone ? 1 : 0]); }
+                const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.breaking ? 1 : 0}|${f.inZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
+                if (fl !== lastFlag) { lastFlag = fl; flags.push([now, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.breaking ? 1 : 0, f.inZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); }
               }
               if (bright.length % 50 === 1) for (const k of (mic.getRecentKicks?.() ?? [])) kicks.add(k);
             } catch { /* loggen far aldrig falla motorn */ }
@@ -525,12 +533,13 @@ async function startSonosSubsystem(): Promise<void> {
             try {
               for (const k of (mic.getRecentKicks?.() ?? [])) kicks.add(k);
               if (kind === 'tempo' && title !== lastTrackName) { mic.getRawCaptureWav?.(); return; }   // laten bytte - kasta
+              const truncatedAtMs = kind === 'section' && title !== lastTrackName ? (_captureTrackChangeMs || Date.now()) : 0;
               const wav = mic.getRawCaptureWav?.(); if (!wav) return;
               const meta = mic.getRawCaptureMeta?.() ?? { startWallMs: t0, prerollSamples: 0, rate: 48000 };
               const since = meta.startWallMs - 1000;
               const events = { id, key, kind, artist: artist || '', title, captureStartWallMs: meta.startWallMs, prerollSamples: meta.prerollSamples, rate: 48000,
                 seconds: (wav.length - 44) / 2 / 48000, beat: engineInstance!.getBeatInfo(), kicks: [...kicks].filter((k) => k >= since).sort((a, b) => a - b),
-                pulses: engineInstance!.getRecentPulses(since), bright, flags };
+                pulses: engineInstance!.getRecentPulses(since), bright, flags, ...(truncatedAtMs ? { truncatedAtMs } : {}) };
               writeFileSync(dir + '/' + fname + '.wav', wav);
               writeFileSync(dir + '/' + fname + '.events.json', JSON.stringify(events));
               writeFileSync(dir + '/' + fname + '.json', JSON.stringify({ id, key, kind, artist: artist || '', title, capturedAt: Date.now(), rate: 48000, seconds: events.seconds, hasEvents: true }));
@@ -539,6 +548,12 @@ async function startSonosSubsystem(): Promise<void> {
           }, (seconds + 2) * 1000);
         } catch (e) { _captureBusy = false; console.log('[tempo] fangst misslyckades:', (e as Error).message); }
       };
+      const _sectionCountFile = (await import('./storage.js')).DATA_DIR + '/section-captures.json';
+      let _sectionCaptures = 0;
+      try { _sectionCaptures = Number(JSON.parse((await import('node:fs')).readFileSync(_sectionCountFile, 'utf8')).count) || 0; } catch { /* forsta gangen */ }
+      const _fsMod = await import('node:fs');
+      const _saveSectionCount = () => { try { _fsMod.writeFileSync(_sectionCountFile, JSON.stringify({ count: _sectionCaptures, at: Date.now() })); } catch { /* raknaren far aldrig falla motorn */ } };
+      if (SECTION_CAPTURE_S > 0) console.log(`[tempo] langfangst for sektionsfacit PA: ${SECTION_CAPTURE_S} s, ${_sectionCaptures}/${SECTION_CAPTURE_MAX} tagna`);
       const scheduleSnippet = (artist: string | null, title: string) => {
         _dropCapturesThisSong = 0;
         setTimeout(async () => {
@@ -546,6 +561,12 @@ async function startSonosSubsystem(): Promise<void> {
             if (title !== lastTrackName || !tempoCacheRef) return;
             const { songKey } = await import('./songStore.js');
             const row: any = tempoCacheRef.get(songKey(artist || '', title));
+            if (SECTION_CAPTURE_S > 0 && !(row && row.secAt) && _sectionCaptures < SECTION_CAPTURE_MAX && !(engineInstance as any)?.isTvMode?.()) {
+              _sectionCaptures++; _saveSectionCount();
+              (tempoCacheRef as any).update?.(songKey(artist || '', title), { secAt: Date.now() });
+              void runCapture('section', artist, title, SECTION_CAPTURE_S, 0);
+              return;
+            }
             if (row && row.bpm > 0 && row.pc) return;          // facit + PC-analys finns redan
             void runCapture('tempo', artist, title, 30, 0);
           } catch { /* aldrig falla motorn */ }
