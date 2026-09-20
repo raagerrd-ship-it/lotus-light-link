@@ -21,6 +21,17 @@ POLL_S = 20
 HOP = 512
 REC_EXP = float(os.environ.get('FACIT_REC_EXP', '0'))   # tackningens vikt i estimate_evidens(); 0 = gamla precision-valet (omfacit 09-20: exp 1 SAMRE, 62->51 mot analysatorn)
 RIG_REC_EXP = float(os.environ.get('FACIT_RIG_REC_EXP', '0'))   # tackning i det stela gridet: 1 var SAMRE (27/46 mot katalogen), 0 = ren precision (37/46)
+# TRE ROSTER (2026-09-20, "Pi + 2 andra"): PC-facit (stelt grid, librosa) + Beat This! (lokal ML-slagfoljare, .venv-ml,
+# beatthis_facit.py --file) ger tempot i majoritet; ar de oense avgor molnet (all-in-one via Replicate, allin1_facit.py) om
+# FACIT_CLOUD_TIEBREAK=1 och dygnstaket inte ar natt, annars skickas bpm 0 = osakert facit (Pi:n domer aldrig pa det).
+# Fasreferensen (beatsS: pulsfas, onset, korbankens on-beat) = Beat This!-slagen som stelt grid - korpus 09-20: PC-fasen lag
+# ett halvt slag fel i 19/87 latar mot Beat This!, medan Beat This! och all-in-one var overens i 49/50.
+BT_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.venv-ml', 'Scripts', 'python.exe')
+BT_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'beatthis_facit.py')
+BT_ON = os.environ.get('FACIT_BEATTHIS', '1') == '1' and os.path.exists(BT_PY)
+CLOUD_TIEBREAK = os.environ.get('FACIT_CLOUD_TIEBREAK', '1') == '1'
+CLOUD_MAX_PER_DAY = int(os.environ.get('FACIT_CLOUD_MAX', '40'))
+_cloud_day = {'d': '', 'n': 0}
 METHOD = os.environ.get('FACIT_METHOD', 'rigid')          # PRODUKTION sedan 2026-09-20 12:05: 'rigid' (stelt grid, finsokt period) - 37/46 mot Deezer-katalogen,
                                                           # 83/110 lika analysatorn, 8/8 syntet; 'evidens' (tracker-pinnade slag) gav 31/46, 62/110, 6/8 (kvar for A/B)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
@@ -38,6 +49,75 @@ def http(method: str, path: str, body=None, timeout=30):
 
 def estimate(y: np.ndarray, sr: int) -> dict:
     return estimate_rigid(y, sr) if METHOD == 'rigid' else estimate_evidens(y, sr)
+
+
+def fold_an(b: float) -> float:
+    """Analysatorns vikning [80,160) - klassjamforelser gors i den."""
+    while b >= 160: b /= 2
+    while 0 < b < 80: b *= 2
+    return b
+
+
+def tempo_class(a: float, b: float) -> str:
+    if not a or not b: return '-'
+    r = fold_an(a) / fold_an(b)
+    for x, lab in ((1, 'lika'), (2, 'dubbla'), (0.5, 'halva'), (1.5, '3/2'), (2 / 3, '2/3'), (4 / 3, '4/3'), (0.75, '3/4')):
+        if abs(r / x - 1) < 0.05: return lab
+    return 'annat'
+
+
+def beatthis_track(wav_bytes: bytes) -> dict | None:
+    """Beat This! i .venv-ml som underprocess (torch delar inte venv med librosa). None vid fel/avstangt."""
+    if not BT_ON: return None
+    import subprocess, tempfile
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as fh: fh.write(wav_bytes); tmp = fh.name
+        p = subprocess.run([BT_PY, BT_SCRIPT, '--file', tmp], capture_output=True, text=True, timeout=240, encoding='utf-8', errors='replace')
+        line = [l for l in p.stdout.splitlines() if l.startswith('{')]
+        if p.returncode or not line: log.warning('beatthis misslyckades: rc %s %s', p.returncode, (p.stderr or '')[-200:]); return None
+        return json.loads(line[-1])
+    except Exception as e:
+        log.warning('beatthis fel: %s', e); return None
+    finally:
+        if tmp:
+            try: os.remove(tmp)
+            except OSError: pass
+
+
+def rigid_from_beats(beats: list) -> np.ndarray:
+    """Stelt grid genom en slaglista (linjar anpassning index -> tid): tar bort 20 ms-kvantiseringen i Beat This!."""
+    b = np.asarray(beats, dtype=float)
+    if len(b) < 8: return b
+    k = np.arange(len(b)); A = np.vstack([k, np.ones_like(k)]).T; slope, c0 = np.linalg.lstsq(A, b, rcond=None)[0]
+    if slope <= 0: return b
+    n_end = int(np.ceil((b[-1] + 2 * slope) / slope)); return c0 + slope * np.arange(-2, n_end + 1)
+
+
+def cloud_tiebreak(wav_bytes: bytes) -> float:
+    """all-in-one via Replicate nar PC och Beat This! ar oense om tempot. Dygnstak. 0 = inte tillgangligt."""
+    if not CLOUD_TIEBREAK: return 0.0
+    today = time.strftime('%Y-%m-%d')
+    if _cloud_day['d'] != today: _cloud_day['d'] = today; _cloud_day['n'] = 0
+    if _cloud_day['n'] >= CLOUD_MAX_PER_DAY: log.info('molnet: dygnstaket %d natt', CLOUD_MAX_PER_DAY); return 0.0
+    try:
+        import tempfile, importlib
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        a1 = importlib.import_module('allin1_facit')
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as fh: fh.write(wav_bytes); tmp = fh.name
+        try:
+            res, pt, wall_s = a1.analyse(tmp)
+        finally:
+            try: os.remove(tmp)
+            except OSError: pass
+        _cloud_day['n'] += 1
+        beats = [float(x) for x in (res.get('beats') or [])]
+        if len(beats) >= 8:
+            b = np.asarray(beats); k = np.arange(len(b)); A = np.vstack([k, np.ones_like(k)]).T; slope = np.linalg.lstsq(A, b, rcond=None)[0][0]
+            return 60 / slope if slope > 0 else float(res.get('bpm') or 0)
+        return float(res.get('bpm') or 0)
+    except Exception as e:
+        log.warning('molnet misslyckades: %s', e); return 0.0
 
 
 def estimate_rigid(y: np.ndarray, sr: int) -> dict:
@@ -321,6 +401,22 @@ def process_one(row: dict) -> bool:
         return False
     r = estimate(y, sr)
     beats, onset_lo = r.pop('_beats'), r.pop('_onset_lo')
+    # ── TRE ROSTER ────────────────────────────────────────────────────────────
+    bt = beatthis_track(wav)
+    r['pcBpm'] = r.get('bpm', 0); r['btBpm'] = (bt or {}).get('bpm', 0); r['beatsSource'] = 'pc'
+    if bt and bt.get('bpm'):
+        c = tempo_class(r['pcBpm'], bt['bpm']); r['voteClass'] = c
+        if c == 'lika': r['facitVotes'] = 'pc+bt'
+        else:
+            a1 = cloud_tiebreak(wav); r['cloudBpm'] = round(a1, 2)
+            if a1 and tempo_class(a1, r['pcBpm']) == 'lika': r['facitVotes'] = 'pc+moln'
+            elif a1 and tempo_class(a1, bt['bpm']) == 'lika': r['facitVotes'] = 'bt+moln'; r['bpm'] = round(bt['bpm'], 1)
+            else: r['facitVotes'] = 'oense'; r['bpm'] = 0     # osakert facit: Pi:n domer inte, ingen ledtrad
+        if len(bt.get('beatsS') or []) >= 8:
+            beats = rigid_from_beats(bt['beatsS']); r['beatsSource'] = 'beatthis'
+            r['btDownbeatsS'] = bt.get('downbeatsS')
+    else:
+        r['facitVotes'] = 'pc'
     r['beatsS'] = [round(float(t), 3) for t in beats]    # PC:ns slagtider (s) - korbankens on-beat-recall for kickdetektorn
     analysis = {}
     if ev:
@@ -355,8 +451,8 @@ def process_one(row: dict) -> bool:
     except Exception as e:
         log.warning('korpus kunde inte sparas for %s: %s', sid, e)
     ph, lv, on, dr = analysis.get('phase', {}), analysis.get('level', {}), analysis.get('onset', {}), analysis.get('drop', {})
-    log.info('%s [%s] %s - %s: %.1f BPM (tracker %s x%s halvkvot %s conf %s) | kick %s ms (n=%s) puls %s ms | niva lag %s ms r %s | onset p %s r %s bias %s | drop %s %s | %.1f s',
-             kind, sid.split('#')[-1] if '#' in sid else '-', artist, title, r.get('bpm', 0), r.get('bpmTracker'), r.get('octave'), r.get('halfRatio'), r.get('conf'),
+    log.info('%s [%s] %s - %s: %.1f BPM [%s pc %s bt %s moln %s] (tracker %s x%s halvkvot %s conf %s) | kick %s ms (n=%s) puls %s ms | niva lag %s ms r %s | onset p %s r %s bias %s | drop %s %s | %.1f s',
+             kind, sid.split('#')[-1] if '#' in sid else '-', artist, title, r.get('bpm', 0), r.get('facitVotes'), r.get('pcBpm'), r.get('btBpm'), r.get('cloudBpm', '-'), r.get('bpmTracker'), r.get('octave'), r.get('halfRatio'), r.get('conf'),
              (ph.get('kick') or {}).get('medianMs'), (ph.get('kick') or {}).get('onBeat'), (ph.get('pulse') or {}).get('medianMs'),
              lv.get('lagMs'), lv.get('r'), on.get('precision'), on.get('recall'), on.get('biasMs'),
              dr.get('verdict', '-'), dr.get('candidates', [])[:2], time.time() - t0)

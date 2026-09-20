@@ -4,7 +4,8 @@ secs, at}). Kors over korpusen (--limit, --only-allin1 = bara latar som redan ha
 fran facit-tjansten (track()).
   .venv-ml\\Scripts\\python.exe beatthis_facit.py [--limit N] [--only-allin1] [--force]
 Forsta korningen laddar ner modellvikten (final0, ~80 MB) till torch-cachen."""
-import glob, json, os, sys, time
+import glob, json, os, sys, time, warnings
+warnings.filterwarnings('ignore')
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 arg = lambda k, d=None: sys.argv[sys.argv.index(k) + 1] if k in sys.argv else d
@@ -34,6 +35,8 @@ def track(path):
 
 
 if __name__ == '__main__':
+    if '--file' in sys.argv:                      # tjanstelage: en fil -> JSON pa stdout (anropas av tempo_facit.py i .venv-ml)
+        r = track(arg('--file')); print(json.dumps(r)); sys.exit(0)
     files = sorted(glob.glob(os.path.join(HERE, 'corpus', '*.json')))
     todo = []
     for f in files:

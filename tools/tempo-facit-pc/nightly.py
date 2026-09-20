@@ -9,7 +9,7 @@ FORCE = '--force' in sys.argv
 TODAY = time.strftime('%Y-%m-%d')
 # 'live' = det som kor pa Pi:n (tempo-variant.conf: evidensval + 10 s ring + kickgrind av + cooldown 100, sedan 2026-09-20 10:23).
 # 'standard' = gamla vagen utan flaggor. BENCH_GRID=1 pa alla = som motorn (analysatorn grindar kickar mot sitt grid).
-LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100'}
+LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100', 'LOTUS_GRID_PHASE': '1'}   # + gridfas sedan 09-20 12:42 (LOTUS_PHASE_FOLLOW ar motorns flagga, syns ej i banken)
 VARIANTS = {'standard': {}, 'live': LIVE, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'},
             'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120')}
 GRID = {'BENCH_GRID': '1'}
@@ -34,6 +34,8 @@ def run_bench(env_extra):
         if mk: res['kick'] = {'recall': float(mk.group(1)), 'precision': float(mk.group(2)), 'biasMs': float(mk.group(3)), 'n': int(mk.group(4))}; continue
         mb = re.match(r'^korpus on-beat-recall: (\S+) \(median, n=(\d+)', line)
         if mb: res['onBeat'] = {'recall': float(mb.group(1)), 'n': int(mb.group(2))}; continue
+        mf = re.match(r'^korpus fas mot Beat This!: on-beat-andel median (\S+), motfas (\d+), i fas (\d+), mellan (\d+) \(n=(\d+)', line)
+        if mf: res['phaseBt'] = {'median': float(mf.group(1)), 'motfas': int(mf.group(2)), 'ifas': int(mf.group(3)), 'mellan': int(mf.group(4)), 'n': int(mf.group(5))}; continue
         elif line.startswith(('korpus ', 'synt   ')):
             parts = line.split()
             try: res['rows'].append({'set': parts[0], 'namn': line[7:49].strip(), 'facit': float(parts[-6]), 'analys': float(parts[-5]), 'ra': float(parts[-4]), 'klass': parts[-2], 'kvot': float(parts[-1])})
@@ -85,7 +87,7 @@ def main():
     t0 = time.time()
     bench = {name: run_bench(env) for name, env in VARIANTS.items()}
     pi = pi_stats()
-    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v[kk] for kk in ('korpus', 'synt', 'kick', 'onBeat', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
+    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v[kk] for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
     os.makedirs(DAILY, exist_ok=True)
     with open(os.path.join(DAILY, TODAY + '.json'), 'w', encoding='utf-8') as f: json.dump({'entry': entry, 'benchRows': {k: v['rows'] for k, v in bench.items()}}, f, ensure_ascii=False, indent=1)
     with open(SB, 'a', encoding='utf-8') as f: f.write(json.dumps(entry, ensure_ascii=False) + '\n')
@@ -96,6 +98,8 @@ def main():
         if not k: return '–'
         out = f"{k['ok']}/{k['n']}" + (f" · {s['ok']}/{s['n']}" if s else '')
         if ob and kk: out += f" · slag {ob['recall']:.2f} p {kk['precision']:.2f}"
+        pb = b.get('phaseBt')
+        if pb: out += f" · fas {pb['ifas']}/{pb['n']}"
         return out
     lines = ['# Resultattavla — analysatorns tempoval mot facit', '', f'Uppdaterad {TODAY} {entry["at"]}. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.', '',
              'Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).', '',

@@ -156,3 +156,22 @@ och släpper bara in kickar inom ±¼ slag — hamnar gridet på off-beat-basen 
 Bänkens nya `fas`-kolumn mäter analysatorns `beatAnchorMs` — men den är BARA senaste kicken (analyser.ts 1751), så 0,98 där
 säger bara att kickarna träffar slagen. Nästa steg: en riktig gridfas i analysatorn (alignScore-fas på basringen + halvslagstest
 mot helbandet) som motorn följer, mätbar i bänken mot PC-slagen.
+
+## Tre röster + ML-fas (2026-09-20 12:40) och liveprov 3: gridfasen
+
+**Beat This!** (ISMIR 2024, `beatthis_facit.py`, egen miljö `.venv-ml` med torch cpu; 5–10 s per snutt på i5-6200U) ger slag
+och nedslag lokalt. Korpus (160 låtar): tempo lika Beat This! ↔ all-in-one 53/56, lika katalogen 41/46 (all-in-one 20/21,
+PC-facit 41/46); **fas** Beat This! ↔ all-in-one i fas 32/50, motfas 1 — men PC-facit ↔ Beat This! motfas 19/87.
+PC-fasen (medel basonset) är alltså opålitlig, ML-följarna är överens. `compare_refs.py` visar allt.
+
+**Facit-tjänsten** (omstartad 12:41): tempot i majoritet av PC-facit och Beat This! (`facitVotes` pc+bt); är de oense
+avgör molnet (all-in-one, `FACIT_CLOUD_TIEBREAK=1`, tak `FACIT_CLOUD_MAX`=40/dygn) — håller molnet med ingen blir bpm 0 =
+osäkert facit, som Pi:n aldrig dömer på. **Fasreferensen** (`beatsS`: pulsfas, onset, bänkens on-beat) är Beat This!-slagen
+som stelt grid (`beatsSource: 'beatthis'`); 20 ms-kvantiseringen tas bort med linjär anpassning.
+
+**Liveprov 3 (12:42, drop-in `tempo-variant.conf` + `LOTUS_GRID_PHASE=1` + `LOTUS_PHASE_FOLLOW=1`).** Motorns pulser mot
+Beat This! på korpusens händelseloggar (77 låtar, samma oktav): i fas 17, motfas 12, mellan 48, median 0,49, puls-IQR 80 ms —
+kick-PLL:en håller inte fasen. Analysatorns gridfas i bänken mot Beat This!: i fas 93/127, motfas 3, mellan 31 (median 0,95).
+Därför följer motorn nu gridfasen (kick-PLL av). Mått live: `pc.phase.pulse.onBeat/offBeatShare/iqrMs` mot Beat This!-slag
+— målet är on-beat-andel ≥ 0,8 på de flesta låtar. Återgång: ta bort de två raderna, daemon-reload, restart. Korpusen visade
+också att "motfas 9/39" i förmiddagens mätning till stor del var PC-fasens fel (Geo Da Silva ligger i fas mot Beat This!: 0,99).

@@ -102,6 +102,8 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
   const [phaseOn, phaseN] = phaseVs(pcBeats);
   const a1Beats = meta.allin1?.beatsS || [];                              // all-in-one (ML-slagfoljare via Replicate) som tredje referens
   const [phaseA1] = phaseVs(a1Beats);
+  const btBeats = meta.beatthis?.beatsS || [];                            // Beat This! (lokal ML-slagfoljare, beatthis_facit.py)
+  const [phaseBt] = phaseVs(btBeats);
   let pcVsA1 = null;                                                      // PC-facit-slagen mot allin1-slagen (samma oktav): vem har fasen?
   if (a1Beats.length >= 8 && pcBeats.length >= 8) {
     const ivp = pcBeats.slice(1).map((x, i) => x - pcBeats[i]).sort((a, b) => a - b); const pp = ivp[ivp.length >> 1];
@@ -113,7 +115,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     let hitB = 0; for (const g of pcBeats) { let best = Infinity; for (const k of r.kicks) { const d = Math.abs(k - g); if (d < best) best = d; } if (best <= 0.06) hitB++; }
     beatR = hitB / pcBeats.length;
   }
-  rows.push({ set: 'korpus', phaseOn, phaseN, phaseA1, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
+  rows.push({ set: 'korpus', phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
 }
 if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWith('.wav'))) {
   const facit = parseFloat(f); if (!facit) continue;
@@ -123,7 +125,7 @@ if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWi
 }
 const pad = (s, n) => String(s).padEnd(n);
 console.log(pad('set', 7) + pad('lat', 42) + pad('facit', 8) + pad('analys', 8) + pad('ra-med', 8) + pad('spann', 12) + pad('conf', 6) + pad('klass', 8) + 'kvot');
-for (const r of rows) console.log(pad(r.set, 7) + pad(r.name, 42) + pad(r.facit.toFixed(1), 8) + pad(r.med.toFixed(1), 8) + pad(r.rawMed.toFixed(1), 8) + pad(`${r.min.toFixed(0)}–${r.max.toFixed(0)}`, 12) + pad(r.conf.toFixed(2), 6) + pad(r.cls, 8) + pad(r.ratio.toFixed(2), 6) + (typeof r.phaseOn === 'number' ? ` fas ${r.phaseOn.toFixed(2)}` : '') + (typeof r.phaseA1 === 'number' ? ` a1 ${r.phaseA1.toFixed(2)}` : '') + (typeof r.pcVsA1 === 'number' ? ` pc~a1 ${r.pcVsA1.toFixed(2)}` : ''));
+for (const r of rows) console.log(pad(r.set, 7) + pad(r.name, 42) + pad(r.facit.toFixed(1), 8) + pad(r.med.toFixed(1), 8) + pad(r.rawMed.toFixed(1), 8) + pad(`${r.min.toFixed(0)}–${r.max.toFixed(0)}`, 12) + pad(r.conf.toFixed(2), 6) + pad(r.cls, 8) + pad(r.ratio.toFixed(2), 6) + (typeof r.phaseOn === 'number' ? ` fas ${r.phaseOn.toFixed(2)}` : '') + (typeof r.phaseA1 === 'number' ? ` a1 ${r.phaseA1.toFixed(2)}` : '') + (typeof r.phaseBt === 'number' ? ` bt ${r.phaseBt.toFixed(2)}` : '') + (typeof r.pcVsA1 === 'number' ? ` pc~a1 ${r.pcVsA1.toFixed(2)}` : ''));
 for (const set of ['korpus', 'synt']) {
   const rs = rows.filter((r) => r.set === set); if (!rs.length) continue;
   const ok = rs.filter((r) => r.cls === 'lika').length;
@@ -134,6 +136,8 @@ for (const set of ['korpus', 'synt']) {
   if (pr.length) console.log(`${set} fas: on-beat-andel median ${[...pr].map((r) => r.phaseOn).sort((a, b) => a - b)[pr.length >> 1].toFixed(2)}, motfas (<=0,2) ${pr.filter((r) => r.phaseOn <= 0.2).length}, i fas (>=0,8) ${pr.filter((r) => r.phaseOn >= 0.8).length} (n=${pr.length} latar i samma oktav)`);
   const pa = rs.filter((r) => typeof r.phaseA1 === 'number');
   if (pa.length) console.log(`${set} fas mot allin1: on-beat-andel median ${[...pa].map((r) => r.phaseA1).sort((a, b) => a - b)[pa.length >> 1].toFixed(2)}, motfas ${pa.filter((r) => r.phaseA1 <= 0.2).length}, i fas ${pa.filter((r) => r.phaseA1 >= 0.8).length} (n=${pa.length})`);
+  const pb = rs.filter((r) => typeof r.phaseBt === 'number');
+  if (pb.length) console.log(`${set} fas mot Beat This!: on-beat-andel median ${[...pb].map((r) => r.phaseBt).sort((a, b) => a - b)[pb.length >> 1].toFixed(2)}, motfas ${pb.filter((r) => r.phaseBt <= 0.2).length}, i fas ${pb.filter((r) => r.phaseBt >= 0.8).length}, mellan ${pb.filter((r) => r.phaseBt > 0.2 && r.phaseBt < 0.8).length} (n=${pb.length})`);
   const pv = rs.filter((r) => typeof r.pcVsA1 === 'number');
   if (pv.length) console.log(`${set} PC-facit mot allin1 (fas): on-beat-andel median ${[...pv].map((r) => r.pcVsA1).sort((a, b) => a - b)[pv.length >> 1].toFixed(2)}, motfas ${pv.filter((r) => r.pcVsA1 <= 0.2).length}, i fas ${pv.filter((r) => r.pcVsA1 >= 0.8).length} (n=${pv.length})`);
   const cls = {}; for (const r of rs) cls[r.cls] = (cls[r.cls] || 0) + 1;
