@@ -193,6 +193,9 @@ export class Analyser {
   private envPos = 0;
   /** GRIDFAS (09-20): se computeGridPhase. Opt-in - standardbygget ar oforandrat. */
   private static readonly GRID_PHASE_ON = typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE === '1';
+  /** Fasval: 'sum' = bas+helband (standard), 'bass' = basringen forst, helbandet bara nar basen ar tvetydig (kvot < BASS_MIN). Korbank-A/B. */
+  private static readonly GRID_PHASE_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_MODE) || 'sum';
+  private static readonly GRID_PHASE_BASS_MIN = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_BASS_MIN)) || 1.2;
   private envLastWallMs = 0;
   beatPhaseMs = 0; beatPhaseConf = 0; private phaseAnti = 0; private phaseLastBeatMs = 0; private phaseScratch = new Float32Array(128);
   private phaseScratchB = new Float32Array(128); private phaseScratchF = new Float32Array(128);
@@ -736,6 +739,13 @@ export class Analyser {
       sB[p] = n ? sb / n / mb : 0; sF[p] = n ? sf / n / mf : 0;
       const sc = sB[p] + sF[p]; scores[p] = sc;
       if (sc > bestS) { bestS = sc; bestPh = p; }
+    }
+    if (Analyser.GRID_PHASE_MODE === 'bass') {
+      // BASEN FORST (09-20, Tequila/hardstyle): helbandet domineras av leads/skrik pa off-beaten och rostade ner kicken;
+      // basringen (kick) har fasen nar den ar tydlig. Tvetydig bas (kvot < BASS_MIN) -> summan som forr.
+      let bb = 0; for (let p = 1; p < nPh; p++) if (sB[p] > sB[bb]) bb = p;
+      const ba = (bb + (nPh >> 1)) % nPh;
+      if (sB[ba] > 1e-6 && sB[bb] / sB[ba] >= Analyser.GRID_PHASE_BASS_MIN) { bestPh = bb; bestS = scores[bb]; }
     }
     const anti = (bestPh + (nPh >> 1)) % nPh; const conf = scores[anti] > 1e-6 ? bestS / scores[anti] : 9;
     this.dbgPhase.conf = conf; this.dbgPhase.bassOn = sB[bestPh]; this.dbgPhase.bassAnti = sB[anti]; this.dbgPhase.fullOn = sF[bestPh]; this.dbgPhase.fullAnti = sF[anti]; this.dbgPhase.bestPh = bestPh; this.dbgPhase.nPh = nPh; this.dbgPhase.pending = this.phaseAnti;

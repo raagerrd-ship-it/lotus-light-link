@@ -175,3 +175,7 @@ kick-PLL:en håller inte fasen. Analysatorns gridfas i bänken mot Beat This!: i
 Därför följer motorn nu gridfasen (kick-PLL av). Mått live: `pc.phase.pulse.onBeat/offBeatShare/iqrMs` mot Beat This!-slag
 — målet är on-beat-andel ≥ 0,8 på de flesta låtar. Återgång: ta bort de två raderna, daemon-reload, restart. Korpusen visade
 också att "motfas 9/39" i förmiddagens mätning till stor del var PC-fasens fel (Geo Da Silva ligger i fas mot Beat This!: 0,99).
+
+Variant `LOTUS_GRID_PHASE_MODE=bass` (basringen först, helbandet bara när basen är tvetydig, kvot < 1,2): mot Beat This! i fas
+96/127, motfas 2, median 1,00 (summan: 93/127, 3, 0,95); mot all-in-one 45/62 mot 35/50. Marginellt bättre (Tequila/hardstyle:
+helbandet röstade på off-beat-leaden), inom bruset — kvar som opt-in, byts inte mitt i liveprov 3.
