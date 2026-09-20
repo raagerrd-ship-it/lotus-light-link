@@ -10,6 +10,7 @@
  * tempo", 7 dagar; natfel cachas INTE) sa natet fragas en gang per lat.
  */
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
+import { writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { songKey } from './songStore.js';
 
@@ -54,11 +55,31 @@ export class TempoCache {
   }
   update(key: string, patch: Partial<TempoCacheEntry>): void { const e = this.map[key]; if (!e) return; Object.assign(e, patch); this.save(); }
   list(): Array<TempoCacheEntry & { key: string }> { return Object.entries(this.map).map(([key, e]) => ({ key, ...e })); }
+  private _saveTimer: ReturnType<typeof setTimeout> | null = null; private _saving = false; private _dirty = false;
+  /** HACK-FIX (2026-09-20 18:30): save() var synkron - JSON.stringify(1,7 MB, indenterad) + writeFileSync till SD pa huvudtraden
+   *  = 240-465 ms stall (alsa-audio-cb "slow native call") 0,3 s efter VARJE PC-facit-rad -> hack i ljus och BLE en gang per lat.
+   *  Nu: fordrojd (2 s efter sista andring, unref), kompakt JSON, asynkron skrivning till .tmp + rename. Synkron flush finns kvar
+   *  for avslut (flushSync). */
   private save(): void {
+    this._dirty = true;
+    if (this._saveTimer) return;
+    this._saveTimer = setTimeout(() => { this._saveTimer = null; void this.saveNow(); }, 2000);
+    (this._saveTimer as any)?.unref?.();
+  }
+  private async saveNow(): Promise<void> {
+    if (this._saving) { this.save(); return; }
+    this._saving = true; this._dirty = false;
     try {
       mkdirSync(dirname(this.path), { recursive: true });
-      const tmp = this.path + '.tmp'; writeFileSync(tmp, JSON.stringify(this.map, null, 1)); renameSync(tmp, this.path);
+      const tmp = this.path + '.tmp'; await writeFile(tmp, JSON.stringify(this.map)); await rename(tmp, this.path);
     } catch { /* cachen far aldrig falla motorn */ }
+    this._saving = false;
+    if (this._dirty) this.save();
+  }
+  /** Synkron skrivning (bara vid avslut). */
+  flushSync(): void {
+    if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+    try { mkdirSync(dirname(this.path), { recursive: true }); const tmp = this.path + '.tmp'; writeFileSync(tmp, JSON.stringify(this.map)); renameSync(tmp, this.path); } catch { /* aldrig falla */ }
   }
 }
 

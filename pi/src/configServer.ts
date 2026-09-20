@@ -524,6 +524,8 @@ export function startConfigServer(port = 3050): void {
         attachedTempoCache.upsert(key, artist, title, { dropEvents: [...prev, { at: Date.now(), id, ...(analysis?.drop ?? {}), phase: analysis?.phase ?? null }] });
         console.log(`[tempo] PC-dropdom for "${artist} - ${title}": ${JSON.stringify(analysis?.drop ?? {}).slice(0, 160)}`);
       } else if (bpm > 40 && bpm < 300) {
+        // Pi-cachen ar telemetri, inte korpus: PC:ns onset-tidslistor (~300 tal/lat) och sektionssegment ligger i corpus/ pa PC:n.
+        if (analysis && typeof analysis === 'object') { if (analysis.onset && typeof analysis.onset === 'object') delete analysis.onset.timesS; if (analysis.sections && typeof analysis.sections === 'object') delete analysis.sections.segments; }
         attachedTempoCache.upsert(key, artist, title, { bpm: foldCatalogBpm(bpm), rawBpm: bpm, source: 'pc:' + method, pcConf: Number(b.conf) || 0, candidates: Array.isArray(b.candidates) ? b.candidates.slice(0, 5) : undefined, at: Date.now(), artist, title, ...(analysis ? { pc: analysis, pcAt: Date.now() } : {}) });
         try { (attachedEngine as any)?.setMetaTempo?.(foldCatalogBpm(bpm), 'pc:' + method, artist, title); } catch { /* motorn far aldrig falla pa facit */ }
         console.log(`[tempo] PC-facit ${bpm.toFixed(1)} (${method}, conf ${Number(b.conf) || 0}) for "${artist} - ${title}"${analysis?.phase ? ` | kick ${analysis.phase.kick?.medianMs ?? '-'} ms puls ${analysis.phase.pulse?.medianMs ?? '-'} ms` : ''}${analysis?.level ? ` | niva lag ${analysis.level.lagMs ?? '-'} ms r ${analysis.level.r ?? '-'}` : ''}`);
