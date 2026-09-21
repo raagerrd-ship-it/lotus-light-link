@@ -43,6 +43,15 @@ const TICK_SYNC_GUARD_MS = Math.max(1, Math.min(16, Number(process.env.LOTUS_TIC
  *  Kurvan är en sågtand — för liten guard missar radiohändelsen och paketet tar nästa (+intervall). */
 const TICK_SYNC_ADAPT = process.env.LOTUS_TICK_SYNC_ADAPT !== '0';
 export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
+/**
+ * PREDIKTIV PULS (2026-09-21, opt-in LOTUS_PULSE_PREDICT=1, kräver TICK_SYNC). Gridpulsen tändes förut i band-ramen (8 ms) och
+ * plockades upp av nästa tick (0–17,5 ms) = upp till ~25 ms jitter per pulstopp. Nu: ramen fattar alla BESLUT (subdiv, oktav,
+ * accent, PLL) men sätter inte pulsen; varje slag blir en händelse {t = slagets väggtid − lead, amp} och ticken räknar pulsens
+ * värde ANALYTISKT vid paketets visningsögonblick (nästa radiohändelse + LOTUS_PULSE_LAMP_MS). Ticken ser också slag som ramen
+ * ännu inte hunnit se (look-ahead inom ett paket). Pulsloggen (notePulse) får slagets exakta tid → PC-facit mäter −lead exakt.
+ */
+export const PULSE_PREDICT = TICK_SYNC && process.env.LOTUS_PULSE_PREDICT === '1';
+const PULSE_LAMP_MS = Math.max(0, Math.min(200, Number(process.env.LOTUS_PULSE_LAMP_MS) || 0));
 import { getItem, setItem, DATA_DIR } from './storage.js';
 import { writeFile, appendFileSync, writeFileSync } from 'node:fs';
 import { PerformanceObserver } from 'node:perf_hooks';
@@ -1355,7 +1364,56 @@ export class PiLightEngine {
     for (let i = 0; i < 256; i++) { const t = this._pulseRing[i]; if (t >= sinceMs) out.push(t); }
     return out.sort((a, b) => a - b);
   }
-  private notePulse(): void { this._pulseRing[this._pulsePos] = Date.now(); this._pulsePos = (this._pulsePos + 1) & 255; }
+  private notePulse(atMs = Date.now()): void { this._pulseRing[this._pulsePos] = atMs; this._pulsePos = (this._pulsePos + 1) & 255; }
+  // Prediktiv puls: de senaste slagen som händelser (väggtid för pulsstart = slag − lead, amplitud). Nyckel = slagindex (dedupe ram/tick).
+  private _ppT = new Float64Array(8); private _ppA = new Float64Array(8); private _ppIdx = new Float64Array(8).fill(-1e9); private _ppPos = 0;
+  private _ppLastIdxTick = -1e9; private _ppOut = 0;
+  private ppPush(idxKey: number, tMs: number, amp: number): void {
+    for (let i = 0; i < 8; i++) if (this._ppIdx[i] === idxKey) { if (amp > this._ppA[i]) this._ppA[i] = amp; return; }
+    this._ppT[this._ppPos] = tMs; this._ppA[this._ppPos] = amp; this._ppIdx[this._ppPos] = idxKey; this._ppPos = (this._ppPos + 1) & 7;
+  }
+  private ppClear(): void { this._ppIdx.fill(-1e9); this._ppOut = 0; this._ppLastIdxTick = -1e9; }
+  /** Pulsens envelope vid dt ms efter pulsstart: EMA-stigning (onsetRiseMs) mot amp i hold = riseHoldK×rise, sedan exp-avklingning
+   *  med samma tau som processOnset (fadeMode 2: fadeIntervalK × pulsintervall, annars 0,04 per s). */
+  private ppEnv(dt: number, amp: number): number {
+    if (dt < 0) return 0;
+    const r = this.cal.onsetRiseMs ?? 0; const H = r > 0 ? r * (this.cal.onsetRiseHoldK ?? 2.0) : 0;
+    if (dt <= H) return r > 0 ? amp * (1 - Math.exp(-dt / r)) : amp;
+    const peak = r > 0 ? amp * (1 - Math.exp(-H / r)) : amp;
+    let tauS = 1 / Math.log(25);   // 0,04 per sekund
+    if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
+      const _rel = Math.min(1, Math.max(0, this._shapeRel ?? 1));
+      const _fE = (this.cal.fadeEnergyCalm ?? 1.0) + ((this.cal.fadeEnergyIntense ?? 1.0) - (this.cal.fadeEnergyCalm ?? 1.0)) * _rel;
+      tauS = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(this.cal.fadeTauMax ?? 1.2, (this.cal.fadeIntervalK ?? 0.35) * (this._pulseIntervalMs / 1000) * _fE));
+    }
+    return peak * Math.exp(-(dt - H) / (tauS * 1000));
+  }
+  /** Amplitud för slag idx enligt samma regler som ramen (fireBase/accent/subdiv) — 0 = inget slag presenteras. */
+  private ppAmpFor(idx: number): number {
+    const next = this._subdivLevel; const bpmNow = this._beat?.bpm ?? 0;
+    const fireBase = next !== -1 || ((((idx % 2) + 2) % 2) === 0);
+    if (!fireBase) return 0;
+    const accent = this.cal.barAccent ?? 1; const shift = (getLatestFrame() as any)?.barShift ?? -1;
+    const onOne = accent > 1 && shift >= 0 && ((((idx + shift) % 4) + 4) % 4) === 0;
+    void bpmNow;
+    return onOne ? Math.min(1, 0.45 * accent) : 0.45;
+  }
+  /** Ticken (synk): pulsvärdet vid paketets visningsögonblick + look-ahead på slag ramen inte sett än. */
+  private ppTick(): void {
+    if (!hasBeat(this._beat) || !this.playing) { this._ppOut = 0; return; }
+    const lead = this.cal.beatLeadMs; const perfNow = performance.now();
+    const tDisp = Date.now() + (nextRasterEventAt(perfNow, this._guardMs) - perfNow) + PULSE_LAMP_MS;
+    const per = 60000 / this._beat.bpm; const nowMs = tDisp + lead;
+    const idx = beatIndex(this._beat, nowMs);
+    if (idx > this._ppLastIdxTick) {
+      // Look-ahead: slaget faller inom detta paket men ramen har (kanske) inte sett det – syntetisera med nuvarande beslut.
+      this._ppLastIdxTick = idx;
+      const amp = this.ppAmpFor(idx); if (amp > 0) this.ppPush(idx, this._beat.anchorMs + idx * per - lead, amp);
+    }
+    let out = 0;
+    for (let i = 0; i < 8; i++) { if (this._ppIdx[i] <= -1e9) continue; const v = this.ppEnv(tDisp - this._ppT[i], this._ppA[i]); if (v > out) out = v; }
+    this._ppOut = out;
+  }
   /** For /api/status: vad katalogen sa, hur det stamde med analysatorn, och om det driver gridet. */
   get metaTempo(): { bpm: number; source: string; ratio: number; verdict: string; drives: boolean; tempoHint: number; tempoHintApplied: boolean } {
     return { bpm: this._metaBpm, source: this._metaSource, ratio: this._metaRatio, verdict: this._metaVerdict, drives: this._metaDrives, tempoHint: this._tempoHintRatio, tempoHintApplied: this._tempoHintApplied };
@@ -2102,6 +2160,7 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this.ppClear();
       this._wlevelSm = undefined;
       // ANKARET BEHALLS (09-21): _wdbSlow = undefined har gav en ny sadd + 6 min klattring (autoAnchorSec x3) vid varje
       // paus/anslutning/omstart = ljuset klippt mot taket utan dynamik. Ankaret ar en langsam nivaskattning av musiken
@@ -2166,6 +2225,7 @@ export class PiLightEngine {
       this.onsetBoost = 0;
       this.onsetTarget = 0;
       this.smoothed = 0;
+      this.ppClear();
       this._wlevelSm = undefined;
       // ANKARET BEHALLS (09-21): _wdbSlow = undefined har gav en ny sadd + 6 min klattring (autoAnchorSec x3) vid varje
       // paus/anslutning/omstart = ljuset klippt mot taket utan dynamik. Ankaret ar en langsam nivaskattning av musiken
@@ -2392,8 +2452,10 @@ export class PiLightEngine {
             const shift = frame?.barShift ?? -1;
             const onOne = fireBase && accent > 1 && shift >= 0 && ((((idx + shift) % 4) + 4) % 4) === 0;
             if (fireBase) {
-              this.onsetTarget = onOne ? Math.min(1, 0.45 * accent) : 0.45;
-              this._gridPulseCount++; this.notePulse();
+              const ampG = onOne ? Math.min(1, 0.45 * accent) : 0.45;
+              const tG = this._beat!.anchorMs + idx * baseIntervalMs - this.cal.beatLeadMs;   // pulsstart = slaget − lead, exakt
+              if (PULSE_PREDICT) this.ppPush(idx, tG, ampG); else this.onsetTarget = ampG;
+              this._gridPulseCount++; this.notePulse(PULSE_PREDICT ? tG : Date.now());
             }
             const ppb = doubled ? 2 : (next === -1 ? 0.5 : 1);
             this._pulseIntervalMs = baseIntervalMs > 0 ? baseIntervalMs / ppb : 0;
@@ -2411,8 +2473,9 @@ export class PiLightEngine {
             const idxH = beatIndex(this._beat, nowMs + halfMs);
             if (idxH !== this._lastGridIdxH) {
               this._lastGridIdxH = idxH;
-              this.onsetTarget = 0.45;
-              this._gridPulseCount++; this.notePulse();
+              const tH = this._beat!.anchorMs + idxH * (60000 / bpmNow) - halfMs - this.cal.beatLeadMs;
+              if (PULSE_PREDICT) this.ppPush(idxH + 0.5, tH, 0.45); else this.onsetTarget = 0.45;
+              this._gridPulseCount++; this.notePulse(PULSE_PREDICT ? tH : Date.now());
             }
           }
         }
@@ -3033,7 +3096,8 @@ export class PiLightEngine {
       // Pulsen normaliseras mot sitt NOMINELLA mål (0.45) i stället för att klampas:
       // additivt klampade både vanligt slag och ettan till ~1.0 och accenten försvann.
       const NOM = 0.45;                                   // grid-pulsens nominella onsetTarget
-      const p   = this.onsetBoost / NOM;                  // 1.0 på vanligt slag, upp till barAccent på ettan
+      if (PULSE_PREDICT) { if (inSilence) this.ppClear(); else this.ppTick(); }
+      const p   = Math.max(this.onsetBoost, this._ppOut) / NOM;   // 1.0 på vanligt slag, upp till barAccent på ettan
       const pn  = p < 1 ? p : 1;                          // djupet INOM taket
       const acc = Math.max(1, cal.barAccent ?? 1);
       const one = acc > 1 ? Math.min(1, Math.max(0, p - 1) / (acc - 1)) : 0;   // 1 på ettan
@@ -3409,7 +3473,7 @@ export class PiLightEngine {
       _diag.shape = shapeSm;
       _diag.energyForm = energyForm;
 
-      _diag.onsetBoost = this.onsetBoost;
+      _diag.onsetBoost = Math.max(this.onsetBoost, this._ppOut);
       _diag.brightnessPct = pct;
       _diag.bleScaleRaw = pct / 100;
       _diag.finalR = isPunch ? 255 : _finalColor[0];
