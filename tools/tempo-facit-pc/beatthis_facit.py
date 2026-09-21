@@ -37,6 +37,14 @@ def track(path):
 if __name__ == '__main__':
     if '--file' in sys.argv:                      # tjanstelage: en fil -> JSON pa stdout (anropas av tempo_facit.py i .venv-ml)
         r = track(arg('--file')); print(json.dumps(r)); sys.exit(0)
+    if '--batch' in sys.argv:                     # flera filer (sokvagar en per rad i en textfil) -> en JSON-rad per fil med 'path'; modellen laddas EN gang (mkcorpus_mix.py)
+        for path in open(arg('--batch'), encoding='utf-8').read().splitlines():
+            path = path.strip()
+            if not path: continue
+            try: r = track(path); r['path'] = path
+            except Exception as e: r = {'path': path, 'error': str(e)[:200]}
+            print(json.dumps(r), flush=True)
+        sys.exit(0)
     files = sorted(glob.glob(os.path.join(HERE, 'corpus', '*.json')))
     todo = []
     for f in files:
