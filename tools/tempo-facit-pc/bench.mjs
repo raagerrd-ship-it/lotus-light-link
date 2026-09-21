@@ -59,6 +59,7 @@ function runOne(y, rate) {
     if (dbg && hopCount % (375 * 5) === 0 && an.dbgPhase) { const d = an.dbgPhase; console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s GRIDFAS conf ${d.conf.toFixed(2)} bas on/anti ${d.bassOn.toFixed(2)}/${d.bassAnti.toFixed(2)} hel on/anti ${d.fullOn.toFixed(2)}/${d.fullAnti.toFixed(2)} fas ${d.bestPh}/${d.nPh} vantande ${d.pending} beatPhaseMs ${f.beatPhaseMs > 0 ? ((f.beatPhaseMs - 1700000000000) / 1000).toFixed(3) : 0}`); }
     if (dbg && hopCount % (375 * 5) === 0) console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s lockad ${f.bpm} ra ${an.rawBpmLast?.toFixed(1)} argmax-lag ${an.dbgBestLag} (${an.dbgBestLag ? (6000 / an.dbgBestLag).toFixed(1) : '-'} BPM, tg ${an.dbgTgAt?.(an.dbgBestLag)?.toFixed(3)}) fonster ${an.dbgLagMin}-${an.dbgLagMax} tg@37 ${an.dbgTgAt?.(37)?.toFixed(3)} tg@38 ${an.dbgTgAt?.(38)?.toFixed(3)} vinnare ${an.evidenceScore?.toFixed(2)} las ${an.evidenceLockScore?.toFixed(2)} roster ${an.evidRelockVotes} omlas ${an.evidenceRelocks} kandidater ${JSON.stringify(an.debugCandidates?.().map((c) => [c.bpm, +c.tg.toFixed(3), +c.score.toFixed(2), +c.half.toFixed(2)]))}`);
   }
+  runOne.lastAnalyser = an;
   const s = [...bpms].sort((a, b) => a - b);
   const med = s.length ? s[s.length >> 1] : 0;
   const rs = [...raws].sort((a, b) => a - b); const rawMed = rs.length ? rs[rs.length >> 1] : 0;
@@ -136,6 +137,10 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
       leads.sort((a, b) => a - b); predLead = leads.length ? leads[leads.length >> 1] : null;
       const uniq = [...new Set(r.preds.map(([, at]) => Math.round(at)))]; predFalse = uniq.filter((at) => !highStarts.some((hs) => Math.abs(at - hs) <= 4)).length / Math.max(1, y.length / rate / 60);
     }
+  }
+  if (process.env.BENCH_DEBUG === 'sec' && segs.length >= 2) {   // per-lat sektionsdiagnostik + dump av blocksardragen (LOTUS_SECTION_DUMP=1) for offline-simulering
+    console.log(`  SEC ${f.slice(0, 36).padEnd(38)} agree ${secAgree?.toFixed(2)} recall ${secRecall?.toFixed(2)} falsk ${secFalse?.toFixed(2)} grans ${secBound?.toFixed(2)} byten ${r.sections.length - 1} | ${r.sections.map(([t, l]) => `${t}${l[0]}`).join(' ')}`);
+    if (runOne.lastAnalyser?.secDump) { const { writeFileSync, mkdirSync } = await import('node:fs'); const dd = process.env.BENCH_DUMP_DIR || 'secdump'; mkdirSync(dd, { recursive: true }); writeFileSync(join(dd, f), JSON.stringify({ segs, lenS: y.length / rate, blocks: runOne.lastAnalyser.secDump, sections: r.sections })); }
   }
   const a1Beats = meta.allin1?.beatsS || [];                              // all-in-one (ML-slagfoljare via Replicate) som tredje referens
   const [phaseA1] = phaseVs(a1Beats);
