@@ -1,0 +1,152 @@
+{
+ "row": {
+  "title": "stranden"
+ },
+ "result": {
+  "kind": "section-local",
+  "analysis": {
+   "sections": {
+    "derived_local": [
+     {
+      "start": 0.0,
+      "end": 12.52,
+      "label": "seg",
+      "db": -34.61,
+      "onsetPerS": 8.47,
+      "score": -0.66,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 12.52,
+      "end": 23.57,
+      "label": "seg",
+      "db": -33.91,
+      "onsetPerS": 8.33,
+      "score": -0.21,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 23.57,
+      "end": 36.2,
+      "label": "seg",
+      "db": -33.74,
+      "onsetPerS": 9.11,
+      "score": 1.32,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 36.2,
+      "end": 45.0,
+      "label": "seg",
+      "db": -33.72,
+      "onsetPerS": 7.5,
+      "score": -1.46,
+      "tier": "low",
+      "source": "local"
+     }
+    ],
+    "local": {
+     "method": "foote-ssm-mfcc-chroma-beatsync",
+     "beatsSource": "librosa",
+     "bpm": 112.3,
+     "segments": [
+      {
+       "start": 0.0,
+       "end": 12.52,
+       "label": "seg"
+      },
+      {
+       "start": 12.52,
+       "end": 23.57,
+       "label": "seg"
+      },
+      {
+       "start": 23.57,
+       "end": 36.2,
+       "label": "seg"
+      },
+      {
+       "start": 36.2,
+       "end": 45.0,
+       "label": "seg"
+      }
+     ],
+     "rawBoundsS": [
+      11.98,
+      24.1,
+      36.2
+     ],
+     "secs": 5.1,
+     "at": 1790028787,
+     "validation": {
+      "nSeg": 4,
+      "segMedianS": 11.8,
+      "segMinS": 8.8,
+      "segMaxS": 12.6,
+      "per3min": 16.0,
+      "phrase4": 0.0,
+      "phrase8": 0.0,
+      "phrase4raw": 0.0,
+      "highShare": 0.53,
+      "tiers": {
+       "intro": 1,
+       "high": 2,
+       "mid": 0,
+       "low": 1
+      },
+      "stability": 0.0,
+      "stabilityN": "3/2",
+      "tierAgree": 0.7,
+      "secsTotal": 6.2
+     }
+    },
+    "derived": [
+     {
+      "start": 0.0,
+      "end": 12.52,
+      "label": "seg",
+      "db": -34.61,
+      "onsetPerS": 8.47,
+      "score": -0.66,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 12.52,
+      "end": 23.57,
+      "label": "seg",
+      "db": -33.91,
+      "onsetPerS": 8.33,
+      "score": -0.21,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 23.57,
+      "end": 36.2,
+      "label": "seg",
+      "db": -33.74,
+      "onsetPerS": 9.11,
+      "score": 1.32,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 36.2,
+      "end": 45.0,
+      "label": "seg",
+      "db": -33.72,
+      "onsetPerS": 7.5,
+      "score": -1.46,
+      "tier": "low",
+      "source": "local"
+     }
+    ],
+    "derivedSource": "local"
+   }
+  }
+ }
+}
