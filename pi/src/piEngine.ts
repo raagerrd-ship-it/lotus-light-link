@@ -299,6 +299,8 @@ export interface LightCalibration {
   beatGridPulse: boolean;
   /** Försprång (ms) på grid-pulsen — kompenserar BLE-skrivlatens (~40–60 ms). */
   beatLeadMs: number;
+  /** Mätt kedjelatens ljud→ljus (ms), bara dokumentation/rapport — kompenseras inte. */
+  chainLatencyMs?: number;
   /** PLL:ens tempo-integrator: BPM-korrigering per accepterat slag och enhet fasfel (slag). 0 = av. */
   beatBpmGain: number;
   /** Analysator-BPM-hopp mindre an denna ANDEL (0,25 = 25 %) behaller PLL:ens forfinade tempo; samma andel klampar integratorn runt analysatorns varde (utesluter 2x, 3/2, 4/3). */
@@ -445,7 +447,10 @@ const DEFAULT_CAL: LightCalibration = {
   dropSensitivity: 1.0,
   dropFlashMs: 320,
   beatGridPulse: true,
-  beatLeadMs: 132,           // 87 ms uppmätt toppfördröjning (rise) + ~45 ms utsignalslatens
+  beatLeadMs: 72,            // = FADE-IN (2 x onsetRiseMs), inget annat (2026-09-21). Kedjans latens kompenseras INTE: nivakanalen ar
+                             // reaktiv och landar beat + chainLatencyMs, pulsens topp ska landa pa samma stalle sa de staplar.
+  chainLatencyMs: 30,        // MATT 2026-09-21 (klapp-lage + 240 fps-video): ljud i mic -> ljus = 29-33 ms, LED < 4 ms. Dokumenterad
+                             // konstant, andras bara efter ny matning. Hela ljuset ligger alltsa ~30 ms efter musiken - kant och accepterat.
   beatBpmGain: 0,            // 09-18: AV. Tecknet var inverterat (bpm sjonk till -4-klampen, konstant slap 50-80 ms); med ratt tecken
                              // skenade den anda till 2x pa attondelskickar (grindkant-jakten ovan). Tempot ar analysatorns tills en
                              // kick-baserad tempoestimator finns. 1-2 med klamp +-3 % ar nasta forsok (tar bort heltalskvantiseringen).
@@ -1905,7 +1910,7 @@ export class PiLightEngine {
   /** Taktklockans tillstånd — för /api/status och UI. */
   getBeatInfo(): {
     locked: boolean; bpm: number; confidence: number; phase: number;
-    nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number;
+    nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
   } {
@@ -1927,6 +1932,7 @@ export class PiLightEngine {
       shapeSlow: this._shapeSlow,
       shapeRel: this._shapeRel,
       leadMs: lead,
+      chainMs: this.cal.chainLatencyMs ?? 30,
       dropSrc: this._dropSourceActive,
       coasting: this._beatWasLocked && (getLatestFrame()?.bpmConfidence ?? 0) < MIN_BEAT_CONFIDENCE,
       reacquiring: now < this._reacqUntil,
