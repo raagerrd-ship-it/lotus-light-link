@@ -531,6 +531,11 @@ export function startConfigServer(port = 3050): void {
     if (!/^cpuprofile-[0-9TZ-]+\.cpuprofile$/.test(f)) { res.status(400).json({ error: 'ogiltigt filnamn' }); return; }
     res.sendFile(`${DATA_DIR}/${f}`);
   });
+  // KLAPP-LAGE (matning ljud->ljus): PUT {enabled:true} -> lampan blixtrar vitt pa varje bredbands-onset (klapp), inget annat.
+  app.put('/api/debug/clap', (req, res) => {
+    const engine = requireEngine(res); if (!engine) return;
+    const on = req.body?.enabled === true; (engine as any).setClapMode?.(on); res.json({ ok: true, enabled: on });
+  });
   app.get('/api/tempo/capture-enabled', (_req, res) => res.json({ enabled: _captureGet ? _captureGet() : true }));
   app.put('/api/tempo/capture-enabled', (req, res) => {
     const on = req.body?.enabled !== false;
@@ -659,6 +664,7 @@ export function startConfigServer(port = 3050): void {
       beat: engine?.getBeatInfo?.() ?? null,
       sync: (engine as any)?.getSyncDiag?.() ?? null,   // tick-synk mot BLE-rastret (raster.ts), mätare även när synken är av
       captureEnabled: _captureGet ? _captureGet() : true,
+      clapMode: (engine as any)?.isClapMode?.() ?? false,
     });
   });
 

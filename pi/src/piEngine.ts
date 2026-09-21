@@ -1372,6 +1372,20 @@ export class PiLightEngine {
     for (let i = 0; i < 8; i++) if (this._ppIdx[i] === idxKey) { if (amp > this._ppA[i]) this._ppA[i] = amp; return; }
     this._ppT[this._ppPos] = tMs; this._ppA[this._ppPos] = amp; this._ppIdx[this._ppPos] = idxKey; this._ppPos = (this._ppPos + 1) & 7;
   }
+  // KLAPP-LAGE (2026-09-21, matning ljud->ljus): bredbands-onset (flux) -> vit 100 % i 150 ms, annars 5 %. Inga grindar,
+  // ingen takt, ingen nivakanal. Slow-mo-video av en klapp ger da: hander mots (bild) vs ljudspik (A/V-offset) vs lampans blixt.
+  private _clapMode = false; private _clapLastMs = 0; private _clapAvg = 0;
+  setClapMode(on: boolean): void {
+    this._clapMode = on; this._clapLastMs = 0; this._clapAvg = 0; this.lastSentPct = -1; console.log(`[klapp] lage ${on ? 'PA' : 'AV'}`);
+    // Musiken far vara stoppad: klapp-laget haller motorn i aktivt lage (setPlaying(false) ignoreras sa lange laget ar pa).
+    if (on && !this.playing) this.setPlaying(true);
+  }
+  isClapMode(): boolean { return this._clapMode; }
+  private clapDetect(flux: number): void {
+    const now = Date.now();
+    if (flux > Math.max(0.01, 4 * this._clapAvg) && now - this._clapLastMs > 250) { this._clapLastMs = now; console.log(`[klapp] onset flux ${flux.toFixed(3)} (medel ${this._clapAvg.toFixed(3)})`); }
+    this._clapAvg += (flux - this._clapAvg) * 0.02;
+  }
   private ppClear(): void { this._ppIdx.fill(-1e9); this._ppOut = 0; this._ppLastIdxTick = -1e9; }
   /** Pulsens envelope vid dt ms efter pulsstart: EMA-stigning (onsetRiseMs) mot amp i hold = riseHoldK×rise, sedan exp-avklingning
    *  med samma tau som processOnset (fadeMode 2: fadeIntervalK × pulsintervall, annars 0,04 per s). */
@@ -2187,6 +2201,7 @@ export class PiLightEngine {
   }
 
   setPlaying(playing: boolean): void {
+    if (!playing && this._clapMode) { dlog('[klapp] setPlaying(false) ignoreras i klapp-lage'); return; }
     const now = Date.now();
     const wasPlaying = this.playing;
     if (playing === wasPlaying) return;
@@ -2331,6 +2346,7 @@ export class PiLightEngine {
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady(() => this.onFFTFrame());
     onFluxReady((flux) => {
+      if (this._clapMode) this.clapDetect(flux);
       if (this._loopActive && this.playing && this._bleOwner === 'active') {
         // Energy gate (2026-05-02): låt inte den adaptiva tröskeln skala ner
         // till brusgolvet och flasha i tysta partier. Hämtar bands EN gång
@@ -3025,7 +3041,7 @@ export class PiLightEngine {
       // När absolut amplitud < tickEnergyFloor är input rumsbrus, inte musik:
       // shape forceras till 0 och brightness sjunker mot golvet.
       const tickFloor = cal.tickEnergyFloor;
-      const inSilence = tickFloor > 0 && level < tickFloor;
+      const inSilence = !this._clapMode && tickFloor > 0 && level < tickFloor;
       if (inSilence) shape = 0;
 
       // Takjämning före heartbeat-smoothing: shape uppdateras ~15 Hz medan motorn
@@ -3407,7 +3423,12 @@ export class PiLightEngine {
       }
       // Drop längre ger max brightness men behåller palette-färg — bara
       // punchWhiteThreshold (peak-detektorn) tvingar vit.
-      const isPunch = (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
+      let isPunch = (cal.punchWhiteThreshold < 100 && pct >= cal.punchWhiteThreshold);
+      if (this._clapMode) {
+        const age = _tickStart >= 0 ? Date.now() - this._clapLastMs : 1e9;
+        const on = this._clapLastMs > 0 && age < 150;
+        pct = on ? 100 : 5; isPunch = on; this.lastSentPct = -1;   // ingen deadband: varje tick skickas
+      }
 
       // ── FÄRG-TILT på spektralbalans (helt oberoende av brightness) ──
       // bas-tung mix → varmare (rött upp, blått ner), diskant-tung → svalare.
