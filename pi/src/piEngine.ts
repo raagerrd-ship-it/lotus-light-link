@@ -320,6 +320,8 @@ export interface LightCalibration {
   onsetRiseHoldK: number;
   /** TRUST-RAMP: confidence under detta ger trust 0 (ingen grid-modulation). */
   beatTrustLoConf: number;
+  /** Trust-utjamning nedat (ms), asymmetrisk mot beatTrustSmoothMs uppat. */
+  beatTrustDownMs?: number;
   /** TRUST-RAMP: confidence över detta ger trust 1 (fullt pulsdjup). */
   beatTrustHiConf: number;
   /** Tidskonstant (ms) på trust-EMA:n — conf kan falla 0.79 → 0.00 mellan två ramar. */
@@ -3203,7 +3205,10 @@ export class PiLightEngine {
       const _hi = this.cal.beatTrustHiConf ?? 0.70;
       const _tRaw = hasBeat(this._beat) ? Math.min(1, Math.max(0, (_c - _lo) / Math.max(1e-6, _hi - _lo))) : 0;
       // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
-      const _tA = Math.min(1, (this.tickMs || 18) / (this.cal.beatTrustSmoothMs ?? 400));
+      // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
+      // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
+      const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
+      const _tA = Math.min(1, TICK_PERIOD_MS / (this._trustSm != null && _tRaw < this._trustSm ? _down : _up));
       this._trustSm = (this._trustSm == null) ? _tRaw : this._trustSm + (_tRaw - this._trustSm) * _tA;
       const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm);
 
