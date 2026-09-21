@@ -24,8 +24,9 @@ def already_done():
 
 def run_bench(env_extra):
     env = dict(os.environ, **GRID, **env_extra)
-    p = subprocess.run(['node', 'bench.mjs'], cwd=HERE, env=env, capture_output=True, text=True, timeout=1800)
-    out = p.stdout
+    # encoding utf-8 + errors replace (09-21): cp1252-lasartraden dog pa en latitel (0x81) -> stdout None -> krasch 106 ggr i rad.
+    p = subprocess.run(['node', 'bench.mjs'], cwd=HERE, env=env, capture_output=True, encoding='utf-8', errors='replace', timeout=1800)
+    out = p.stdout or ''
     res = {'rows': [], 'korpus': None, 'synt': None, 'kick': None, 'onBeat': None, 'error': p.stderr.strip()[-300:] if p.returncode else ''}
     for line in out.splitlines():
         m = re.match(r'^(korpus|synt): (\d+)/(\d+) ratt \(lika\)\s+klasser (\{.*?\})\s+spann-median (\S+) BPM', line)

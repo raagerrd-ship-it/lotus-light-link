@@ -524,6 +524,9 @@ def process_one(row: dict) -> bool:
     return True
 
 
+NIGHTLY_TRIED = {}
+
+
 def nightly_if_due():
     """Lager 1 (09-19): korbank over varianter + dygnsstatistik -> scoreboard.md, en gang per dygn efter 04:30.
     Schemalaggaren nekade utan admin; tjansten kor anda alltid och autostartar, sa den ager nattjobbet."""
@@ -536,11 +539,13 @@ def nightly_if_due():
                 if any(json.loads(l).get('date') == today for l in f if l.strip()): return
     except Exception:
         pass
+    if NIGHTLY_TRIED.get('date') == today: return   # ett forsok per dygn (09-21: kraschande nattjobb korde om var 3:e minut hela formiddagen); morgonagenten kor --force
+    NIGHTLY_TRIED['date'] = today
     log.info('nattjobb: korbank + dygnsstatistik (%s)', today)
     try:
         import subprocess
-        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nightly.py'), PI], capture_output=True, text=True, timeout=3600)
-        log.info('nattjobb klart (rc %s): %s', p.returncode, (p.stdout or p.stderr).strip()[-200:])
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nightly.py'), PI], capture_output=True, encoding='utf-8', errors='replace', timeout=7200)
+        log.info('nattjobb klart (rc %s): %s', p.returncode, ((p.stdout or '') + (p.stderr or '')).strip()[-300:])
     except Exception as e:
         log.warning('nattjobb misslyckades: %s', e)
 
