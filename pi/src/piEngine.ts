@@ -874,7 +874,13 @@ export class PiLightEngine {
     this.initOnsetBuffer();
     this.tc = computeTickConstants(tickMs, this.cal);
     setSlotLeaseMs(TICK_SYNC ? Math.round(TICK_PERIOD_MS * 0.6) : this.tickMs); // synk: leasen får aldrig blockera nästa rasterfasade write
+    // Ankaret fran forra korningen (09-21): yngre an 2 h -> ta det, annars sadd ur signal som forr.
+    try {
+      const st = JSON.parse(getItem('anchor-state') || 'null');
+      if (st && typeof st.wdbSlow === 'number' && Date.now() - (st.at || 0) < 2 * 3600e3) { this._wdbSlow = st.wdbSlow; this._anchorSaved = st.wdbSlow; dlog(`[Engine] ankare aterstallt: ${st.wdbSlow.toFixed(1)} dB (${Math.round((Date.now() - st.at) / 60000)} min gammalt)`); }
+    } catch { /* inget sparat */ }
   }
+  private _anchorSaved?: number;
 
   getPalette(): [number, number, number][] { return this._palette; }
   setVolume(vol: number | undefined) { this.volume = vol; }
@@ -2097,7 +2103,9 @@ export class PiLightEngine {
       this.onsetTarget = 0;
       this.smoothed = 0;
       this._wlevelSm = undefined;
-      this._wdbSlow = undefined;
+      // ANKARET BEHALLS (09-21): _wdbSlow = undefined har gav en ny sadd + 6 min klattring (autoAnchorSec x3) vid varje
+      // paus/anslutning/omstart = ljuset klippt mot taket utan dynamik. Ankaret ar en langsam nivaskattning av musiken
+      // och ska overleva; volymbyten foljs av tau/farAbove-logiken. Sparas aven till disk (anchor-state.json).
       this._shapeSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
@@ -2159,7 +2167,9 @@ export class PiLightEngine {
       this.onsetTarget = 0;
       this.smoothed = 0;
       this._wlevelSm = undefined;
-      this._wdbSlow = undefined;
+      // ANKARET BEHALLS (09-21): _wdbSlow = undefined har gav en ny sadd + 6 min klattring (autoAnchorSec x3) vid varje
+      // paus/anslutning/omstart = ljuset klippt mot taket utan dynamik. Ankaret ar en langsam nivaskattning av musiken
+      // och ska overleva; volymbyten foljs av tau/farAbove-logiken. Sparas aven till disk (anchor-state.json).
       this._shapeSm = undefined;
       this.lastBrightness = 0;
       this.lastSentPct = -1;
@@ -2428,6 +2438,12 @@ export class PiLightEngine {
       if (this._calDirty && !this._tvMode) {
         saveCalibration(this.cal);
         this._calDirty = false;
+      }
+      // Ankaret till disk nar det flyttat > 0,1 dB (liten fil, atomisk setItem).
+      if (this._wdbSlow !== undefined && Math.abs(this._wdbSlow - (this._anchorSaved ?? -999)) > 0.1) {
+        this._anchorSaved = this._wdbSlow;
+        const body = JSON.stringify({ wdbSlow: Math.round(this._wdbSlow * 100) / 100, at: Date.now() });
+        import('node:fs/promises').then(async (fsp) => { const f = `${DATA_DIR}/anchor-state.json`; await fsp.writeFile(f + '.tmp', body); await fsp.rename(f + '.tmp', f); }).catch(() => { /* aldrig falla motorn */ });
       }
     }, 10_000);
     // GC-mätare (09-21, stall-jakten): V8:s GC-pauser via perf_hooks — --trace-gc gar inte via NODE_OPTIONS.
