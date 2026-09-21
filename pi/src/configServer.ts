@@ -662,6 +662,8 @@ export function startConfigServer(port = 3050): void {
         ? { running: true, tickMs: engine.getTickMs(), hz: Math.round(1000 / FRAME_MS), palette: engine.getPalette(), tvMode: engine.isTvMode() }
         : { running: false, tickMs: null, hz: null, palette: [] },
       beat: engine?.getBeatInfo?.() ?? null,
+      // Sektionsminnet (workern): sektion, forvarning (ms till vantad refrang, -1 ingen), niva mot senaste refrangen (dB)
+      section: (() => { const f: any = getMic()?.getLatestFrame?.(); return f ? { section: f.section, prev: f.prevSection, expectHighInMs: f.expectHighInMs, levelVsHighDb: +(f.levelVsHighDb ?? 0).toFixed(1), bars: +(f.sectionBars ?? 0).toFixed(1), repeatSim: +(f.repeatSim ?? 0).toFixed(2) } : null; })(),
       sync: (engine as any)?.getSyncDiag?.() ?? null,   // tick-synk mot BLE-rastret (raster.ts), mätare även när synken är av
       captureEnabled: _captureGet ? _captureGet() : true,
       clapMode: (engine as any)?.isClapMode?.() ?? false,

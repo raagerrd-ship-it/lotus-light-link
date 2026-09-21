@@ -51,6 +51,10 @@ export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
  * ännu inte hunnit se (look-ahead inom ett paket). Pulsloggen (notePulse) får slagets exakta tid → PC-facit mäter −lead exakt.
  */
 export const PULSE_PREDICT = TICK_SYNC && process.env.LOTUS_PULSE_PREDICT === '1';
+/** Sektionsminnets konsumenter (2026-09-21, se steg 6 i tick): forvarning fore refrang och dynamik mot latens egen refrang. */
+const EXPECT_LIFT_MS = Math.max(0, Number(process.env.LOTUS_EXPECT_LIFT_MS ?? 3000) || 0);
+const SECTION_DYN_DB = Math.max(0, Number(process.env.LOTUS_SECTION_DYN_DB ?? 12) || 0);
+const SECTION_DYN_FLOOR = Math.min(1, Math.max(0.1, Number(process.env.LOTUS_SECTION_DYN_FLOOR ?? 0.45) || 0.45));
 const PULSE_LAMP_MS = Math.max(0, Math.min(200, Number(process.env.LOTUS_PULSE_LAMP_MS) || 0));
 import { getItem, setItem, DATA_DIR } from './storage.js';
 import { writeFile, appendFileSync, writeFileSync } from 'node:fs';
@@ -3159,7 +3163,12 @@ export class PiLightEngine {
 
       // buildUp OCH ettan höjer TAKET (adderas inte ovanpå — då klampar de bort pulsen)
       const _f = getLatestFrame();
-      const bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
+      let bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
+      // FORVARNING (2026-09-21, workerns sektionsminne): expectHighInMs = ms tills nasta refrang vantas (frasgitter fran senaste
+      // high-starten + stigande energi; bank 11/22 inom +-2 s, 2,8 falska/min). De sista EXPECT_LIFT_MS lyfts taket som en riser
+      // (samma vag som buildUp, max av de tva) sa ljuset "gasar" IN i refrangen i stallet for 1-2 s efter den. LOTUS_EXPECT_LIFT_MS=0 = av.
+      const _ex = _f ? ((_f as any).expectHighInMs ?? -1) : -1;
+      if (EXPECT_LIFT_MS > 0 && _ex > 0 && _ex <= EXPECT_LIFT_MS) { const l = 1 - _ex / EXPECT_LIFT_MS; if (l > bu) bu = l; }
       // ── UPPSPELNING: taket ur latens egen energikurva ────────────────────
       // Ersatter micens `shapeSm` helt nar bade kurvan och positionen finns.
       // Faller tillbaka pa micen sa fort klockan tappar — aldrig ett svart hopp.
@@ -3195,6 +3204,11 @@ export class PiLightEngine {
       let ceil = shapeUse * (1 + bu * (cal.buildUpGain ?? 0));
       ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
       if (ceil > 1) ceil = 1;
+      // SEKTIONSDYNAMIK (2026-09-21): levelVsHighDb = blockets dB mot senaste refrangens medel — LATENS EGEN referens, inte
+      // dB-ankaret (som sjunker i lugna partier och gor dem lika ljusa som refrangen; agaren i ladan: "lyser mycket aven om laten
+      // blir tystare"). Tystare an refrangen -> taket skalas 1 + dB/SECTION_DYN_DB (12 dB -> golv), aldrig upp. 0 = av.
+      const _lv = _f ? ((_f as any).levelVsHighDb ?? 0) : 0;
+      if (SECTION_DYN_DB > 0 && _lv < 0) { const g = 1 + _lv / SECTION_DYN_DB; ceil *= g > SECTION_DYN_FLOOR ? g : SECTION_DYN_FLOOR; }
 
       // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
       // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
