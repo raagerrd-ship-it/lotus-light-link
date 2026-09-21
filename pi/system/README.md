@@ -20,8 +20,10 @@ Pi. De deployas inte härifrån; installation sker för hand.
 Filer med `.d.` i namnet är drop-ins: `lotus-refine.d.cpu.conf` hör hemma som
 `/etc/systemd/system/lotus-refine.service.d/cpu.conf`.
 
-**CPU-fälten:** motorn har `CPUAffinity=1` och tunga bakgrundstjänster hålls
-borta därifrån. `bluetooth` har **medvetet inget fält** — att pinna bluetoothd
+**CPU-fälten:** motorn har `CPUAffinity=1` i unit-filen och tunga bakgrundstjänster hålls
+borta därifrån. Sedan 2026-09-21 utökar drop-in:en `analyser-split.conf` masken till `1 2`
+(+ `AllowedCPUs=1 2`): den delade analysatorns worker (tempo/gridfas/sektion) behöver en egen
+kärna, och 2 var ledig (0 = bakgrund/nginx/ui, 3 = blewatch). `bluetooth` har **medvetet inget fält** — att pinna bluetoothd
 till en egen kärna tredubblade loopens fördröjning och fördubblade BLE:s
 skrivlatens. Se `pi/src/ble-driver/protocol.ts` och projektminnet.
 

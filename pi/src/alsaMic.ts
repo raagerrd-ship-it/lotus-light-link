@@ -15,7 +15,7 @@
 
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
-import { createAnalyser, type Frame } from './audio-analyser/index.js';
+import { createAnalyser, type Frame, type Analyser } from './audio-analyser/index.js';
 import { Fingerprinter, type Landmark } from './fingerprint.js';
 import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
 
@@ -520,8 +520,9 @@ export function stopFineEnergy(): { energy: number[]; stepMs: number } | null {
   return e && e.length > 20 ? { energy: e, stepMs: FINE_STEP_MS } : null;
 }
 let analyserOverBudgetCount = 0;       // hops > budget sedan senaste läsning
-export function getAnalyserCost(): { msEMA: number; msMax: number; hops: number; overBudget: number; budgetMs: number } {
-  const out = { msEMA: analyserMsEMA, msMax: analyserMsMax, hops: analyserHopCount, overBudget: analyserOverBudgetCount, budgetMs: ANALYSER_BUDGET_MS };
+export function getAnalyserCost(): { msEMA: number; msMax: number; hops: number; overBudget: number; budgetMs: number; split: ReturnType<Analyser['getSplitStats']> } {
+  // split: delad analysator (LOTUS_ANALYSER_SPLIT=worker): workerns lagg/kostnad/tappade records, null = odelad.
+  const out = { msEMA: analyserMsEMA, msMax: analyserMsMax, hops: analyserHopCount, overBudget: analyserOverBudgetCount, budgetMs: ANALYSER_BUDGET_MS, split: analyser.getSplitStats() };
   analyserMsMax = 0;
   analyserOverBudgetCount = 0;
   return out;

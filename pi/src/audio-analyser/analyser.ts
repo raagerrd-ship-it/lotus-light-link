@@ -7,6 +7,14 @@
  */
 
 import { TempoTracker } from './tempoTracker.js';
+import {
+  REC_LEN, RING_N, R_SEQ, R_PERF, R_WALL, R_ENV, R_BASS, R_FLAGS, R_HINT_MS, R_VCLOCK, R_SEC_N, R_SEC_INT, R_SEC_KICKS, R_SEC_BREAK,
+  R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS,
+  F_SIL350, F_SIL10, F_RESET_TEMPO, F_HINT, F_RESET_BAR, F_VCLOCK_SET, F_VCLOCK_NULL,
+  C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PHASE_MS, S_PHASE_CONF, S_SECTION, S_SEC_START, S_SEC_INDEX, S_SEC_TIER,
+  S_REP_SIM, S_REP_AGO, S_REP_SEC, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
+  SECTIONS, sectionCode, viewsOf, stateWrite, stateRead, type SplitBuffers,
+} from './split.js';
 import FFT from "fft.js";
 
 export interface BeatGrid { bpm: number; anchorMs: number; }
@@ -24,6 +32,10 @@ export interface AnalyserConfig {
   maxGain?: number;
   /** Enable log-compressed, adaptively whitened and normalized onset features. */
   onsetEnhancements?: boolean;
+  /** DELAD ANALYSATOR (split.ts): 'all' (standard, allt i en trad) | 'fast' (ljudvagen; tempo/sektion hamtas ur
+   *  tillstandsblocket) | 'slow' (workern: matas ur SAB-ringen via drainRecords()). */
+  role?: 'all' | 'fast' | 'slow';
+  split?: SplitBuffers;
 }
 
 /** Rikt log-spektrum (8 band) från den parallella 2048-FFT:n. Varje band är
@@ -235,6 +247,16 @@ export class Analyser {
   private envAccum = 0;
   private envAccumT = 0;
   private bpmCounter = 0;
+  // ── DELAD ANALYSATOR (split.ts) ─────────────────────────────────────────────────────────────
+  readonly role: 'all' | 'fast' | 'slow';
+  private splitCtrl: Int32Array | null = null; private splitRing: Float64Array | null = null; private splitState: Float64Array | null = null;
+  private stateCopy = new Float64Array(STATE_LEN);
+  private recSeq = 0;              // fast: senast skrivna record; slow: senast lasta
+  private barrierSeq = 0;          // fast: tillstand aldre an detta record ignoreras (en flagga ar pa vag)
+  private pendFlags = 0; private pendHintMs = 0; private pendVclock = 0;
+  private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, spec: new Float64Array(8) };
+  private inlinePeer: Analyser | null = null;
+  private slowBusyEmaUs = 0; private slowBusyMaxUs = 0; private slowLagMaxMs = 0; private slowSkipped = 0; private slowProcessed = 0;
   private localBpm = 0;
   private localBpmConfidence = 0;
   /** Antal estimat sedan senaste latbyte/tystnad -- las inte forran tempogrammet mognat. */
@@ -756,10 +778,12 @@ export class Analyser {
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
   }
 
-  private sectionHop(intensity: number, kick: boolean, breaking: boolean, nowMs: number, dtHopMs: number, rms = 0): void {
+  /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
+   *  for de ~4 hoppen (split.ts). Samma matematik - medelvardena delas med secBlkN i bada fallen. */
+  private sectionHop(hops: number, intSum: number, kicks: number, breaking: boolean, nowMs: number, dtMs: number, rms2Sum: number, centSum: number, spec: ArrayLike<number>, specOff = 0): void {
     if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount; }
-    this.secBlkMs += dtHopMs; this.secBlkN++; this.secBlkInt += intensity; if (kick) this.secBlkKicks++; this.secBlkCent += this.centSmooth; this.secBlkRms2 += rms * rms;
-    const A = this.bandAbs; for (let i = 0; i < 8; i++) this.secBlkSpec[i] += A[i];
+    this.secBlkMs += dtMs; this.secBlkN += hops; this.secBlkInt += intSum; this.secBlkKicks += kicks; this.secBlkCent += centSum; this.secBlkRms2 += rms2Sum;
+    for (let i = 0; i < 8; i++) this.secBlkSpec[i] += spec[specOff + i];
     if (this.secBlkMs < 1000) return;
     const n = this.secBlkN || 1; const bInt = this.secBlkInt / n; const bKicks = this.secBlkKicks; const bCent = this.secBlkCent / n;
     // tystnad mellan latar: 3 tysta block -> ny lat
@@ -895,6 +919,117 @@ export class Analyser {
       this.phaseAnti = 0;
     }
     this.phaseLastBeatMs = beatMs; this.beatPhaseMs = beatMs; this.beatPhaseConf = conf;
+  }
+
+  /** Env-steget (100 Hz): tempo pa stride + gridfas. Kors i 'all' direkt och i 'slow' per record. */
+  private envStep(): void {
+    // Innan lås: räkna på varje ny envelope-sample (100 Hz) för snabbast första estimat.
+    // Efter lås: 4 Hz räcker gott — sparar CPU och förfinar med median. (Mätt 2026-08-09: computeBpm ~470 µs,
+    // scoreEnv 201 µs x 2; 20 Hz olast = ~10 % av en Zero 2 W-karna -> 10 Hz efter 1,5 s utan las.)
+    const stride = this.localBpm !== 0 ? Analyser.ENV_HZ / 4
+      : this.envFilled < 150 ? 1 : 10;
+    if (++this.bpmCounter >= stride) { this.bpmCounter = 0; this.computeBpm(); if (Analyser.GRID_PHASE_ON && this.localBpm > 0) this.computeGridPhase(); }
+  }
+
+  /** Roll 'all': sektionsblocket ur samma aggregat som workern far (se secAgg). */
+  private sectionFlushAgg(): void {
+    const g = this.secAgg; if (!Analyser.SECTION_ON || g.n === 0) return;
+    this.sectionHop(g.n, g.int, g.kicks, g.breaking > 0, g.wall, g.dt, g.rms2, g.cent, g.spec);
+    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0);
+  }
+
+  // ── DELAD ANALYSATOR: snabba sidan ────────────────────────────────────────────────────────────
+  private flagSlow(f: number): void { if (this.role === 'fast') { this.pendFlags |= f; this.barrierSeq = this.recSeq + 1; } }
+  /** Ett record per env-sampel (100 Hz) till workern: ringvardena, flaggorna sedan forra recordet, sektionens blocksummor. */
+  private pushSlowRecord(e: number, b: number): void {
+    const r = this.splitRing!, ctrl = this.splitCtrl!;
+    const seq = ++this.recSeq; const o = (seq % RING_N) * REC_LEN; const g = this.secAgg;
+    r[o + R_PERF] = this.perfNow(); r[o + R_WALL] = this.wallNow(); r[o + R_TS] = Date.now();
+    r[o + R_ENV] = e; r[o + R_BASS] = b; r[o + R_FLAGS] = this.pendFlags; r[o + R_HINT_MS] = this.pendHintMs; r[o + R_VCLOCK] = this.pendVclock;
+    r[o + R_SEC_N] = g.n; r[o + R_SEC_INT] = g.int; r[o + R_SEC_KICKS] = g.kicks; r[o + R_SEC_BREAK] = g.breaking; r[o + R_SEC_RMS2] = g.rms2;
+    r[o + R_SEC_CENT] = g.cent; r[o + R_SEC_DT] = g.dt; r[o + R_SEC_WALL] = g.wall;
+    for (let i = 0; i < 8; i++) r[o + R_SEC_SPEC0 + i] = g.spec[i];
+    r[o + R_DROPS] = this.dropCount; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp;
+    r[o + R_SEQ] = seq;                                    // sist: seq = recordet ar komplett
+    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0);
+    this.pendFlags = 0;
+    Atomics.store(ctrl, C_WRITE, seq); Atomics.notify(ctrl, C_WRITE, 1);
+    if (this.inlinePeer) { this.inlinePeer.drainRecords(); this.pullSlowState(); }   // inline-lage (korbank): synkront har, tillstandet hamtas direkt
+  }
+  /** Hamta tempo/gridfas/sektion ur tillstandsblocket (varje hop, ~20 doubles). Aldre an barrierSeq ignoreras. */
+  private pullSlowState(): void {
+    if (!stateRead(this.splitCtrl!, this.splitState!, this.stateCopy)) return;
+    const s = this.stateCopy; if (s[S_REC_SEQ] < this.barrierSeq) return;
+    this.localBpm = s[S_BPM]; this.localBpmConfidence = s[S_CONF]; this.localBpmF = s[S_BPMF];
+    this.beatPhaseMs = s[S_PHASE_MS]; this.beatPhaseConf = s[S_PHASE_CONF];
+    this.section = SECTIONS[s[S_SECTION]] || 'intro'; this.sectionStartMs = s[S_SEC_START]; this.sectionIndex = s[S_SEC_INDEX]; this.sectionTier = s[S_SEC_TIER];
+    this.repeatSim = s[S_REP_SIM]; this.repeatAgoMs = s[S_REP_AGO]; this.repeatSection = SECTIONS[s[S_REP_SEC]] || '';
+  }
+  setInlinePeer(slow: Analyser | null): void { this.inlinePeer = slow; }
+  /** Halsa for /api/live: hur langt efter workern ligger (records och ms), dess kostnad per record, tappade records. */
+  getSplitStats(): { role: string; written: number; processed: number; behind: number; lagMs: number; lagMaxMs: number; busyUs: number; busyMaxUs: number; skipped: number } | null {
+    if (this.role !== 'fast') return null;
+    const s = this.stateCopy;
+    return { role: this.role, written: this.recSeq, processed: s[S_PROCESSED], behind: this.recSeq - s[S_REC_SEQ], lagMs: +s[S_LAG_MS].toFixed(1), lagMaxMs: +s[S_LAG_MAX].toFixed(1),
+      busyUs: Math.round(s[S_BUSY_US]), busyMaxUs: Math.round(s[S_BUSY_MAX_US]), skipped: s[S_SKIPPED] };
+  }
+
+  // ── DELAD ANALYSATOR: langsamma sidan (workern / inline) ─────────────────────────────────────
+  slowReadSeq(): number { return this.recSeq; }
+  /** Behandla alla records som skrivits sedan sist, publicera tillstandet. Returnerar antal. */
+  drainRecords(): number {
+    const ctrl = this.splitCtrl!, r = this.splitRing!;
+    const w = Atomics.load(ctrl, C_WRITE); let n = 0;
+    if (w - this.recSeq > RING_N - 8) { this.slowSkipped += (w - this.recSeq) - (RING_N - 8); this.recSeq = w - (RING_N - 8); }   // ringen hann skrivas over
+    let lagMs = 0;
+    while (this.recSeq < w) {
+      const seq = ++this.recSeq; const o = (seq % RING_N) * REC_LEN;
+      if (r[o + R_SEQ] !== seq) { this.slowSkipped++; continue; }
+      const t0 = performance.now();
+      this.slowStep(o);
+      const us = (performance.now() - t0) * 1000;
+      this.slowBusyEmaUs = this.slowBusyEmaUs === 0 ? us : this.slowBusyEmaUs + 0.02 * (us - this.slowBusyEmaUs);
+      if (us > this.slowBusyMaxUs) this.slowBusyMaxUs = us;
+      lagMs = Date.now() - r[o + R_TS]; if (lagMs > this.slowLagMaxMs) this.slowLagMaxMs = lagMs;
+      n++;
+    }
+    if (n > 0) {
+      this.slowProcessed += n;
+      Atomics.store(ctrl, C_READ, this.recSeq);
+      stateWrite(ctrl, this.splitState!, (s) => {
+        s[S_REC_SEQ] = this.recSeq; s[S_BPM] = this.localBpm; s[S_CONF] = this.localBpmConfidence; s[S_BPMF] = this.localBpmF;
+        s[S_PHASE_MS] = this.beatPhaseMs; s[S_PHASE_CONF] = this.beatPhaseConf;
+        s[S_SECTION] = sectionCode(this.section); s[S_SEC_START] = this.sectionStartMs; s[S_SEC_INDEX] = this.sectionIndex; s[S_SEC_TIER] = this.sectionTier;
+        s[S_REP_SIM] = this.repeatSim; s[S_REP_AGO] = this.repeatAgoMs; s[S_REP_SEC] = sectionCode(this.repeatSection);
+        s[S_PROCESSED] = this.slowProcessed; s[S_LAG_MS] = lagMs; s[S_LAG_MAX] = this.slowLagMaxMs; s[S_BUSY_US] = this.slowBusyEmaUs; s[S_BUSY_MAX_US] = this.slowBusyMaxUs; s[S_SKIPPED] = this.slowSkipped;
+      });
+    }
+    return n;
+  }
+  /** Ett record = ett env-sampel: flaggor i ordning, ringvardena, snabba sidans fakta, env-steget, sektionsblocket. */
+  private slowStep(o: number): void {
+    const r = this.splitRing!; const flags = r[o + R_FLAGS];
+    if (flags & F_VCLOCK_NULL) this.setVirtualClock(null); else if (flags & F_VCLOCK_SET) this.setVirtualClock(r[o + R_VCLOCK]);
+    this.virtualMs = r[o + R_PERF];                        // perfNow() = snabba tradens tid vid sampeln (deterministiskt)
+    if (flags & F_RESET_TEMPO) this.resetTempo();
+    if (flags & F_HINT) this.hintTrackChange(r[o + R_HINT_MS]);
+    if (flags & F_RESET_BAR) this.resetBar();
+    if (flags & F_SIL350) {
+      this.localBpmConfidence = 0; this.clearLockVotes();
+      this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0;
+      this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
+      for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
+      this.barAcc.fill(0); this.barCount = 0;
+    }
+    if (flags & F_SIL10) { this.localBpm = 0; this.tempoGram.fill(0); }
+    this.envRing[this.envPos] = r[o + R_ENV]; this.envBassRing[this.envPos] = r[o + R_BASS];
+    this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
+    this.envLastWallMs = r[o + R_WALL];
+    this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
+    this.dropCount = r[o + R_DROPS]; this.activeMs = r[o + R_ACTIVE]; this.buildUp = r[o + R_BUILD];
+    this.envStep();
+    if (Analyser.SECTION_ON && r[o + R_SEC_N] > 0)
+      this.sectionHop(r[o + R_SEC_N], r[o + R_SEC_INT], r[o + R_SEC_KICKS], r[o + R_SEC_BREAK] > 0, r[o + R_SEC_WALL], r[o + R_SEC_DT], r[o + R_SEC_RMS2], r[o + R_SEC_CENT], r, o + R_SEC_SPEC0);
   }
 
   private computeBpm() {
@@ -1440,6 +1575,7 @@ export class Analyser {
    *  att historiken tillhör förra låten; att medianrösta vidare på den kostade 6 s
    *  omlåsning. Nästa estimat får låsa direkt (localBpm === 0 ⇒ första röst låser). */
   resetTempo(): void {
+    this.flagSlow(F_RESET_TEMPO);
     this.localBpm = 0; this.localBpmConfidence = 0;
     this.bpmHistLen = 0; this.bpmHistPos = 0;
     this.clearLockVotes();
@@ -1460,6 +1596,7 @@ export class Analyser {
   hintTrackChange(windowMs = 5000): void {
     // A5: reacq-fönstret jämförs mot perfNow() (samma tidbas som voteNow).
     // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
+    if (this.role === 'fast') { this.pendHintMs = windowMs; this.flagSlow(F_HINT); }
     this.reacqUntilMs = this.perfNow() + windowMs;
     this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
     // TEMPOGRAMMET MASTE NOLLAS HAR. Det ar EMA-ackumulerat (a = 0.15 nar last)
@@ -1485,7 +1622,7 @@ export class Analyser {
   }
 
   /** Taktfasen är applicerad av motorn (ankaret flyttat) → börja om räkningen. */
-  resetBar(): void { this.barAcc.fill(0); this.barCount = 0; }
+  resetBar(): void { this.flagSlow(F_RESET_BAR); this.barAcc.fill(0); this.barCount = 0; }
 
   private envelope: number;
   private lastKick = 0;
@@ -1520,6 +1657,7 @@ export class Analyser {
    * ankare. Att bara satta `virtualMs` racker alltsa inte.
    */
   setVirtualClock(ms: number | null) {
+    if (this.role === 'fast') { if (ms === null) this.flagSlow(F_VCLOCK_NULL); else { this.pendVclock = ms; this.flagSlow(F_VCLOCK_SET); } }
     this.virtualMs = ms;
     this.lastKick = 0;
     this.pendingKickMs = 0;
@@ -1585,6 +1723,12 @@ export class Analyser {
   setBeatGrid(grid: BeatGrid | null): void { this.cfg.beat = grid; }
 
   constructor(cfgIn: AnalyserConfig) {
+    this.role = cfgIn.role ?? 'all';
+    if (this.role !== 'all') {
+      if (!cfgIn.split) throw new Error('Analyser: roll ' + this.role + ' kraver split-buffertar');
+      const v = viewsOf(cfgIn.split); this.splitCtrl = v.ctrl; this.splitRing = v.ring; this.splitState = v.state;
+      if (this.role === 'slow') this.recSeq = Atomics.load(v.ctrl, C_READ);
+    }
     const cfg = this.cfg = {
       audio: { rate: cfgIn.sampleRate },
       fft: { size: cfgIn.fftSize ?? 512, hop: cfgIn.hopSize },
@@ -1658,6 +1802,7 @@ export class Analyser {
 
   /** Feed a hop-sized chunk of mono samples, get a frame back. */
   process(samples: Float32Array): Frame {
+    if (this.role === 'fast') this.pullSlowState();
     // Slide buffer left by hop, append new samples at end.
     const hop = samples.length;
     // RMS på rå (o-fönstrad) buffert — LÖPANDE SUMMA. Bufferten glider en hop i
@@ -1884,9 +2029,11 @@ export class Analyser {
         for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
         this.envBassAccum = 0;
         this.barAcc.fill(0); this.barCount = 0;
+        this.flagSlow(F_SIL350);
       } else if (this.silenceArmed && this.silentMs > 10000 && this.localBpm !== 0) {
         this.localBpm = 0;
         this.tempoGram.fill(0);
+        this.flagSlow(F_SIL10);
       }
     } else {
       this.silentMs = 0;
@@ -1924,31 +2071,17 @@ export class Analyser {
         }
         if (_big) _e = 0;
       }
+      const _b = this.envBassAccum;
       this.envRing[this.envPos] = _e;
-      this.envBassRing[this.envPos] = this.envBassAccum;
+      this.envBassRing[this.envPos] = _b;
       this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
       if (Analyser.GRID_PHASE_ON) this.envLastWallMs = this.wallNow();
       this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
       this.envAccum = 0;
       this.envBassAccum = 0;
-      // Innan lås: räkna på varje ny envelope-sample (100 Hz) för snabbast första estimat.
-      // Efter lås: 4 Hz räcker gott — sparar CPU och förfinar med median.
-      // TAK PÅ OLÅST TAKT. Den gamla kommentaren här angav 110 µs @ N=500 på x86 —
-      // OMMÄTT 2026-08-09: hela computeBpm kostar ~470 µs, alltså 4× mer. Den gamla
-      // siffran var från FÖRE pulse-xcorr och före tvåbandsuppdelningen; scoreEnv
-      // ensam kostar 201 µs och anropas två gånger. Nedbrytning per scoreEnv:
-      // autokorrelation 85 µs, pulse-xcorr 121 µs, resten under 7 µs tillsammans.
-      //   Följden: 20 Hz olåst = ~10 % av en Zero 2 W-kärna, PERMANENT på taktlöst
-      //   eller tvetydigt material (en sådan låt låser aldrig), och varje anrop
-      //   blockerar 1,8 hop-perioder — alltså över hop-budgeten på 2,67 ms.
-      // 10 Hz i stället: halva kostnaden och hälften så många blockeringar. Samma
-      // argument som förut gäller — har fönstret redan >1,5 s utan lås är låten
-      // taktlös, och fler försök per sekund gör inte den tydligare.
-      // De första ~1,5 s körs fortfarande i full takt — time-to-first-lock orörd.
-      const stride = this.localBpm !== 0 ? Analyser.ENV_HZ / 4
-        : this.envFilled < 150 ? 1 : 10;
-      if (++this.bpmCounter >= stride) { this.bpmCounter = 0; this.computeBpm(); if (Analyser.GRID_PHASE_ON && this.localBpm > 0) this.computeGridPhase(); }
-
+      // Sektionens blocksummor levereras per ENV-SAMPEL i bada rollerna (samma kodvag -> delad och odelad analysator
+      // ar bit-identiska; blocket stanger <= 10 ms senare an forr, forsumbart mot 1 s-blocken).
+      if (this.role === 'fast') { this.pushSlowRecord(_e, _b); } else { this.envStep(); this.sectionFlushAgg(); }
     }
     // #2 Förfina förra kickens fas: nu har vi y(-1)=kfPrev2, y(0)=kfPrev, y(+1)=kickFlux
     // runt kick-hopet. Parabelns topp ger sub-hop-offset δ ∈ [-0.5,0.5] hop.
@@ -2408,7 +2541,10 @@ export class Analyser {
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.dropCount = this.dropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
     f.kickAtMs = kickAtMs; f.barShift = barShift; f.beatPhaseMs = this.beatPhaseMs; f.beatPhaseConf = this.beatPhaseConf;
-    if (Analyser.SECTION_ON) this.sectionHop(intensity, kick, breaking, nowWallA, dtHop * 1000, rms);
+    if (Analyser.SECTION_ON) {
+      const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
+      for (let i = 0; i < 8; i++) g.spec[i] += this.bandAbs[i];
+    }
     f.section = this.section; f.sectionAgeMs = this.sectionStartMs > 0 ? nowWallA - this.sectionStartMs : 0; f.sectionIndex = this.sectionIndex; f.sectionTier = this.sectionTier;
     f.repeatSim = this.repeatSim; f.repeatAgoMs = this.repeatAgoMs; f.repeatSection = this.repeatSection;
     return f;
