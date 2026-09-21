@@ -202,6 +202,30 @@ Provat och förkastat 14:40: `LOTUS_EVID_BAND=both` (helbandsringen vägs in i k
 till per kandidat — kvar som opt-in. Filmmusikens tempofel (4/3, 3/2 på Two Steps from Hell, Trevor Jones) är alltså inte
 bandvalet; nästa spår är att titta på kandidatgenereringen (tempogrammets toppar saknar ofta rätt period helt på orkestralt).
 
+## Lokalt sektionsfacit utan moln (`section_facit_local.py`, 2026-09-22 natt)
+
+Molnets sektionsfacit (all-in-one via Replicate, tak 40/dygn, kostar) föll bort när korpusen raderades 09-21. Ersättare för
+gränserna: `section_facit_local.py` — librosa-segmentering (MFCC + chroma_cqt + log-RMS + basonset, slagsynkade på Beat This!-
+slagen ur json:en eller librosa beat_track med tidsvarierande tempo; Foote-novelty på självlikhetsmatrisen, kärnor 8+16 slag,
+finlokalisering med 4-slagskärna, snappning till taktstreck, segment ≥ 8 s). Tier (high/mid/low/intro) räknas med **samma**
+`derive()` som molnfacitet (`section_facit.py`, nu importbar), så definitionen är identisk. Skrivs som
+`result.analysis.sections.derived_local` (+ `local` med metod/validering) och — när molnets `derived` saknas — även som
+`derived` med `source:'local'`/`derivedSource:'local'`, som bänken läser. Molnet ersätter det lokala när det senare levererar.
+Nattjobbet (`nightly.py` → `sections_step()`) kör molnets derive och därefter lokalt facit på fångster ≥ 60 s utan derived,
+före bänken; `LOTUS_SECTION_FACIT_LOCAL=0` stänger av, `LOTUS_SECTION_FACIT_LOCAL_MIN_S`, `LOTUS_SECTION_MIN_SEG_S`,
+`LOTUS_SECTION_KERNEL=8,16` är rattar. Fristående: `section_facit_local.py --wav a.wav b.wav --out <katalog>`;
+`--compare` = lokalt mot molnet där båda finns. Körtid ≈ 5 s per 3 min låt (10 min mix 17–32 s, validering lika mycket till).
+
+Validering utan facit (sparas i `sections.local.validation`): **stabilitet** (gränser återfunna inom ±1 s vid 0,5 s-förskjuten
+start) 0,82–0,85 på 10-min-mixarna, 0,7–1,0 på 180 s-utdrag, tier-lika 0,7–0,8; **rimlighet** 10 segment/3 min, median 14–15 s,
+high-andel 0,36 (definition). **Fraskonsistens** (gräns inom ±1 slag från 4/8-taktsmultipel, tidsbaserat mot lokal slagperiod)
+är däremot nära slumpen (0,1–0,3, slump 0,19) även med Beat This!-nedslag på 4 × 180 s-utdrag (ett undantag 0,6): novelty-
+topparna är inte fraskvantiserade — snappning till 4/8-taktsraster skulle göra måttet trivialt och är därför inte gjord.
+**Mot molnet** på de två långfångster som hann få molnsegment (Colt 45, Sounds Like Something I'd Do): gränsrecall 0,4–0,5 och
+precision 0,25–0,43 (±3 s), high==high per sekund 0,56–0,72 — lokalen delar finare (8–9 segment mot molnets 6–7). Kärna/min-
+segment-rutnät på n=2 gav inget entydigt (recall 0,28–0,45), standard behållen. Kända skillnader mot molnet: fler och kortare
+segment, gränser ±1 takt, inga etiketter (label 'seg'), 30 s-snuttar ger bara 2–3 segment.
+
 ## Liveprov 3 fortsatt: fasföljaren mätt live (15:00–16:00) — MÄTFÄLLA 15 och PI-reglering
 
 `LOTUS_PHASE_TRACE=1` (tillfällig 4 Hz-spårlogg i motorn, `[fasspar]`) visade att bänkens följar-emulering INTE ser

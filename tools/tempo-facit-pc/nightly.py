@@ -83,12 +83,31 @@ def pi_stats():
     }
 
 
+def sections_step():
+    """SEKTIONSFACIT fore banken (09-22): (1) molnets segment utan derived -> section_facit.derive (energirang); (2) fangster
+    (>= LOTUS_SECTION_FACIT_LOCAL_MIN_S, standard 60 s) som saknar derived - molnets dygnstak natt, ingen nyckel, molnfel -
+    -> section_facit_local (lokal segmentering, samma tier-definition), skrivs som derived_local + derived (source local).
+    LOTUS_SECTION_FACIT_LOCAL=0 stanger av det lokala steget. Molnet ersatter ett lokalt derived nar det senare levererar."""
+    out = {'cloud': None, 'local': None}
+    sys.path.insert(0, HERE)
+    try:
+        import section_facit; section_facit.FORCE = False; section_facit.main(); out['cloud'] = 'ok'
+    except Exception as e: out['cloud'] = str(e)[:200]
+    if os.environ.get('LOTUS_SECTION_FACIT_LOCAL', '1') != '0':
+        try:
+            import section_facit_local
+            out['local'] = section_facit_local.backfill_corpus(min_s=float(os.environ.get('LOTUS_SECTION_FACIT_LOCAL_MIN_S', '60')), verbose=False)
+        except Exception as e: out['local'] = str(e)[:200]
+    return out
+
+
 def main():
     if already_done(): print('redan kort i dag'); return
     t0 = time.time()
+    sections = sections_step()
     bench = {name: run_bench(env) for name, env in VARIANTS.items()}
     pi = pi_stats()
-    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
+    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sections': sections, 'sek': round(time.time() - t0)}
     os.makedirs(DAILY, exist_ok=True)
     with open(os.path.join(DAILY, TODAY + '.json'), 'w', encoding='utf-8') as f: json.dump({'entry': entry, 'benchRows': {k: v['rows'] for k, v in bench.items()}}, f, ensure_ascii=False, indent=1)
     with open(SB, 'a', encoding='utf-8') as f: f.write(json.dumps(entry, ensure_ascii=False) + '\n')

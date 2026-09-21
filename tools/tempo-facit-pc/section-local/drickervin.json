@@ -1,0 +1,126 @@
+{
+ "row": {
+  "title": "drickervin"
+ },
+ "result": {
+  "kind": "section-local",
+  "analysis": {
+   "sections": {
+    "derived_local": [
+     {
+      "start": 0.0,
+      "end": 11.75,
+      "label": "seg",
+      "db": -27.94,
+      "onsetPerS": 11.15,
+      "score": 0.17,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 11.75,
+      "end": 27.89,
+      "label": "seg",
+      "db": -29.99,
+      "onsetPerS": 11.09,
+      "score": -1.93,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 27.89,
+      "end": 45.0,
+      "label": "seg",
+      "db": -27.51,
+      "onsetPerS": 11.1,
+      "score": 0.4,
+      "tier": "high",
+      "source": "local"
+     }
+    ],
+    "local": {
+     "method": "foote-ssm-mfcc-chroma-beatsync",
+     "beatsSource": "librosa",
+     "bpm": 123.0,
+     "segments": [
+      {
+       "start": 0.0,
+       "end": 11.75,
+       "label": "seg"
+      },
+      {
+       "start": 11.75,
+       "end": 27.89,
+       "label": "seg"
+      },
+      {
+       "start": 27.89,
+       "end": 45.0,
+       "label": "seg"
+      }
+     ],
+     "rawBoundsS": [
+      11.73,
+      27.89
+     ],
+     "secs": 0.9,
+     "at": 1790028789,
+     "validation": {
+      "nSeg": 3,
+      "segMedianS": 16.1,
+      "segMinS": 11.8,
+      "segMaxS": 17.1,
+      "per3min": 12.0,
+      "phrase4": 0.0,
+      "phrase8": 0.0,
+      "phrase4raw": 0.0,
+      "highShare": 0.38,
+      "tiers": {
+       "intro": 2,
+       "high": 1,
+       "mid": 0,
+       "low": 0
+      },
+      "stability": 0.5,
+      "stabilityN": "2/1",
+      "tierAgree": 0.0,
+      "secsTotal": 2.0
+     }
+    },
+    "derived": [
+     {
+      "start": 0.0,
+      "end": 11.75,
+      "label": "seg",
+      "db": -27.94,
+      "onsetPerS": 11.15,
+      "score": 0.17,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 11.75,
+      "end": 27.89,
+      "label": "seg",
+      "db": -29.99,
+      "onsetPerS": 11.09,
+      "score": -1.93,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 27.89,
+      "end": 45.0,
+      "label": "seg",
+      "db": -27.51,
+      "onsetPerS": 11.1,
+      "score": 0.4,
+      "tier": "high",
+      "source": "local"
+     }
+    ],
+    "derivedSource": "local"
+   }
+  }
+ }
+}

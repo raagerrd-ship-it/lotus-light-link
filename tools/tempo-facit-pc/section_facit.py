@@ -38,15 +38,20 @@ def derive(y, sr, segs):
     return rows
 
 
-n = done = 0
-for f in sorted(glob.glob(os.path.join(HERE, 'corpus', '*.json'))):
-    m = json.load(open(f, encoding='utf-8')); a = ((m.get('result') or {}).get('analysis') or {}); sec = a.get('sections') or {}
-    segs = sec.get('segments') or []
-    if not segs or not os.path.exists(f[:-5] + '.wav'): continue
-    if sec.get('derived') and not FORCE: done += 1; continue
-    y, sr = sf.read(f[:-5] + '.wav', dtype='float32'); y = y.mean(axis=1) if y.ndim > 1 else y
-    d = derive(y, sr, segs)
-    if not d: continue
-    sec['derived'] = d; json.dump(m, open(f, 'w', encoding='utf-8'), ensure_ascii=False); n += 1
-    print(f"  {os.path.basename(f)[:40]:40} {' | '.join(f'{r['start']:.0f}-{r['end']:.0f} {r['tier']}' for r in d)}")
-print(f'klart: {n} nya, {done} fanns')
+def main():   # korpusloopen bara som skript (09-22): derive() importeras av section_facit_local.py
+    n = done = 0
+    for f in sorted(glob.glob(os.path.join(HERE, 'corpus', '*.json'))):
+        m = json.load(open(f, encoding='utf-8')); a = ((m.get('result') or {}).get('analysis') or {}); sec = a.get('sections') or {}
+        segs = sec.get('segments') or []
+        if not segs or not os.path.exists(f[:-5] + '.wav'): continue
+        if sec.get('derived') and sec.get('derivedSource') != 'local' and not FORCE: done += 1; continue   # lokalt facit ersatts nar molnet levererat
+        y, sr = sf.read(f[:-5] + '.wav', dtype='float32'); y = y.mean(axis=1) if y.ndim > 1 else y
+        d = derive(y, sr, segs)
+        if not d: continue
+        sec['derived'] = d; sec['derivedSource'] = 'cloud'; json.dump(m, open(f, 'w', encoding='utf-8'), ensure_ascii=False); n += 1
+        print(f"  {os.path.basename(f)[:40]:40} {' | '.join(f'{r['start']:.0f}-{r['end']:.0f} {r['tier']}' for r in d)}")
+    print(f'klart: {n} nya, {done} fanns')
+
+
+if __name__ == '__main__':
+    main()

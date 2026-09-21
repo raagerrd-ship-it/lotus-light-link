@@ -1,0 +1,932 @@
+{
+ "row": {
+  "title": "megamix_ladan"
+ },
+ "result": {
+  "kind": "section-local",
+  "analysis": {
+   "sections": {
+    "derived_local": [
+     {
+      "start": 0.0,
+      "end": 8.54,
+      "label": "seg",
+      "db": -9.42,
+      "onsetPerS": 4.8,
+      "score": -1.17,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 8.54,
+      "end": 21.45,
+      "label": "seg",
+      "db": -3.3,
+      "onsetPerS": 4.57,
+      "score": 1.11,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 21.45,
+      "end": 33.0,
+      "label": "seg",
+      "db": -4.35,
+      "onsetPerS": 4.07,
+      "score": -0.17,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 33.0,
+      "end": 42.93,
+      "label": "seg",
+      "db": -7.72,
+      "onsetPerS": 2.42,
+      "score": -4.33,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 42.93,
+      "end": 56.75,
+      "label": "seg",
+      "db": -4.99,
+      "onsetPerS": 3.84,
+      "score": -0.82,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 56.75,
+      "end": 93.81,
+      "label": "seg",
+      "db": -2.69,
+      "onsetPerS": 4.43,
+      "score": 1.14,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 93.81,
+      "end": 102.19,
+      "label": "seg",
+      "db": -3.61,
+      "onsetPerS": 4.06,
+      "score": 0.14,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 102.19,
+      "end": 127.52,
+      "label": "seg",
+      "db": -9.43,
+      "onsetPerS": 3.63,
+      "score": -3.09,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 127.52,
+      "end": 136.19,
+      "label": "seg",
+      "db": -6.06,
+      "onsetPerS": 4.04,
+      "score": -0.96,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 136.19,
+      "end": 147.72,
+      "label": "seg",
+      "db": -5.23,
+      "onsetPerS": 4.51,
+      "score": 0.17,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 147.72,
+      "end": 158.31,
+      "label": "seg",
+      "db": -5.22,
+      "onsetPerS": 3.87,
+      "score": -0.87,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 158.31,
+      "end": 166.97,
+      "label": "seg",
+      "db": -4.37,
+      "onsetPerS": 4.85,
+      "score": 1.1,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 166.97,
+      "end": 175.98,
+      "label": "seg",
+      "db": -3.52,
+      "onsetPerS": 4.44,
+      "score": 0.8,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 175.98,
+      "end": 188.18,
+      "label": "seg",
+      "db": -4.15,
+      "onsetPerS": 3.93,
+      "score": -0.31,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 188.18,
+      "end": 206.43,
+      "label": "seg",
+      "db": -5.42,
+      "onsetPerS": 5.1,
+      "score": 1.05,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 206.43,
+      "end": 219.61,
+      "label": "seg",
+      "db": -5.32,
+      "onsetPerS": 4.4,
+      "score": -0.05,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 219.61,
+      "end": 251.68,
+      "label": "seg",
+      "db": -3.42,
+      "onsetPerS": 4.21,
+      "score": 0.46,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 251.68,
+      "end": 265.8,
+      "label": "seg",
+      "db": -5.77,
+      "onsetPerS": 3.33,
+      "score": -1.99,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 265.8,
+      "end": 303.02,
+      "label": "seg",
+      "db": -3.42,
+      "onsetPerS": 4.27,
+      "score": 0.56,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 303.02,
+      "end": 324.82,
+      "label": "seg",
+      "db": -9.17,
+      "onsetPerS": 3.9,
+      "score": -2.53,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 324.82,
+      "end": 338.69,
+      "label": "seg",
+      "db": -3.89,
+      "onsetPerS": 4.04,
+      "score": -0.02,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 338.69,
+      "end": 369.08,
+      "label": "seg",
+      "db": -5.92,
+      "onsetPerS": 4.87,
+      "score": 0.46,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 369.08,
+      "end": 384.31,
+      "label": "seg",
+      "db": -4.33,
+      "onsetPerS": 4.14,
+      "score": -0.04,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 384.31,
+      "end": 416.94,
+      "label": "seg",
+      "db": -4.88,
+      "onsetPerS": 4.6,
+      "score": 0.47,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 416.94,
+      "end": 435.3,
+      "label": "seg",
+      "db": -3.72,
+      "onsetPerS": 4.08,
+      "score": 0.12,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 435.3,
+      "end": 457.32,
+      "label": "seg",
+      "db": -3.4,
+      "onsetPerS": 3.81,
+      "score": -0.18,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 457.32,
+      "end": 473.29,
+      "label": "seg",
+      "db": -6.39,
+      "onsetPerS": 5.01,
+      "score": 0.49,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 473.29,
+      "end": 486.11,
+      "label": "seg",
+      "db": -2.66,
+      "onsetPerS": 4.13,
+      "score": 0.66,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 486.11,
+      "end": 500.71,
+      "label": "seg",
+      "db": -2.73,
+      "onsetPerS": 4.32,
+      "score": 0.94,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 500.71,
+      "end": 517.13,
+      "label": "seg",
+      "db": -3.34,
+      "onsetPerS": 4.69,
+      "score": 1.28,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 517.13,
+      "end": 532.25,
+      "label": "seg",
+      "db": -3.22,
+      "onsetPerS": 2.45,
+      "score": -2.33,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 532.25,
+      "end": 548.69,
+      "label": "seg",
+      "db": -13.39,
+      "onsetPerS": 3.59,
+      "score": -4.87,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 548.69,
+      "end": 579.83,
+      "label": "seg",
+      "db": -5.44,
+      "onsetPerS": 5.14,
+      "score": 1.11,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 579.83,
+      "end": 600.0,
+      "label": "seg",
+      "db": -4.15,
+      "onsetPerS": 4.21,
+      "score": 0.15,
+      "tier": "mid",
+      "source": "local"
+     }
+    ],
+    "local": {
+     "method": "foote-ssm-mfcc-chroma-beatsync",
+     "beatsSource": "librosa",
+     "bpm": 136.0,
+     "segments": [
+      {
+       "start": 0.0,
+       "end": 8.54,
+       "label": "seg"
+      },
+      {
+       "start": 8.54,
+       "end": 21.45,
+       "label": "seg"
+      },
+      {
+       "start": 21.45,
+       "end": 33.0,
+       "label": "seg"
+      },
+      {
+       "start": 33.0,
+       "end": 42.93,
+       "label": "seg"
+      },
+      {
+       "start": 42.93,
+       "end": 56.75,
+       "label": "seg"
+      },
+      {
+       "start": 56.75,
+       "end": 93.81,
+       "label": "seg"
+      },
+      {
+       "start": 93.81,
+       "end": 102.19,
+       "label": "seg"
+      },
+      {
+       "start": 102.19,
+       "end": 127.52,
+       "label": "seg"
+      },
+      {
+       "start": 127.52,
+       "end": 136.19,
+       "label": "seg"
+      },
+      {
+       "start": 136.19,
+       "end": 147.72,
+       "label": "seg"
+      },
+      {
+       "start": 147.72,
+       "end": 158.31,
+       "label": "seg"
+      },
+      {
+       "start": 158.31,
+       "end": 166.97,
+       "label": "seg"
+      },
+      {
+       "start": 166.97,
+       "end": 175.98,
+       "label": "seg"
+      },
+      {
+       "start": 175.98,
+       "end": 188.18,
+       "label": "seg"
+      },
+      {
+       "start": 188.18,
+       "end": 206.43,
+       "label": "seg"
+      },
+      {
+       "start": 206.43,
+       "end": 219.61,
+       "label": "seg"
+      },
+      {
+       "start": 219.61,
+       "end": 251.68,
+       "label": "seg"
+      },
+      {
+       "start": 251.68,
+       "end": 265.8,
+       "label": "seg"
+      },
+      {
+       "start": 265.8,
+       "end": 303.02,
+       "label": "seg"
+      },
+      {
+       "start": 303.02,
+       "end": 324.82,
+       "label": "seg"
+      },
+      {
+       "start": 324.82,
+       "end": 338.69,
+       "label": "seg"
+      },
+      {
+       "start": 338.69,
+       "end": 369.08,
+       "label": "seg"
+      },
+      {
+       "start": 369.08,
+       "end": 384.31,
+       "label": "seg"
+      },
+      {
+       "start": 384.31,
+       "end": 416.94,
+       "label": "seg"
+      },
+      {
+       "start": 416.94,
+       "end": 435.3,
+       "label": "seg"
+      },
+      {
+       "start": 435.3,
+       "end": 457.32,
+       "label": "seg"
+      },
+      {
+       "start": 457.32,
+       "end": 473.29,
+       "label": "seg"
+      },
+      {
+       "start": 473.29,
+       "end": 486.11,
+       "label": "seg"
+      },
+      {
+       "start": 486.11,
+       "end": 500.71,
+       "label": "seg"
+      },
+      {
+       "start": 500.71,
+       "end": 517.13,
+       "label": "seg"
+      },
+      {
+       "start": 517.13,
+       "end": 532.25,
+       "label": "seg"
+      },
+      {
+       "start": 532.25,
+       "end": 548.69,
+       "label": "seg"
+      },
+      {
+       "start": 548.69,
+       "end": 579.83,
+       "label": "seg"
+      },
+      {
+       "start": 579.83,
+       "end": 600.0,
+       "label": "seg"
+      }
+     ],
+     "rawBoundsS": [
+      8.52,
+      21.11,
+      33.0,
+      42.91,
+      56.75,
+      93.46,
+      102.19,
+      127.52,
+      136.51,
+      147.73,
+      158.31,
+      166.97,
+      176.26,
+      188.17,
+      207.08,
+      219.61,
+      251.05,
+      266.45,
+      302.7,
+      324.82,
+      339.15,
+      369.08,
+      383.85,
+      416.94,
+      435.3,
+      457.32,
+      473.76,
+      485.65,
+      500.25,
+      517.6,
+      532.25,
+      548.69,
+      579.83
+     ],
+     "secs": 12.0,
+     "at": 1790028863,
+     "validation": {
+      "nSeg": 34,
+      "segMedianS": 14.9,
+      "segMinS": 8.4,
+      "segMaxS": 37.2,
+      "per3min": 10.2,
+      "phrase4": 0.15,
+      "phrase8": 0.09,
+      "phrase4raw": 0.27,
+      "highShare": 0.36,
+      "tiers": {
+       "intro": 1,
+       "high": 11,
+       "mid": 10,
+       "low": 12
+      },
+      "stability": 0.82,
+      "stabilityN": "33/34",
+      "tierAgree": 0.84,
+      "secsTotal": 25.4
+     }
+    },
+    "derived": [
+     {
+      "start": 0.0,
+      "end": 8.54,
+      "label": "seg",
+      "db": -9.42,
+      "onsetPerS": 4.8,
+      "score": -1.17,
+      "tier": "intro",
+      "source": "local"
+     },
+     {
+      "start": 8.54,
+      "end": 21.45,
+      "label": "seg",
+      "db": -3.3,
+      "onsetPerS": 4.57,
+      "score": 1.11,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 21.45,
+      "end": 33.0,
+      "label": "seg",
+      "db": -4.35,
+      "onsetPerS": 4.07,
+      "score": -0.17,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 33.0,
+      "end": 42.93,
+      "label": "seg",
+      "db": -7.72,
+      "onsetPerS": 2.42,
+      "score": -4.33,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 42.93,
+      "end": 56.75,
+      "label": "seg",
+      "db": -4.99,
+      "onsetPerS": 3.84,
+      "score": -0.82,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 56.75,
+      "end": 93.81,
+      "label": "seg",
+      "db": -2.69,
+      "onsetPerS": 4.43,
+      "score": 1.14,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 93.81,
+      "end": 102.19,
+      "label": "seg",
+      "db": -3.61,
+      "onsetPerS": 4.06,
+      "score": 0.14,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 102.19,
+      "end": 127.52,
+      "label": "seg",
+      "db": -9.43,
+      "onsetPerS": 3.63,
+      "score": -3.09,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 127.52,
+      "end": 136.19,
+      "label": "seg",
+      "db": -6.06,
+      "onsetPerS": 4.04,
+      "score": -0.96,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 136.19,
+      "end": 147.72,
+      "label": "seg",
+      "db": -5.23,
+      "onsetPerS": 4.51,
+      "score": 0.17,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 147.72,
+      "end": 158.31,
+      "label": "seg",
+      "db": -5.22,
+      "onsetPerS": 3.87,
+      "score": -0.87,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 158.31,
+      "end": 166.97,
+      "label": "seg",
+      "db": -4.37,
+      "onsetPerS": 4.85,
+      "score": 1.1,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 166.97,
+      "end": 175.98,
+      "label": "seg",
+      "db": -3.52,
+      "onsetPerS": 4.44,
+      "score": 0.8,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 175.98,
+      "end": 188.18,
+      "label": "seg",
+      "db": -4.15,
+      "onsetPerS": 3.93,
+      "score": -0.31,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 188.18,
+      "end": 206.43,
+      "label": "seg",
+      "db": -5.42,
+      "onsetPerS": 5.1,
+      "score": 1.05,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 206.43,
+      "end": 219.61,
+      "label": "seg",
+      "db": -5.32,
+      "onsetPerS": 4.4,
+      "score": -0.05,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 219.61,
+      "end": 251.68,
+      "label": "seg",
+      "db": -3.42,
+      "onsetPerS": 4.21,
+      "score": 0.46,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 251.68,
+      "end": 265.8,
+      "label": "seg",
+      "db": -5.77,
+      "onsetPerS": 3.33,
+      "score": -1.99,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 265.8,
+      "end": 303.02,
+      "label": "seg",
+      "db": -3.42,
+      "onsetPerS": 4.27,
+      "score": 0.56,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 303.02,
+      "end": 324.82,
+      "label": "seg",
+      "db": -9.17,
+      "onsetPerS": 3.9,
+      "score": -2.53,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 324.82,
+      "end": 338.69,
+      "label": "seg",
+      "db": -3.89,
+      "onsetPerS": 4.04,
+      "score": -0.02,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 338.69,
+      "end": 369.08,
+      "label": "seg",
+      "db": -5.92,
+      "onsetPerS": 4.87,
+      "score": 0.46,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 369.08,
+      "end": 384.31,
+      "label": "seg",
+      "db": -4.33,
+      "onsetPerS": 4.14,
+      "score": -0.04,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 384.31,
+      "end": 416.94,
+      "label": "seg",
+      "db": -4.88,
+      "onsetPerS": 4.6,
+      "score": 0.47,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 416.94,
+      "end": 435.3,
+      "label": "seg",
+      "db": -3.72,
+      "onsetPerS": 4.08,
+      "score": 0.12,
+      "tier": "mid",
+      "source": "local"
+     },
+     {
+      "start": 435.3,
+      "end": 457.32,
+      "label": "seg",
+      "db": -3.4,
+      "onsetPerS": 3.81,
+      "score": -0.18,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 457.32,
+      "end": 473.29,
+      "label": "seg",
+      "db": -6.39,
+      "onsetPerS": 5.01,
+      "score": 0.49,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 473.29,
+      "end": 486.11,
+      "label": "seg",
+      "db": -2.66,
+      "onsetPerS": 4.13,
+      "score": 0.66,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 486.11,
+      "end": 500.71,
+      "label": "seg",
+      "db": -2.73,
+      "onsetPerS": 4.32,
+      "score": 0.94,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 500.71,
+      "end": 517.13,
+      "label": "seg",
+      "db": -3.34,
+      "onsetPerS": 4.69,
+      "score": 1.28,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 517.13,
+      "end": 532.25,
+      "label": "seg",
+      "db": -3.22,
+      "onsetPerS": 2.45,
+      "score": -2.33,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 532.25,
+      "end": 548.69,
+      "label": "seg",
+      "db": -13.39,
+      "onsetPerS": 3.59,
+      "score": -4.87,
+      "tier": "low",
+      "source": "local"
+     },
+     {
+      "start": 548.69,
+      "end": 579.83,
+      "label": "seg",
+      "db": -5.44,
+      "onsetPerS": 5.14,
+      "score": 1.11,
+      "tier": "high",
+      "source": "local"
+     },
+     {
+      "start": 579.83,
+      "end": 600.0,
+      "label": "seg",
+      "db": -4.15,
+      "onsetPerS": 4.21,
+      "score": 0.15,
+      "tier": "mid",
+      "source": "local"
+     }
+    ],
+    "derivedSource": "local"
+   }
+  }
+ }
+}
