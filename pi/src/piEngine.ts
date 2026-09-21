@@ -33,8 +33,9 @@ import { nextRasterEventAt, getRasterStats, resetRasterWindow, NOMINAL_PERIOD_MS
  * TICK_SYNC_GUARD_MS före nästa förutsagda radiohändelse på färskaste analysatorstate, så
  * paketet lämnar Pi:n utan att ligga och vänta 0–intervall. Band-ramen (BAND_EVERY_HOPS)
  * uppdaterar då bara bands; sätt LOTUS_BAND_EVERY_HOPS lågt (3 = 8 ms) så underlaget är färskt.
- * Tickperioden är då rastret (nominellt intervall × 1,25 ms), och allt per-tick-tidsberoende
- * (onset-alfor, refraktär, stigning) räknas på TICK_PERIOD_MS i stället för FRAME_MS.
+ * Tickperioden är då rastret (nominellt intervall × 1,25 ms); tickInners egna filter (nivå-EMA, ankare, shape)
+ * räknas på TICK_PERIOD_MS. OBS: processOnset (puls: rise/hold/decay, refraktär) körs per BAND-RAM via onFluxReady
+ * och ska räknas på FRAME_MS (8 ms vid BAND_EVERY_HOPS 3) — 09-21-buggen: 17,5 på 8 ms-ramar gav 2,2× för snabb fade.
  */
 export const TICK_SYNC = process.env.LOTUS_TICK_SYNC === '1';
 const TICK_SYNC_GUARD_MS = Math.max(1, Math.min(16, Number(process.env.LOTUS_TICK_SYNC_GUARD_MS) || 4));
@@ -198,7 +199,7 @@ export interface TickConstants {
 
 export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   // fftMs = FRAME_MS: onset-alforna körs nu på sann 75 Hz-takt (var felaktigt hårdkodad 10 = 100 Hz-antagande).
-  const fftMs = TICK_PERIOD_MS;
+  const fftMs = FRAME_MS;   // processOnset kors per BAND-RAM (onFluxReady), inte per tick - 09-21-buggen: 17,5 pa 8 ms-ramar = fade 2,2x for snabb
 
 
   const fftRatio = fftMs / 125;
@@ -225,7 +226,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
   }
 
   return {
-    refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / TICK_PERIOD_MS)),
+    refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / FRAME_MS)),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
@@ -922,7 +923,7 @@ export class PiLightEngine {
   private initOnsetBuffer(): void {
     // ~175 ms median-fönster på den SANNA frame-takten (75 Hz) ≈ 13 frames.
     // Tidigare kopplat till tickMs, som inte längre styr frame-takten (gav ~93 ms).
-    this.onsetSize = Math.max(3, Math.round(175 / TICK_PERIOD_MS));
+    this.onsetSize = Math.max(3, Math.round(175 / FRAME_MS));
 
     if (this.onsetBuffer.length < this.onsetSize) {
       this.onsetBuffer = new Float64Array(this.onsetSize);
@@ -1032,7 +1033,7 @@ export class PiLightEngine {
     const _riseMs = this.cal.onsetRiseMs ?? 0;
     if (_riseMs > 0) {
       if (this.onsetTarget > (this._prevTarget ?? 0) + 1e-6)
-        this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / TICK_PERIOD_MS);
+        this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / FRAME_MS);   // band-ramar (8 ms vid BAND_EVERY_HOPS 3)
       if (this._riseHold > 0) this._riseHold--;
       else this.onsetTarget *= decay;
     } else {
@@ -1049,7 +1050,7 @@ export class PiLightEngine {
       if (riseMs <= 0) {
         this.onsetBoost = this.onsetTarget;
       } else {
-        const a = 1 - Math.exp(-TICK_PERIOD_MS / riseMs);
+        const a = 1 - Math.exp(-FRAME_MS / riseMs);
         this.onsetBoost += a * (this.onsetTarget - this.onsetBoost);
       }
     } else {
