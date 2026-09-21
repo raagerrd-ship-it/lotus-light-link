@@ -109,7 +109,8 @@ export interface Frame {
   sectionIndex: number;     // antal 'high'-partier hittills i laten (refrang nr)
   sectionTier: number;      // 0 lag / 1 mellan / 2 hog (stabil niva-tier, hysteres 3 s)
   /** UPPREPNING: likhet (cosinus, 0..1) mellan de senaste 4 s och det mest lika partiet >= 16 s tillbaka i laten,
-   *  och hur langt tillbaka det lag samt vilken sektion det hade. repeatSim >= 0,92 mot 'high' = refrangen ar tillbaka. */
+   *  och hur langt tillbaka det lag samt vilken sektion det hade. repeatSim >= 0,92 mot 'high' = refrangen ar tillbaka.
+   *  Med LOTUS_SECTION_REPEAT (bit 1) ar avtrycket z-normerat och repeatSim typiskt 0,2-0,9 (troskel REPEAT_THR 0,7), se Analyser.REPEAT. */
   repeatSim: number; repeatAgoMs: number; repeatSection: string;
   /** SEKTIONSMINNE + FORUTSAGELSE (09-21, workern; agaren: "komma ihag hur laten lat for nagra sekunder sedan och forra sektionen").
    *  expectHighInMs: ms tills nasta 'high' vantas (-1 = ingen forutsagelse, 0 = vi ar i high). Tva kallor: (1) MINNE - en tidigare
@@ -285,6 +286,33 @@ export class Analyser {
   private static readonly FP_DIM = 11; private static readonly FP_MAX = 96;
   private secFp = new Float32Array(Analyser.FP_MAX * Analyser.FP_DIM); private secFpT = new Float64Array(Analyser.FP_MAX); private secFpLab: string[] = [];
   private secFpN = 0; private secFpPos = 0; private secFpAcc = new Float32Array(Analyser.FP_DIM); private secFpAccN = 0;
+  /** UPPREPNINGSMINNE v2 (09-21, opt-in LOTUS_SECTION_REPEAT bitmask; bank agent-sec3). Det gamla avtrycket (11 positiva dim, cosinus)
+   *  gav repeatSim 0,97-1,00 mot ALLT (bandandelar summerar till 1 - vinkeln ar alltid liten) och kunde inte anvandas i beslut.
+   *  bit 1: nytt avtryck - 12 dim (8 bandandelar, centroid, kicktathet, intensitet, dB) per 2 s, Z-NORMERAT mot latens egen
+   *         historik (alla lagrade avtryck) och SEKVENSMATCHAT (3 rutor = 6 s) mot alla lagen >= 16 s tillbaka. Det matchade
+   *         partiet OMRANKAS med dagens kunskap (dess dB/kicktathet mot hela blockfordelningen) -> repeatTier, och tiden for
+   *         forsta high-blocket efter det matchade partiet + lag -> repeatHighAtMs ("det forflutna spelas upp igen med lag L").
+   *  bit 2: etikettregel HIGH - liknar nuet (sim >= REPEAT_THR) ett parti som nu rankas high och nuet inte ar tydligt lagt -> 'high'.
+   *  bit 4: forutsagelse via lag (predictHigh, hogsta prioritet).   bit 8: etikettregel LOW (matchat parti rankas low -> ej 'high').
+   *  bit 16: uppehall i high = langsta omrankade high-korningen hittills (tak 40 s); bit 32: prior 8 takter; bit 64: intrade i high nar
+   *  det forflutnas high-start + lag ar NU; bit 128: utgang ur high nar det forflutnas high-slut + lag ar NU (och hall tills dess).
+   *  BANK 09-21 (12 langfangster, 22 refrangstarter; gransfel / high==high / recall / falsk-high; forutsedd, lead, falska/min):
+   *    baslinje (0):        0,32 / 0,51 / 0,34 / 0,58;  8/22, 11,9 s, 6,0
+   *    REKOMMENDERAD 117:   0,23 / 0,57 / 0,61 / 0,45;  9/22, 11,2 s, 5,2   (W 2; bit 2 gav inget utover 64, bit 8 sankte recall 0,54->0,47)
+   *    245 (= 117 + 128):   0,29 / 0,57 / 0,56 / 0,48; 10/22, 11,2 s, 5,2
+   *  Obs: repeatSim byter betydelse med bit 1 (cosinus av z-vektorer, -1..1, typiskt 0,2-0,9; gamla 0,92-troskeln galler inte). */
+  private static readonly REPEAT = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT)) || 0;
+  private static readonly REPEAT_THR = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT_THR)) || 0.7;
+  private static readonly REPEAT_STEP = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT_STEP)) || 2;
+  private static readonly REPEAT_W = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT_W)) || 2;
+  private static readonly FP2_DIM = 12; private static readonly FP2_MAX = 128;
+  private secFp2 = new Float32Array(Analyser.FP2_MAX * Analyser.FP2_DIM); private secFp2Z = new Float32Array(Analyser.FP2_MAX * Analyser.FP2_DIM);
+  private secFp2T = new Float64Array(Analyser.FP2_MAX); private secFp2Db = new Float32Array(Analyser.FP2_MAX); private secFp2Dens = new Float32Array(Analyser.FP2_MAX); private secFp2Lab: string[] = [];
+  private secFp2N = 0; private secFp2Pos = 0; private secFp2Acc = new Float32Array(Analyser.FP2_DIM); private secFp2AccN = 0; private secFp2AccDb = 0; private secFp2AccDens = 0;
+  private secFp2Mu = new Float32Array(Analyser.FP2_DIM); private secFp2Sd = new Float32Array(Analyser.FP2_DIM);
+  private secBlkT: number[] = []; private secRank = { md: 0, sd: 1, mk: 0, sk: 1 }; private secScoreSorted: number[] = [];
+  /** Matchat parti: tier med dagens rankning (-1 = inget), och nar 'high' vantas om det forflutna upprepas (absolut tid, 0 = ingen). */
+  repeatTier = -1; repeatHighAtMs = 0; repeatHighEndAtMs = 0; private repeatHighRun = 0; private secHighRunMs = 0;
   beatPhaseMs = 0; beatPhaseConf = 0; private phaseAnti = 0; private phaseLastBeatMs = 0; private phaseScratch = new Float32Array(128);
   private phaseScratchB = new Float32Array(128); private phaseScratchF = new Float32Array(128);
   /** Korbanks-telemetri for gridfasen: vald fas mot motfas per band. */
@@ -826,6 +854,8 @@ export class Analyser {
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
     this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false;
+    this.secFp2N = 0; this.secFp2Pos = 0; this.secFp2Lab.length = 0; this.secFp2Acc.fill(0); this.secFp2AccN = 0; this.secFp2AccDb = 0; this.secFp2AccDens = 0;
+    this.secBlkT.length = 0; this.secScoreSorted.length = 0; this.secRank.md = 0; this.secRank.sd = 1; this.secRank.mk = 0; this.secRank.sk = 1; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0; this.repeatHighRun = 0; this.secHighRunMs = 0;
   }
 
   /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
@@ -845,14 +875,15 @@ export class Analyser {
     if (Analyser.SECTION_MODE === 'rank') {
       // KAUSAL PERCENTILRANG (15:35): blockets dB (ra rms, fore AGC) och basonset-tathet (kickar/s) z-normeras mot alla block
       // hittills i laten, 4 s-fonstrets medelpoang rangordnas mot alla blockpoang hittills. Minst 20 s historik; innan dess 'intro'.
-      const db = 10 * Math.log10(this.secBlkRms2 / n + 1e-10); this.secBlkDb.push(db); this.secBlkDens.push(bKicks); this.secBlkCentH.push(bCent);
-      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); }
+      const db = 10 * Math.log10(this.secBlkRms2 / n + 1e-10); this.secBlkDb.push(db); this.secBlkDens.push(bKicks); this.secBlkCentH.push(bCent); if (Analyser.REPEAT & 1) this.secBlkT.push(nowMs);
+      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); if (Analyser.REPEAT & 1) this.secBlkT.shift(); }
       const nb = this.secBlkDb.length;
       if (nb >= 20) {
         const D = this.secBlkDb, K = this.secBlkDens, C = this.secBlkCentH, wk = Analyser.RANK_W_DENS, wc = Analyser.RANK_W_CENT;
         let md = 0, mk = 0, mc = 0; for (let i = 0; i < nb; i++) { md += D[i]; mk += K[i]; mc += C[i]; } md /= nb; mk /= nb; mc /= nb;
         let sd = 0, sk = 0, sc = 0; for (let i = 0; i < nb; i++) { sd += (D[i] - md) ** 2; sk += (K[i] - mk) ** 2; sc += (C[i] - mc) ** 2; }
         sd = Math.max(1.0, Math.sqrt(sd / nb)); sk = Math.max(0.3, Math.sqrt(sk / nb)); sc = Math.max(0.02, Math.sqrt(sc / nb));
+        this.secRank.md = md; this.secRank.sd = sd; this.secRank.mk = mk; this.secRank.sk = sk;
         const S = this.secScoreBuf; for (let i = 0; i < nb; i++) S[i] = (D[i] - md) / sd + wk * (K[i] - mk) / sk + wc * (C[i] - mc) / sc;
         let win = 0; const W = Math.min(Analyser.RANK_WIN, nb); for (let i = nb - W; i < nb; i++) win += S[i]; win /= W;
         let below = 0, cnt = 0;
@@ -877,6 +908,28 @@ export class Analyser {
       else if (dropped || st === 2) label = 'high';
       else if (st === 0) label = 'low';
       else label = prev === 'high' || prev === 'break' ? 'break' : (prev === 'low' || prev === 'intro' || prev === 'build') ? 'build' : prev;
+      // MINNET (bit 2/8): nuet liknar ett tidigare parti -> det partiets tier (omrankad med dagens kunskap) vager in.
+      if ((Analyser.REPEAT & 10) && this.repeatSim >= Analyser.REPEAT_THR && this.repeatTier >= 0 && !dropped) {
+        if ((Analyser.REPEAT & 2) && this.repeatTier === 2 && st >= 1) label = 'high';
+        else if ((Analyser.REPEAT & 8) && this.repeatTier === 0 && label === 'high') label = prev === 'high' ? 'break' : 'low';
+      }
+      // INTRADE VIA LAG (bit 64): det forflutnas high-start + lag ar NU (-1,5..+1 s) -> high direkt, utan rangens 2-blocks-hysteres + 4 s-fonster
+      if ((Analyser.REPEAT & 64) && this.repeatSim >= Analyser.REPEAT_THR && this.repeatHighAtMs > 0 && st >= 1 && label !== 'high' && !dropped) {
+        const d = this.repeatHighAtMs - nowMs; if (d >= -1500 && d <= 1000) label = 'high';
+      }
+      // UPPEHALL I HIGH (bit 16 minne / bit 32 prior 8 takter): rangen dippar till mellan mitt i refrangen (4 s-fonster) -> high -> break -> high
+      // var 4 s (baslinjen: joaquinphoenix 24h 28b 32h 36b 45h mot facit high 27-102 s). Sa lange forra refrangen varade halls high; tier 0 slapper.
+      if ((Analyser.REPEAT & 48) && prev === 'high' && label === 'break' && st === 1) {
+        let hold = (Analyser.REPEAT & 16) ? Math.min(40000, this.secHighRunMs) : 0;
+        if ((Analyser.REPEAT & 32) && this.localBpm > 0) hold = Math.max(hold, 8 * 240000 / this.localBpm);
+        if (nowMs - this.sectionStartMs < hold) label = 'high';
+      }
+      // UTGANG VIA LAG (bit 128): det forflutnas high-SLUT + lag. Sa lange det forflutna fortfarande ar high halls high (st 1);
+      // nar slutet ar NU (-1,5..+1,5 s) och rangen inte langre sager high -> 'break' direkt (minnets grans i stallet for uppehallets slut).
+      if ((Analyser.REPEAT & 128) && prev === 'high' && this.repeatSim >= Analyser.REPEAT_THR && this.repeatHighEndAtMs > 0 && st <= 1 && !dropped) {
+        const d = this.repeatHighEndAtMs - nowMs;
+        if (d > 1500 && st === 1) label = 'high'; else if (d >= -1500 && d <= 1500) label = 'break';
+      }
     }
     else if (dropped || st === 2) label = 'high';
     else if (prev === 'high' && (breaking || rise <= -0.2)) label = 'break';
@@ -903,6 +956,7 @@ export class Analyser {
     this.levelVsHighDb = Number.isFinite(this.lastHighDb) ? blkDb - this.lastHighDb : 0;
     this.predictHigh(nowMs, bInt);
     if (this.dbgSecBlock) this.dbgSecBlock({ nowMs, section: this.section, sectionStartMs: this.sectionStartMs, prev, label, bpm: this.localBpm, bInt, bKicks, bCent, blkDb, buildUp: this.buildUp, riseRun: this.secRiseRun, rise, dropped, breaking, tier: this.sectionTier, repeatSim: this.repeatSim, repeatAgoMs: this.repeatAgoMs, repeatSection: this.repeatSection, spec: Array.from(this.secBlkSpec, (v) => v / n), lastHighDb: this.lastHighDb, expectHighMs: this.expectHighMs, expectSource: this.expectSource, beatPhaseMs: this.beatPhaseMs, secLogN: this.secLog.length, secLogLast: this.secLog[this.secLog.length - 1] ?? null });
+    if (Analyser.REPEAT & 1) { this.repeatStep(nowMs, blkDb, bKicks, bCent, bInt); this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0; return; }
     // klangavtryck var 4:e sekund
     let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
     const acc = this.secFpAcc; for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
@@ -925,13 +979,80 @@ export class Analyser {
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0;
   }
 
+  /** UPPREPNINGSMINNE v2 (se REPEAT). Kors per sektionsblock; avtryck var REPEAT_STEP:e block. Bara sectionHops blocksummor + egna falt. */
+  private repeatStep(nowMs: number, blkDb: number, bKicks: number, bCent: number, bInt: number): void {
+    const D = Analyser.FP2_DIM, MAX = Analyser.FP2_MAX, acc = this.secFp2Acc;
+    let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
+    for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
+    acc[8] += bCent; acc[9] += Math.min(1, bKicks / 4); acc[10] += bInt; acc[11] += blkDb / 10; this.secFp2AccDb += blkDb; this.secFp2AccDens += bKicks; this.secFp2AccN++;
+    if (this.secFp2AccN < Analyser.REPEAT_STEP) return;
+    const pos = this.secFp2Pos, o = pos * D; for (let i = 0; i < D; i++) this.secFp2[o + i] = acc[i] / this.secFp2AccN;
+    this.secFp2T[pos] = nowMs; this.secFp2Db[pos] = this.secFp2AccDb / this.secFp2AccN; this.secFp2Dens[pos] = this.secFp2AccDens / this.secFp2AccN; this.secFp2Lab[pos] = this.section;
+    this.secFp2Pos = (pos + 1) % MAX; if (this.secFp2N < MAX) this.secFp2N++;
+    acc.fill(0); this.secFp2AccN = 0; this.secFp2AccDb = 0; this.secFp2AccDens = 0;
+    const N = this.secFp2N; const idx = (m: number) => (pos - m + MAX) % MAX;   // m = alder i rutor (0 = nyaste)
+    // z-normering mot latens egen historik: medel/std per dimension over alla lagrade avtryck, sedan enhetslangd
+    const mu = this.secFp2Mu, sd = this.secFp2Sd; mu.fill(0); sd.fill(0);
+    for (let m = 0; m < N; m++) { const q = idx(m) * D; for (let i = 0; i < D; i++) mu[i] += this.secFp2[q + i]; }
+    for (let i = 0; i < D; i++) mu[i] /= N;
+    for (let m = 0; m < N; m++) { const q = idx(m) * D; for (let i = 0; i < D; i++) sd[i] += (this.secFp2[q + i] - mu[i]) ** 2; }
+    for (let i = 0; i < D; i++) sd[i] = Math.max(1e-3, Math.sqrt(sd[i] / N));
+    const z = this.secFp2Z;
+    for (let m = 0; m < N; m++) { const q = idx(m) * D; let nrm = 0; for (let i = 0; i < D; i++) { const v = (this.secFp2[q + i] - mu[i]) / sd[i]; z[q + i] = v; nrm += v * v; } nrm = Math.sqrt(nrm) || 1; for (let i = 0; i < D; i++) z[q + i] /= nrm; }
+    // sekvensmatch: de W senaste rutorna mot W rutor som slutar >= 16 s tillbaka
+    const W = Math.min(Analyser.REPEAT_W, N); let best = 0, bestM = -1;
+    for (let m = W; m + W - 1 < N; m++) {
+      if (nowMs - this.secFp2T[idx(m)] < 16000) continue;
+      let s = 0; for (let j = 0; j < W; j++) { const a = idx(j) * D, b = idx(m + j) * D; for (let i = 0; i < D; i++) s += z[a + i] * z[b + i]; }
+      s /= W; if (s > best) { best = s; bestM = m; }
+    }
+    const prevAt = this.repeatHighAtMs;
+    this.repeatSim = best; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0;
+    // omrankning med dagens kunskap: blockpoang sorterade -> percentil for det matchade partiet (medel over W rutor) och for blocken efter det
+    const nb = this.secBlkDb.length; if (nb < 20) { this.repeatAgoMs = 0; this.repeatSection = ''; return; }
+    const R = this.secRank; const score = (db: number, dens: number) => (db - R.md) / R.sd + (dens - R.mk) / R.sk;
+    const ss = this.secScoreSorted; ss.length = nb; for (let i = 0; i < nb; i++) ss[i] = score(this.secBlkDb[i], this.secBlkDens[i]); ss.sort((a, b) => a - b);
+    const pct = (v: number) => { let lo = 0, hi = nb; while (lo < hi) { const mid = (lo + hi) >> 1; if (ss[mid] < v) lo = mid + 1; else hi = mid; } return lo / nb; };
+    // MINNE OM LANGD (bit 16): langsta high-korningen (omrankad, luckor <= 2 block) fore nuvarande sektion -> sa lange varar high
+    if (Analyser.REPEAT & 16) {
+      let run = 0, gap = 0, bestRun = 0;
+      for (let i = 0; i < nb; i++) {
+        if (this.secBlkT[i] >= this.sectionStartMs) break;
+        if (pct(score(this.secBlkDb[i], this.secBlkDens[i])) >= Analyser.RANK_HI) { run += 1 + gap; gap = 0; if (run > bestRun) bestRun = run; }
+        else if (run > 0 && ++gap > 2) { run = 0; gap = 0; }
+      }
+      this.secHighRunMs = bestRun * 1000;
+    }
+    if (bestM < 0) { this.repeatAgoMs = 0; this.repeatSection = ''; return; }
+    const kEnd = idx(bestM); const lagMs = nowMs - this.secFp2T[kEnd];
+    this.repeatAgoMs = lagMs; this.repeatSection = this.secFp2Lab[kEnd];
+    let ps = 0; for (let j = 0; j < W; j++) { const k = idx(bestM + j); ps += score(this.secFp2Db[k], this.secFp2Dens[k]); } ps /= W;
+    const p = pct(ps); this.repeatTier = p >= Analyser.RANK_HI ? 2 : p <= Analyser.RANK_LO ? 0 : 1;
+    // det forflutnas framtid: forsta blocket efter det matchade partiet som (2 i rad) rankas high -> vantas igen efter lag
+    const tEnd = this.secFp2T[kEnd]; let run = 0, at = 0, endAt = 0, lowRun = 0;
+    for (let i = 0; i < nb; i++) {
+      if (this.secBlkT[i] <= tEnd) continue;
+      const hi = pct(score(this.secBlkDb[i], this.secBlkDens[i])) >= Analyser.RANK_HI;
+      if (at === 0) { if (hi) { if (++run >= 2) at = this.secBlkT[i - 1] + lagMs; } else run = 0; }
+      else if (!hi) { if (++lowRun >= 3) { endAt = this.secBlkT[i - 2] + lagMs; break; } } else lowRun = 0;   // slutet: 3 block i rad under high
+    }
+    this.repeatHighEndAtMs = at > 0 ? endAt : 0;
+    // STABILT MAL: matchningens lag driver nagra sekunder mellan stegen (techno: allt liknar allt) och malet gled med (tim: 12 falska/min).
+    // Ett aktivt mal behalls om det nya ligger inom +-4 s; ett mal publiceras forst nar det statt tva steg i rad (repeatHighRun).
+    if (at > 0 && prevAt > nowMs && Math.abs(at - prevAt) <= 4000) { at = prevAt; this.repeatHighRun++; }
+    else this.repeatHighRun = at > 0 ? 1 : 0;
+    this.repeatHighAtMs = at;
+  }
+
   /** FORUTSAGELSE av nasta 'high' (se Frame.expectHighInMs). Kors per sektionsblock (1 s) i workern. Kallor: 1 minne, 2 fras
    *  (stigande energi -> nasta gitterpunkt), 3 sug (dyk i dB strax fore smallen). Frasgittret ligger i takter fran senaste
    *  high-starten (PREDICT_GRID 'hi') sa att en forutsagelse pekar pa samma tid oavsett i vilket block regeln tander. */
   private predictHigh(nowMs: number, bInt: number): void {
     const bpm = this.localBpm; const barMs = bpm > 0 ? 240000 / bpm : 0;
     let exp = 0, src = 0;
-    if (this.section !== 'high' && barMs > 0) {
+    // (4) UPPREPNING (REPEAT bit 4): det forflutna spelas upp igen med lag L -> forra gangens high-start + L
+    if ((Analyser.REPEAT & 4) && this.section !== 'high' && this.repeatSim >= Analyser.REPEAT_THR && this.repeatHighRun >= 2 && this.repeatHighAtMs > nowMs + 500 && this.repeatHighAtMs - nowMs <= 32000) { exp = this.repeatHighAtMs; src = 4; }
+    if (!exp && this.section !== 'high' && barMs > 0) {
       // (1) MINNE: senaste tidigare sektion med samma etikett som foljdes av 'high' -> samma antal takter (avrundat till 4, minst 4)
       if (Analyser.PREDICT_SRC & 1) for (let i = this.secLog.length - 2; i >= 0; i--) {
         const a = this.secLog[i], b = this.secLog[i + 1];
