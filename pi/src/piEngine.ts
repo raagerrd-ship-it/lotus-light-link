@@ -25,6 +25,23 @@ import type { WriteResult } from './ble-driver/protocol.js';
 import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
+import { nextRasterEventAt, getRasterStats, resetRasterWindow, NOMINAL_PERIOD_MS } from './ble-driver/raster.js';
+
+/**
+ * TICK-SYNK (2026-09-21, opt-in LOTUS_TICK_SYNC=1): motorn tickar i fas med radions
+ * anslutningshändelser (raster.ts) i stället för på band-ramen. Varje tick räknas klart
+ * TICK_SYNC_GUARD_MS före nästa förutsagda radiohändelse på färskaste analysatorstate, så
+ * paketet lämnar Pi:n utan att ligga och vänta 0–intervall. Band-ramen (BAND_EVERY_HOPS)
+ * uppdaterar då bara bands; sätt LOTUS_BAND_EVERY_HOPS lågt (3 = 8 ms) så underlaget är färskt.
+ * Tickperioden är då rastret (nominellt intervall × 1,25 ms), och allt per-tick-tidsberoende
+ * (onset-alfor, refraktär, stigning) räknas på TICK_PERIOD_MS i stället för FRAME_MS.
+ */
+export const TICK_SYNC = process.env.LOTUS_TICK_SYNC === '1';
+const TICK_SYNC_GUARD_MS = Math.max(1, Math.min(16, Number(process.env.LOTUS_TICK_SYNC_GUARD_MS) || 4));
+/** Självsökande guard (LOTUS_TICK_SYNC_ADAPT=0 stänger av): bergsklättring 1 ms/2 s-fönster på write→kvitto p50.
+ *  Kurvan är en sågtand — för liten guard missar radiohändelsen och paketet tar nästa (+intervall). */
+const TICK_SYNC_ADAPT = process.env.LOTUS_TICK_SYNC_ADAPT !== '0';
+export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
 import { getItem, setItem, DATA_DIR } from './storage.js';
 import { writeFile, appendFileSync, writeFileSync } from 'node:fs';
 import type { Landmark } from './fingerprint.js';
@@ -180,7 +197,7 @@ export interface TickConstants {
 
 export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   // fftMs = FRAME_MS: onset-alforna körs nu på sann 75 Hz-takt (var felaktigt hårdkodad 10 = 100 Hz-antagande).
-  const fftMs = FRAME_MS;
+  const fftMs = TICK_PERIOD_MS;
 
 
   const fftRatio = fftMs / 125;
@@ -207,7 +224,7 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
   }
 
   return {
-    refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / FRAME_MS)),
+    refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / TICK_PERIOD_MS)),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
@@ -854,7 +871,7 @@ export class PiLightEngine {
     this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer();
     this.tc = computeTickConstants(tickMs, this.cal);
-    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken
+    setSlotLeaseMs(TICK_SYNC ? Math.round(TICK_PERIOD_MS * 0.6) : this.tickMs); // synk: leasen får aldrig blockera nästa rasterfasade write
   }
 
   getPalette(): [number, number, number][] { return this._palette; }
@@ -865,7 +882,7 @@ export class PiLightEngine {
     this.tickMs = ms;
     this.initOnsetBuffer();
     this.tc = computeTickConstants(ms, this.cal);
-    setSlotLeaseMs(this.tickMs); // 1:1 med engine-ticken
+    setSlotLeaseMs(TICK_SYNC ? Math.round(TICK_PERIOD_MS * 0.6) : this.tickMs);
   }
 
   setColor(rgb: [number, number, number]) {
@@ -904,7 +921,7 @@ export class PiLightEngine {
   private initOnsetBuffer(): void {
     // ~175 ms median-fönster på den SANNA frame-takten (75 Hz) ≈ 13 frames.
     // Tidigare kopplat till tickMs, som inte längre styr frame-takten (gav ~93 ms).
-    this.onsetSize = Math.max(3, Math.round(175 / FRAME_MS));
+    this.onsetSize = Math.max(3, Math.round(175 / TICK_PERIOD_MS));
 
     if (this.onsetBuffer.length < this.onsetSize) {
       this.onsetBuffer = new Float64Array(this.onsetSize);
@@ -1014,7 +1031,7 @@ export class PiLightEngine {
     const _riseMs = this.cal.onsetRiseMs ?? 0;
     if (_riseMs > 0) {
       if (this.onsetTarget > (this._prevTarget ?? 0) + 1e-6)
-        this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / FRAME_MS);
+        this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / TICK_PERIOD_MS);
       if (this._riseHold > 0) this._riseHold--;
       else this.onsetTarget *= decay;
     } else {
@@ -1031,7 +1048,7 @@ export class PiLightEngine {
       if (riseMs <= 0) {
         this.onsetBoost = this.onsetTarget;
       } else {
-        const a = 1 - Math.exp(-FRAME_MS / riseMs);
+        const a = 1 - Math.exp(-TICK_PERIOD_MS / riseMs);
         this.onsetBoost += a * (this.onsetTarget - this.onsetBoost);
       }
     } else {
@@ -2411,6 +2428,46 @@ export class PiLightEngine {
         this._calDirty = false;
       }
     }, 10_000);
+    // Raster-mätaren (alltid): write→kvitto p50/p90 = hur gammalt paketet är när det lämnar Pi:n.
+    // Loggas bara när det finns skrivningar i fönstret (spelning). Synk-läget lägger till tick-jitter.
+    let _rasterLogAt = 0;
+    setInterval(() => {
+      try {
+        const r = getRasterStats();
+        if (r.w2n.n < 20) return;
+        const now = Date.now();
+        // GUARD-SVEP (deterministiskt, 2026-09-21): håll guard 1..period−1 i tre 2 s-fönster var, median-p50 per guard,
+        // välj minimum. Kurvan är en sågtand: för liten guard → paketet missar händelsen och w2n ≈ intervall; vid
+        // catch-punkten faller w2n till ≈ guard. Svepet körs vid lås och görs om var 10:e minut (driftkontroll).
+        if (TICK_SYNC && TICK_SYNC_ADAPT && r.locked && r.w2n.n >= 40) {
+          const lim = Math.max(2, Math.floor(r.periodMs - 1));
+          if (this._sweepG === 0 && now - this._sweepDoneAt > 600_000) { this._sweepG = 1; this._sweepWin = []; this._sweepRes = []; this._guardMs = 1; }
+          if (this._sweepG > 0) {
+            this._sweepWin.push(r.w2n.p50Ms);
+            if (this._sweepWin.length >= 3) {
+              const w = [...this._sweepWin].sort((a, b) => a - b); this._sweepRes[this._sweepG] = w[1]; this._sweepWin = [];
+              if (this._sweepG < lim) { this._sweepG++; this._guardMs = this._sweepG; }
+              else {
+                let best = 1; for (let g = 1; g <= lim; g++) if (this._sweepRes[g] != null && this._sweepRes[g] < this._sweepRes[best]) best = g;
+                // Minimum ligger PÅ sågtandens kant (12:23: g8 20,8 → g10 10,9) och pendlar då 10/21 mellan fönstren
+                // — lägg 2 ms marginal ovanför kanten så paketet alltid hinner med händelsen.
+                const chosen = Math.min(lim, best + 2);
+                this._guardMs = chosen; this._sweepG = 0; this._sweepDoneAt = now;
+                console.log(`[raster] guard-svep: ${this._sweepRes.map((v, g) => (g > 0 && v != null ? `g${g} ${v.toFixed(1)}` : '')).filter(Boolean).join(' · ')} → min g${best}, vald ${chosen} ms`);
+              }
+            }
+          }
+        }
+        const logNow = now - _rasterLogAt >= 10_000;
+        if (logNow) {
+          _rasterLogAt = now;
+          const s = TICK_SYNC ? ` | synk ticks ${this._syncTicks} sena ${this._syncLate} (max ${this._syncLateMax.toFixed(1)} ms) guard ${this._guardMs}` : '';
+          console.log(`[raster] period ${r.periodMs} ms jitter ${r.jitterMs} ms kvitton ${r.events} las ${r.locked ? 1 : 0} | write→kvitto p50 ${r.w2n.p50Ms} p90 ${r.w2n.p90Ms} max ${r.w2n.maxMs} ms (n ${r.w2n.n})${s}`);
+          this._syncLate = 0; this._syncLateMax = 0;
+        }
+        resetRasterWindow();
+      } catch { /* mätaren får aldrig falla motorn */ }
+    }, 2_000);
 
     // _bleOwner sätts normalt på flanker. Reparera bara när avvikelsen varit
     // stabil i 3s — BLE-status kan pendla legitimt under ett connect-försök.
@@ -2463,8 +2520,41 @@ export class PiLightEngine {
   private _loopActive = false;
   private _nextTickDeadline = 0;
   /** Called by ALSA FFT callback — runs in the audio data handler context */
+  private _syncTimer: NodeJS.Timeout | null = null;
+  private _guardMs = TICK_SYNC_GUARD_MS;
+  private _sweepG = 0;            // 0 = inget svep pågår; annars guard som provas
+  private _sweepWin: number[] = [];   // p50 per 2 s-fönster för aktuell guard
+  private _sweepRes: number[] = [];   // median-p50 per guard (index = guard)
+  private _sweepDoneAt = 0;
+  private _syncTicks = 0;
+  private _syncLate = 0;       // ticks som kom > 2 ms efter mål (timerjitter/GC)
+  private _syncLateMax = 0;
+  /** Synk-tick: kör tickInner strax före nästa radiohändelse och boka nästa. */
+  private syncTick(target: number): void {
+    this._syncTimer = null;
+    if (!this._loopActive) return;
+    const now = performance.now();
+    const late = now - target;
+    if (late > 2) { this._syncLate++; if (late > this._syncLateMax) this._syncLateMax = late; }
+    this._syncTicks++;
+    this._nextTickDeadline = now + TICK_PERIOD_MS;
+    this._lastTickTime = now;
+    try { this.tickInner(); } finally { this.scheduleSyncTick(); }
+  }
+  private scheduleSyncTick(): void {
+    if (this._syncTimer || !this._loopActive) return;
+    const now = performance.now();
+    // Mål = förutsagd radiohändelse − guard; minst 1 ms fram så vi aldrig snurrar.
+    const target = Math.max(now + 1, nextRasterEventAt(now + 1, this._guardMs) - this._guardMs);
+    this._syncTimer = setTimeout(() => this.syncTick(target), Math.max(1, Math.round(target - now)));
+  }
+  getSyncDiag(): { on: boolean; guardMs: number; ticks: number; late: number; lateMaxMs: number; raster: ReturnType<typeof getRasterStats> } {
+    return { on: TICK_SYNC, guardMs: this._guardMs, ticks: this._syncTicks, late: this._syncLate, lateMaxMs: Math.round(this._syncLateMax * 10) / 10, raster: getRasterStats() };
+  }
+
   private onFFTFrame(): void {
     if (!this._loopActive) return;
+    if (TICK_SYNC) return;   // synk: band-ramen uppdaterar bara bands; ticken går på rastret
 
     // EN tick för hela compute-kedjan: ljus-beslutet körs på VARJE FFT-frame
     // (~75 Hz) — ingen nedsampling, ingen aliasing, beslutet alltid ≤13.33ms
@@ -2482,10 +2572,12 @@ export class PiLightEngine {
     const now = performance.now();
     this._lastTickTime = now;
     this._nextTickDeadline = now + this.tickMs;
+    if (TICK_SYNC) this.scheduleSyncTick();
   }
 
   private stopLoop(): void {
     this._loopActive = false;
+    if (this._syncTimer) { clearTimeout(this._syncTimer); this._syncTimer = null; }
   }
 
   stop(): void {
@@ -2772,7 +2864,7 @@ export class PiLightEngine {
         const downMs = Math.max(1, cal.lightSmoothMs ?? 60);
         const upMs = cal.lightRiseMs ?? 0;
         const rising = this._wlevelSm !== undefined && wlevelRaw > this._wlevelSm;
-        const aSm = rising && upMs <= 0 ? 1 : 1 - Math.exp(-FRAME_MS / (rising ? Math.max(1, upMs) : downMs));
+        const aSm = rising && upMs <= 0 ? 1 : 1 - Math.exp(-TICK_PERIOD_MS / (rising ? Math.max(1, upMs) : downMs));
         this._wlevelSm = this._wlevelSm === undefined
           ? wlevelRaw
           : this._wlevelSm + (wlevelRaw - this._wlevelSm) * aSm;
@@ -2790,7 +2882,7 @@ export class PiLightEngine {
           if (!silentA) {
             const anchorUp = this._wdbSlow !== undefined && wdb > this._wdbSlow;
             const farAbove = this._wdbSlow !== undefined && wdb - this._wdbSlow > Math.max(1, cal.windowDb ?? 18);
-            const anchorAlpha = 1 - Math.exp(-FRAME_MS / (farAbove ? tauMs / 10 : anchorUp ? tauMs * 3 : tauMs));
+            const anchorAlpha = 1 - Math.exp(-TICK_PERIOD_MS / (farAbove ? tauMs / 10 : anchorUp ? tauMs * 3 : tauMs));
             this._wdbSlow = this._wdbSlow === undefined ? wdb : this._wdbSlow + anchorAlpha * (wdb - this._wdbSlow);
           }
           anchorDb = (this._wdbSlow ?? wdb) + (cal.anchorOffsetDb ?? 4);
@@ -2807,7 +2899,7 @@ export class PiLightEngine {
         let inLow: number, inHigh: number;
         if (cal.adaptiveCeiling !== false) {
           if (this._slowMean === undefined) this._slowMean = 0.4;
-          this._slowMean += (level - this._slowMean) * (FRAME_MS / (cal.ceilFollowMs ?? 7000));
+          this._slowMean += (level - this._slowMean) * (TICK_PERIOD_MS / (cal.ceilFollowMs ?? 7000));
           const m = Math.max(cal.ceilFloor ?? 0.12, this._slowMean);
           inLow = m * (cal.ceilLowMul ?? 0.55);
           inHigh = m * (cal.ceilHighMul ?? 1.35);
@@ -2843,7 +2935,7 @@ export class PiLightEngine {
         if (this._shapeSm === undefined) this._shapeSm = shape;
         else {
           const shapeMs = shape > this._shapeSm ? shapeUpMs : shapeDownMs;
-          const shapeAlpha = shapeMs > 0 ? 1 - Math.exp(-FRAME_MS / shapeMs) : 1;
+          const shapeAlpha = shapeMs > 0 ? 1 - Math.exp(-TICK_PERIOD_MS / shapeMs) : 1;
           this._shapeSm += shapeAlpha * (shape - this._shapeSm);
         }
         shape = this._shapeSm;

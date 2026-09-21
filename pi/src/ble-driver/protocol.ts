@@ -15,6 +15,7 @@
 
 import { getDevice, bleStats } from './state.js';
 import { getOutstandingPackets, isControllerDrainAttached } from './controllerDrain.js';
+import { rasterNoteWrite } from './raster.js';
 import { dlog } from "./log.js";
 
 // Pre-allocated write buffers (zero alloc per tick)
@@ -386,6 +387,7 @@ function drainQueuedWrite(): void {
     let _writePromise: Promise<unknown>;
     try {
       _writePromise = device.characteristic.writeAsync(buf, true);
+      rasterNoteWrite(_syncT0);   // write→kvitto-latens mäts mot radions raster (raster.ts)
     } catch (e: any) {
       writePending = false;
       writeFailCount++;

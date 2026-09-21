@@ -619,6 +619,7 @@ export function startConfigServer(port = 3050): void {
         ? { running: true, tickMs: engine.getTickMs(), hz: Math.round(1000 / FRAME_MS), palette: engine.getPalette(), tvMode: engine.isTvMode() }
         : { running: false, tickMs: null, hz: null, palette: [] },
       beat: engine?.getBeatInfo?.() ?? null,
+      sync: (engine as any)?.getSyncDiag?.() ?? null,   // tick-synk mot BLE-rastret (raster.ts), mätare även när synken är av
     });
   });
 

@@ -12,6 +12,7 @@ import { HARDCODED_DEVICE, matchesHardcoded } from './device-config.js';
 import { SERVICE_UUID, CHAR_UUID, setDevice, bleStats } from './state.js';
 import { brightMaxBuf, stopKeepAlive, resetLastSent } from './protocol.js';
 import { attachControllerDrain, detachControllerDrain, getAttachedHandle } from './controllerDrain.js';
+import { attachRaster, detachRaster } from './raster.js';
 import { applyConnInterval, stopConnIntervalReassert } from './forceConnInterval.js';
 import { noteConnectAttempt, sleep } from './connect-throttle.js';
 
@@ -145,6 +146,7 @@ function teardownDeviceState(): void {
   // vägar går genom här; connect-vägen startar om den själv.
   stopConnIntervalReassert();
   for (const fn of _onDisconnectedCbs) { try { fn(); } catch {} }
+  detachRaster();
   detachControllerDrain();
   setDevice(null);
   resetLastSent();
@@ -598,6 +600,7 @@ export async function connectHardcoded(timeoutMs = 6000): Promise<{ connected: b
             // Hooka in noble's HCI ACL-räknare så vi vet om controllern
             // har outstanding paket (verklig drain-signal, inte promise).
             attachControllerDrain(peripheral);
+            attachRaster();   // radions kvitton som klocka/mätare (raster.ts)
             // FORCE 15ms conn-interval connection interval via hcitool lecup.
             // Noble's egen HCI-request slår inte alltid igenom (bevisat:
             // bench körde på ~20pps tak tills `hcitool lecup --min 6 --max 6`
