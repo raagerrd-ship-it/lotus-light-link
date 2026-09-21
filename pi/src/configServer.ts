@@ -59,6 +59,9 @@ let attachedTempoCache: { get(k: string): any; upsert(k: string, a: string, t: s
 /** Snuttar for PC-facit: <DATA_DIR>/snippets/<key med | -> __>.wav + .json */
 const SNIPPET_DIR = DATA_DIR + '/snippets';
 const snippetFile = (id: string) => SNIPPET_DIR + '/' + id.replace(/\|/g, '__').replace(/#/g, '_');
+// Fangst-brytare (09-21): index.ts registrerar get/set; debugverktyg tills systemet ar optimerat.
+let _captureGet: (() => boolean) | null = null; let _captureSet: ((on: boolean) => void) | null = null;
+export function setCaptureToggle(get: () => boolean, set: (on: boolean) => void): void { _captureGet = get; _captureSet = set; }
 let _manualCapture: string | null = null;
 /** index.ts pollar (4 Hz): en manuellt begard fangst ('drop'), en gang. */
 export function takeManualCapture(): string | null { const m = _manualCapture; _manualCapture = null; return m; }
@@ -499,6 +502,41 @@ export function startConfigServer(port = 3050): void {
     if (!existsSync(p)) { res.status(404).json({ error: 'ingen handelselogg' }); return; }
     try { res.json(JSON.parse(readFileSync(p, 'utf8'))); } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
   });
+  // SJALVPROFILERING (2026-09-21, stall-jakten): V8:s CPU-profiler inifran processen (inspector-sessionen), ms=5000..120000.
+  // Skriver <DATA_DIR>/cpuprofile-<ts>.cpuprofile; analyseras pa PC:n (tools/tempo-facit-pc/cpuprofile_top.py). Ingen omstart.
+  let _profBusy = false;
+  app.post('/api/debug/cpuprofile', async (req, res) => {
+    if (_profBusy) { res.status(409).json({ error: 'profilering pagar' }); return; }
+    const ms = Math.max(5000, Math.min(120_000, Number(req.query.ms ?? req.body?.ms) || 30_000));
+    _profBusy = true;
+    try {
+      const { Session } = await import('node:inspector');
+      const { DATA_DIR } = await import('./storage.js');
+      const fsp = await import('node:fs/promises');
+      const sess = new Session(); sess.connect();
+      const post = (m: string, p?: any) => new Promise<any>((ok, no) => sess.post(m, p, (e, r) => (e ? no(e) : ok(r))));
+      await post('Profiler.enable'); await post('Profiler.setSamplingInterval', { interval: 500 }); await post('Profiler.start');
+      const file = `${DATA_DIR}/cpuprofile-${new Date().toISOString().replace(/[:.]/g, '-')}.cpuprofile`;
+      res.json({ ok: true, ms, file });
+      setTimeout(async () => {
+        try { const { profile } = await post('Profiler.stop'); await fsp.writeFile(file, JSON.stringify(profile)); console.log(`[debug] cpuprofile skriven: ${file}`); }
+        catch (e: any) { console.log('[debug] cpuprofile FEL:', e?.message ?? e); }
+        finally { try { sess.disconnect(); } catch { /* */ } _profBusy = false; }
+      }, ms);
+    } catch (e: any) { _profBusy = false; res.status(500).json({ error: e?.message ?? String(e) }); }
+  });
+  app.get('/api/debug/cpuprofile', async (req, res) => {
+    const { DATA_DIR } = await import('./storage.js');
+    const f = String(req.query.file ?? '');
+    if (!/^cpuprofile-[0-9TZ-]+\.cpuprofile$/.test(f)) { res.status(400).json({ error: 'ogiltigt filnamn' }); return; }
+    res.sendFile(`${DATA_DIR}/${f}`);
+  });
+  app.get('/api/tempo/capture-enabled', (_req, res) => res.json({ enabled: _captureGet ? _captureGet() : true }));
+  app.put('/api/tempo/capture-enabled', (req, res) => {
+    const on = req.body?.enabled !== false;
+    if (_captureSet) _captureSet(on);
+    res.json({ ok: true, enabled: on });
+  });
   app.post('/api/tempo/capture', (req, res) => { _manualCapture = String(req.body?.kind ?? 'drop'); res.json({ ok: true, kind: _manualCapture }); });
   app.get('/api/tempo/snippet', (req, res) => {
     const key = String(req.query.key ?? '');
@@ -620,6 +658,7 @@ export function startConfigServer(port = 3050): void {
         : { running: false, tickMs: null, hz: null, palette: [] },
       beat: engine?.getBeatInfo?.() ?? null,
       sync: (engine as any)?.getSyncDiag?.() ?? null,   // tick-synk mot BLE-rastret (raster.ts), mätare även när synken är av
+      captureEnabled: _captureGet ? _captureGet() : true,
     });
   });
 

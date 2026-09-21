@@ -44,6 +44,7 @@ const TICK_SYNC_ADAPT = process.env.LOTUS_TICK_SYNC_ADAPT !== '0';
 export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
 import { getItem, setItem, DATA_DIR } from './storage.js';
 import { writeFile, appendFileSync, writeFileSync } from 'node:fs';
+import { PerformanceObserver } from 'node:perf_hooks';
 import type { Landmark } from './fingerprint.js';
 import { SongLock } from './songLock.js';
 
@@ -2428,6 +2429,23 @@ export class PiLightEngine {
         this._calDirty = false;
       }
     }, 10_000);
+    // GC-mätare (09-21, stall-jakten): V8:s GC-pauser via perf_hooks — --trace-gc gar inte via NODE_OPTIONS.
+    // Loggar pauser >= 20 ms (max 1 rad/s) och summerar per 10 s i [gc]-raden. kind: 1 scavenge, 2 mark-sweep-compact, 4 incremental, 8 weak.
+    try {
+      let gcN = 0, gcMs = 0, gcMax = 0, gcBig = 0, gcLogAt = 0, gcRepAt = Date.now();
+      const obs = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          const d = e.duration; gcN++; gcMs += d; if (d > gcMax) gcMax = d;
+          const kind = (e as any).detail?.kind ?? (e as any).kind ?? 0;
+          if (d >= 20) { gcBig++; if (Date.now() - gcLogAt > 1000) { gcLogAt = Date.now(); console.log(`[gc] paus ${d.toFixed(0)} ms kind ${kind}`); } }
+        }
+        if (Date.now() - gcRepAt >= 10_000) {
+          console.log(`[gc] 10 s: ${gcN} pauser, summa ${gcMs.toFixed(0)} ms, max ${gcMax.toFixed(0)} ms, >=20 ms: ${gcBig}`);
+          gcRepAt = Date.now(); gcN = 0; gcMs = 0; gcMax = 0; gcBig = 0;
+        }
+      });
+      obs.observe({ entryTypes: ['gc'] });
+    } catch (e) { console.log('[gc] matare kunde inte startas:', (e as Error).message); }
     // Raster-mätaren (alltid): write→kvitto p50/p90 = hur gammalt paketet är när det lämnar Pi:n.
     // Loggas bara när det finns skrivningar i fönstret (spelning). Synk-läget lägger till tick-jitter.
     let _rasterLogAt = 0;

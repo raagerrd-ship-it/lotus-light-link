@@ -616,8 +616,11 @@ export function startRawCapture(seconds: number, label?: string, fullRate = fals
   if (!rawBuf || rawBuf.length < rawTarget) rawBuf = new Int16Array(rawTarget);
   rawLen = 0; rawPrerollSamples = pre; rawStartWallMs = 0;
   if (pre > 0 && preBuf) {
+    // Tva memcpy (09-21, stall-jakten): sampel-for-sampel-loopen over 720 k sampel holl huvudtraden ~100 ms.
     let src = prePos - pre; if (src < 0) src += PRE_LEN;
-    for (let i = 0; i < pre; i++) { rawBuf[i] = preBuf[src]; if (++src >= PRE_LEN) src = 0; }
+    const n1 = Math.min(pre, PRE_LEN - src);
+    rawBuf.set(preBuf.subarray(src, src + n1), 0);
+    if (n1 < pre) rawBuf.set(preBuf.subarray(0, pre - n1), n1);
     rawLen = pre;
     rawStartWallMs = Date.now() - (pre / SAMPLE_RATE) * 1000;
   }
@@ -653,8 +656,9 @@ export function getRawCaptureWav(): Buffer | null {
   buf.writeUInt16LE(16, 34);
   buf.write('data', 36);
   buf.writeUInt32LE(dataBytes, 40);
-  for (let i = 0; i < rawLen; i++) buf.writeInt16LE(rawBuf[i], 44 + i * 2);
-  rawBuf = null;
+  // memcpy (09-21): writeInt16LE per sampel (1,4 M anrop) holl huvudtraden ~110 ms per snutt. ARM ar little-endian = WAV.
+  Buffer.from(rawBuf.buffer, rawBuf.byteOffset, dataBytes).copy(buf, 44);
+  if (rawBuf.length > SAMPLE_RATE * 31) rawBuf = null;   // behall 30 s-bufferten (2,9 MB) for nasta snutt, slapp langfangster
   rawLen = 0;
   return buf;
 }

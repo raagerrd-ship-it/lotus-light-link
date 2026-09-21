@@ -504,6 +504,7 @@ async function startSonosSubsystem(): Promise<void> {
         try {
           const mic: any = alsaMic; const st = mic.getRawCaptureStatus?.();
           if (st?.active) return;
+          if (!_captureEnabled) return;
           const { songKey } = await import('./songStore.js'); const key = songKey(artist || '', title);
           const id = kind === 'tempo' ? key : key + (kind === 'drop' ? '#d' : '#s') + Date.now().toString(36);
           const fname = id.replace(/\|/g, '__').replace(/#/g, '_');
@@ -555,6 +556,17 @@ async function startSonosSubsystem(): Promise<void> {
           }, (seconds + 2) * 1000);
         } catch (e) { _captureBusy = false; console.log('[tempo] fangst misslyckades:', (e as Error).message); }
       };
+      // BRYTARE (09-21, anvandaren: "toggla av inspelning nar vi tidsmater"): fangsterna (snutt/drop/sektion) ar de storsta
+      // stall-kallorna pa huvudtraden. PUT /api/tempo/capture-enabled {enabled} - sparas i tempo-capture.json, syns i /api/status.
+      const _captureFlagFile = (await import('./storage.js')).DATA_DIR + '/tempo-capture.json';
+      let _captureEnabled = true;
+      try { _captureEnabled = JSON.parse((await import('node:fs')).readFileSync(_captureFlagFile, 'utf8')).enabled !== false; } catch { /* standard pa */ }
+      configServer?.setCaptureToggle?.(() => _captureEnabled, (on: boolean) => {
+        _captureEnabled = on;
+        import('node:fs/promises').then((fsp) => fsp.writeFile(_captureFlagFile, JSON.stringify({ enabled: on, at: Date.now() }))).catch(() => { /* flaggan far aldrig falla motorn */ });
+        console.log(`[tempo] fangster ${on ? 'PA' : 'AV'} (capture-enabled)`);
+      });
+      if (!_captureEnabled) console.log('[tempo] fangster AV (tempo-capture.json) - inga snuttar/dropfangster till PC:n');
       const _sectionCountFile = (await import('./storage.js')).DATA_DIR + '/section-captures.json';
       let _sectionCaptures = 0;
       try { _sectionCaptures = Number(JSON.parse((await import('node:fs')).readFileSync(_sectionCountFile, 'utf8')).count) || 0; } catch { /* forsta gangen */ }
