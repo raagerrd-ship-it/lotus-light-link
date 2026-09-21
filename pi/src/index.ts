@@ -542,10 +542,15 @@ async function startSonosSubsystem(): Promise<void> {
               const events = { id, key, kind, artist: artist || '', title, captureStartWallMs: meta.startWallMs, prerollSamples: meta.prerollSamples, rate: 48000,
                 seconds: (wav.length - 44) / 2 / 48000, beat: engineInstance!.getBeatInfo(), kicks: [...kicks].filter((k) => k >= since).sort((a, b) => a - b),
                 pulses: engineInstance!.getRecentPulses(since), bright, flags, phases, ...(truncatedAtMs ? { truncatedAtMs } : {}) };
-              writeFileSync(dir + '/' + fname + '.wav', wav);
-              writeFileSync(dir + '/' + fname + '.events.json', JSON.stringify(events));
-              writeFileSync(dir + '/' + fname + '.json', JSON.stringify({ id, key, kind, artist: artist || '', title, capturedAt: Date.now(), rate: 48000, seconds: events.seconds, hasEvents: true }));
-              console.log(`[tempo] snutt sparad: ${id} (${(wav.length / 1e6).toFixed(1)} MB, ${events.kicks.length} kickar, ${events.pulses.length} pulser, ${bright.length} ljusprov, ko ${pending.length + 1})`);
+              // ASYNKRONT (09-21): writeFileSync av 3-14 MB WAV pa SD-kortet stallade event-loopen 100-500 ms = sena ticks/gammalt ljus.
+              // Ordning bevaras (index-json sist) sa PC:n aldrig ser en halv snutt.
+              const _t0w = performance.now();
+              import('node:fs/promises').then(async (fsp) => {
+                await fsp.writeFile(dir + '/' + fname + '.wav', wav);
+                await fsp.writeFile(dir + '/' + fname + '.events.json', JSON.stringify(events));
+                await fsp.writeFile(dir + '/' + fname + '.json', JSON.stringify({ id, key, kind, artist: artist || '', title, capturedAt: Date.now(), rate: 48000, seconds: events.seconds, hasEvents: true }));
+                console.log(`[tempo] snutt sparad: ${id} (${(wav.length / 1e6).toFixed(1)} MB, ${events.kicks.length} kickar, ${events.pulses.length} pulser, ${bright.length} ljusprov, ko ${pending.length + 1}, ${(performance.now() - _t0w).toFixed(0)} ms async)`);
+              }).catch((e) => console.log('[tempo] snutt kunde inte sparas:', (e as Error).message));
             } catch (e) { console.log('[tempo] snutt kunde inte sparas:', (e as Error).message); }
           }, (seconds + 2) * 1000);
         } catch (e) { _captureBusy = false; console.log('[tempo] fangst misslyckades:', (e as Error).message); }

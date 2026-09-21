@@ -2527,6 +2527,7 @@ export class PiLightEngine {
   private _sweepRes: number[] = [];   // median-p50 per guard (index = guard)
   private _sweepDoneAt = 0;
   private _syncTicks = 0;
+  private _lateLogAt = 0;
   private _syncLate = 0;       // ticks som kom > 2 ms efter mål (timerjitter/GC)
   private _syncLateMax = 0;
   /** Synk-tick: kör tickInner strax före nästa radiohändelse och boka nästa. */
@@ -2536,6 +2537,8 @@ export class PiLightEngine {
     const now = performance.now();
     const late = now - target;
     if (late > 2) { this._syncLate++; if (late > this._syncLateMax) this._syncLateMax = late; }
+    // Stall-jakt (09-21): en sen tick > 40 ms loggas med tid (max 1/s) sa den kan korreleras med raden fore i loggen.
+    if (late > 40 && Date.now() - this._lateLogAt > 1000) { this._lateLogAt = Date.now(); console.log(`[synk] sen tick ${late.toFixed(0)} ms (event-loop-stall)`); }
     this._syncTicks++;
     this._nextTickDeadline = now + TICK_PERIOD_MS;
     this._lastTickTime = now;
