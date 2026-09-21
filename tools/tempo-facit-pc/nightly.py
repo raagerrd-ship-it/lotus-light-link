@@ -88,7 +88,7 @@ def main():
     t0 = time.time()
     bench = {name: run_bench(env) for name, env in VARIANTS.items()}
     pi = pi_stats()
-    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v[kk] for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
+    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sek': round(time.time() - t0)}
     os.makedirs(DAILY, exist_ok=True)
     with open(os.path.join(DAILY, TODAY + '.json'), 'w', encoding='utf-8') as f: json.dump({'entry': entry, 'benchRows': {k: v['rows'] for k, v in bench.items()}}, f, ensure_ascii=False, indent=1)
     with open(SB, 'a', encoding='utf-8') as f: f.write(json.dumps(entry, ensure_ascii=False) + '\n')
