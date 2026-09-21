@@ -895,6 +895,7 @@ export class PiLightEngine {
     } catch { /* inget sparat */ }
   }
   private _anchorSaved?: number;
+  private _anchorFastUntil = 0; private _clipRunMs = 0; private _lastShape?: number;   // ankaret foljer med tau/10 fram till denna tid (play-start/anslutning)
 
   getPalette(): [number, number, number][] { return this._palette; }
   setVolume(vol: number | undefined) { this.volume = vol; }
@@ -2273,6 +2274,7 @@ export class PiLightEngine {
       // Keep-alive får ALDRIG köra parallellt med active path — det skulle
       // bygga kö i HCI-lagret.
       this.clearIdleDisconnectTimer();
+      this._anchorFastUntil = Date.now() + 20_000;   // volymen kan ha bytts under pausen
       this.startLoop();
       if (this._bleOwner !== 'none') {
         this._bleOwner = 'active';
@@ -3004,8 +3006,17 @@ export class PiLightEngine {
           const silentA = tickFloorA > 0 && level < tickFloorA;
           if (!silentA) {
             const anchorUp = this._wdbSlow !== undefined && wdb > this._wdbSlow;
-            const farAbove = this._wdbSlow !== undefined && wdb - this._wdbSlow > Math.max(1, cal.windowDb ?? 18);
-            const anchorAlpha = 1 - Math.exp(-TICK_PERIOD_MS / (farAbove ? tauMs / 10 : anchorUp ? tauMs * 3 : tauMs));
+            const winDb = Math.max(1, cal.windowDb ?? 18);
+            // SNABBT LAGE (09-21): signalen helt utanfor fonstret at NAGOT hall, eller forsta 20 s efter play-start/anslutning
+            // (volymen kan ha bytts under pausen - ankaret overlever pauser sedan 09-21, sa det maste kunna hinna ikapp).
+            const farAbove = this._wdbSlow !== undefined && wdb - this._wdbSlow > winDb;
+            const farBelow = this._wdbSlow !== undefined && this._wdbSlow - wdb > winDb;
+            // Klippt (>= 98 %) eller slackt (<= 2 %) i > 10 s i strack = volymen har bytts: folj snabbt tills vi ar i fonstret igen.
+            const prevShape = this._lastShape ?? 0.5;
+            if (prevShape >= 0.98 || prevShape <= 0.02) { this._clipRunMs += TICK_PERIOD_MS; if (this._clipRunMs > 10_000) this._anchorFastUntil = Date.now() + 5_000; }
+            else this._clipRunMs = 0;
+            const fast = farAbove || farBelow || Date.now() < this._anchorFastUntil;
+            const anchorAlpha = 1 - Math.exp(-TICK_PERIOD_MS / (fast ? tauMs / 10 : anchorUp ? tauMs * 3 : tauMs));
             this._wdbSlow = this._wdbSlow === undefined ? wdb : this._wdbSlow + anchorAlpha * (wdb - this._wdbSlow);
           }
           anchorDb = (this._wdbSlow ?? wdb) + (cal.anchorOffsetDb ?? 4);
@@ -3016,6 +3027,7 @@ export class PiLightEngine {
         const windowDb = Math.max(1, cal.windowDb ?? 18);
         shape = (wdb - (anchorDb - windowDb)) / windowDb;
         shape = shape < 0 ? 0 : shape > 1 ? 1 : shape;
+        this._lastShape = shape;
         _diag.wlevel = wlevel; _diag.wdb = wdb;  // för live-kalibrering av anchorDb
       } else {
         // ── FALLBACK (dbWindow=false): gamla adaptiva taket + expansion ──
