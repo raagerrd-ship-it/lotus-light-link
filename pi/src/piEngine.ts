@@ -1843,8 +1843,26 @@ export class PiLightEngine {
       if (PHASE_TRACE && this._phaseTraceN < 400) { this._phaseTraceN++; console.log(`[fasspar] now ${nowMs} pm ${Math.round(pm)} anchor ${Math.round(this._beat.anchorMs)} bpm ${this._beat.bpm.toFixed(2)} anBpm ${frame?.bpm} err ${err.toFixed(3)} conf ${pconf.toFixed(2)} kick ${Math.round(frame?.beatAnchorMs ?? 0)}`); }
       if (Math.abs(err) > 0.35) {
         if (pconf >= PHASE_FLIP_CONF && ++this._phaseFlipVotes >= PHASE_FLIP_VOTES) {
-          this._beat.anchorMs += err * beatMsNow; this._phaseFlipVotes = 0; this._phaseFlips++;
-          console.log(`[takt] gridfas: fasen flyttad ${Math.round(err * beatMsNow)} ms (kvot ${pconf.toFixed(2)}, byte ${this._phaseFlips})`);
+          // KICKARNA SOM DOMARE (09-21, "dubbelblink"): analysatorns fas flyttade gridet 0,4 slag fram och tillbaka inom en
+          // minut (kvot 3,2/6,0) pa 16-delsbas -> pulsen mellan kickarna medan energin foljer kickarna = tva bumpar per slag.
+          // Flytta bara om de senaste ~8 slagens riktiga kickar ligger tydligt narmare den nya fasen an den gamla.
+          const ks = getRecentKicks(); const since = nowMs - 8 * beatMsNow; let n = 0, sCur = 0, sNew = 0;
+          const newAnchor = this._beat.anchorMs + err * beatMsNow;
+          for (let i = ks.length - 1; i >= 0 && ks[i] >= since; i--) {
+            const k = ks[i]; n++;
+            const pc = ((((k - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+            const pn = ((((k - newAnchor) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
+            sCur += Math.cos(2 * Math.PI * pc); sNew += Math.cos(2 * Math.PI * pn);
+          }
+          const ok = n < 6 || (sNew / n) > (sCur / n) + 0.15;
+          this._phaseFlipVotes = 0;
+          if (ok) {
+            this._beat.anchorMs = newAnchor; this._phaseFlips++;
+            console.log(`[takt] gridfas: fasen flyttad ${Math.round(err * beatMsNow)} ms (kvot ${pconf.toFixed(2)}, byte ${this._phaseFlips}, kickar ${n}: ny ${n ? (sNew / n).toFixed(2) : '-'} mot ${n ? (sCur / n).toFixed(2) : '-'})`);
+          } else {
+            this._phaseFlipDenied++;
+            if (this._phaseFlipDenied <= 3 || this._phaseFlipDenied % 20 === 0) console.log(`[takt] gridfas: flytt ${Math.round(err * beatMsNow)} ms NEKAD av kickarna (${n} st: ny ${(sNew / n).toFixed(2)} mot nu ${(sCur / n).toFixed(2)}, kvot ${pconf.toFixed(2)}, nekade ${this._phaseFlipDenied})`);
+          }
         }
         return;
       }
@@ -2642,6 +2660,7 @@ export class PiLightEngine {
   private _loopActive = false;
   private _nextTickDeadline = 0;
   /** Called by ALSA FFT callback — runs in the audio data handler context */
+  private _phaseFlipDenied = 0;
   private _syncTimer: NodeJS.Timeout | null = null;
   private _guardMs = TICK_SYNC_GUARD_MS;
   private _sweepG = 0;            // 0 = inget svep pågår; annars guard som provas
