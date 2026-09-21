@@ -4,6 +4,7 @@
 // per hop: bpm, konfidens, gridfas, sektion, tier, upprepning. Tempo/gridfas ska vara BIT-identiska; sektionen
 // far skilja nagra hop vid blockgranser (blocksummorna levereras per env-sampel, inte per hop).
 //   node splitProof.mjs [--n 12] [--worker]     (--worker: aven en krasch-/lagg-rokning av riktiga workern)
+//   SPLIT_DIR=<katalog med wav>  annan korpus an ./corpus (laser bara);  SPLIT_MAX_S=120  klipp varje fil (0 = hela)
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,13 +12,14 @@ process.env.LOTUS_SECTION ??= '1'; process.env.LOTUS_GRID_PHASE ??= '1';
 const here = dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const N = Number(arg('--n', 12)); const WORKER = process.argv.includes('--worker');
+const CORPUS = process.env.SPLIT_DIR || join(here, 'corpus'); const MAX_S = Number(process.env.SPLIT_MAX_S ?? 120);
 const { createAnalyser } = await import(pathToFileURL(join(here, '..', '..', 'pi', 'dist', 'audio-analyser', 'index.js')).href);
 
 function readWav(path) {
   const b = readFileSync(path); const ch = b.readUInt16LE(22), rate = b.readUInt32LE(24);
   let off = 12, dataOff = 44, dataLen = b.length - 44;
-  while (off + 8 <= b.length) { const id = b.toString('ascii', off, off + 4), len = b.readUInt32LE(off + 4); if (id === 'data') { dataOff = off + 8; dataLen = Math.min(len, b.length - dataOff); break; } off += 8 + len + (len & 1); }
-  const n = Math.floor(dataLen / 2 / ch); const y = new Float32Array(n);
+  while (off + 8 <= b.length) { const id = b.toString('ascii', off, off + 4), len = b.readUInt32LE(off + 4); if (id === 'data') { dataOff = off + 8; dataLen = len === 0 ? b.length - dataOff : Math.min(len, b.length - dataOff); break; } off += 8 + len + (len & 1); }   // len 0 = strom-skriven fil (pop_ladan/megamix_ladan)
+  let n = Math.floor(dataLen / 2 / ch); if (MAX_S > 0) n = Math.min(n, Math.floor(MAX_S * rate)); const y = new Float32Array(n);
   for (let i = 0; i < n; i++) { let s = 0; for (let c = 0; c < ch; c++) s += b.readInt16LE(dataOff + (i * ch + c) * 2); y[i] = s / ch / 32768; }
   return { y, rate };
 }
@@ -36,10 +38,10 @@ function run(y, rate, mode) {
   }
   return { out, an };
 }
-const files = readdirSync(join(here, 'corpus')).filter((f) => f.endsWith('.wav')).slice(0, N);
+const files = readdirSync(CORPUS).filter((f) => f.endsWith('.wav')).slice(0, N);
 let totHops = 0, tempoDiff = 0, phaseDiff = 0, secDiff = 0, tierDiff = 0, repDiff = 0; const perFile = [];
 for (const f of files) {
-  const { y, rate } = readWav(join(here, 'corpus', f));
+  const { y, rate } = readWav(join(CORPUS, f));
   const A = run(y, rate, '').out, B = run(y, rate, 'inline').out;
   let td = 0, pd = 0, sd = 0, tr = 0, rd = 0, firstT = -1;
   for (let i = 0; i < A.length; i++) {
@@ -56,7 +58,7 @@ console.log(`\nSUMMA ${files.length} filer, ${totHops} hop: tempo/konf olika ${t
 
 if (WORKER) {
   // Rokning av riktiga workern: mata i realtidstakt 15 s, se att tempot kommer och att workern haller jamna steg.
-  const { y, rate } = readWav(join(here, 'corpus', files[0]));
+  const { y, rate } = readWav(join(CORPUS, files[0]));
   process.env.LOTUS_ANALYSER_SPLIT = 'worker';
   const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015 }); an.setGainLock(false);
   const buf = new Float32Array(HOP); let h = 0; const t0 = performance.now(); let lastBpm = 0;
@@ -68,5 +70,5 @@ if (WORKER) {
     }, 5);
   });
   console.log(`\nWORKER-ROKNING ${files[0]}: ${h} hop pa 15 s, bpm ${lastBpm}, stats ${JSON.stringify(an.getSplitStats())}`);
-  an.__worker?.postMessage({ type: 'stop' });
+  an.__stopWorker ? an.__stopWorker() : an.__worker?.postMessage({ type: 'stop' });
 }
