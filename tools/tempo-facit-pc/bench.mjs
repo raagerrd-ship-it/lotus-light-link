@@ -53,7 +53,7 @@ function runOne(y, rate) {
     if (f && f.kickAtMs > 0 && f.kickAtMs !== lastKick) { lastKick = f.kickAtMs; kicks.push((f.kickAtMs > 1e11 ? f.kickAtMs - 1700000000000 : f.kickAtMs) / 1000); }   // virtuell epok (1,7e12) bort -> sekunder fran start   // analysatorns kickar (virtuell klocka = sekunder fran start)
     if (hopCount > warm && hopCount % 38 === 0 && f && f.bpm > 0) { bpms.push(f.bpm); confs.push(f.bpmConfidence ?? 0); if (an.rawBpmLast > 0) raws.push(an.rawBpmLast); }   // ~10 Hz
     if (f && f.section && f.section !== lastSec) { lastSec = f.section; sections.push([+(hopCount * HOP / rate).toFixed(1), f.section]); }
-    if (f && f.expectHighInMs > 0 && hopCount % 38 === 0) preds.push([hopCount * HOP / rate, hopCount * HOP / rate + f.expectHighInMs / 1000]);   // forutsagelse (~10 Hz): [nar, forutsedd high]
+    if (f && f.expectHighInMs > 0 && hopCount % 38 === 0) preds.push([hopCount * HOP / rate, hopCount * HOP / rate + f.expectHighInMs / 1000, an.expectSource ?? 0, f.section]);   // forutsagelse (~10 Hz): [nar, forutsedd high]
     if (f && f.repeatSim >= 0.92 && hopCount % 375 === 0) repeats++;
     if (hopCount > warm && f && f.bpm > 0 && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhaseMs) { lastPhaseMs = f.beatPhaseMs; grids.push({ t: hopCount * HOP / rate, bpm: f.bpm, anchor: (f.beatPhaseMs > 1e11 ? f.beatPhaseMs - 1700000000000 : f.beatPhaseMs) / 1000, conf: f.beatPhaseConf ?? 1 }); }   // analysatorns GRIDFAS (LOTUS_GRID_PHASE=1; s fran start) per hop - beatAnchorMs ar bara senaste kicken
     if (dbg && hopCount % (375 * 5) === 0 && an.dbgPhase) { const d = an.dbgPhase; console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s GRIDFAS conf ${d.conf.toFixed(2)} bas on/anti ${d.bassOn.toFixed(2)}/${d.bassAnti.toFixed(2)} hel on/anti ${d.fullOn.toFixed(2)}/${d.fullAnti.toFixed(2)} fas ${d.bestPh}/${d.nPh} vantande ${d.pending} beatPhaseMs ${f.beatPhaseMs > 0 ? ((f.beatPhaseMs - 1700000000000) / 1000).toFixed(3) : 0}`); }
@@ -135,6 +135,12 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
       for (const hs of highStarts) { const hits = r.preds.filter(([tp, at]) => tp >= hs - 12 && tp <= hs - 1 && Math.abs(at - hs) <= 2); if (hits.length) { predHit++; leads.push(hs - hits[0][0]); } }
       leads.sort((a, b) => a - b); predLead = leads.length ? leads[leads.length >> 1] : null;
       const uniq = [...new Set(r.preds.map(([, at]) => Math.round(at)))]; predFalse = uniq.filter((at) => !highStarts.some((hs) => Math.abs(at - hs) <= 4)).length / Math.max(1, y.length / rate / 60);
+      if (process.env.BENCH_DEBUG === 'pred') {   // diagnostik: per episod (unik forutsedd sekund): forsta tid, mal, kalla, sektion, traff/falsk; detektorns high-starter
+        const ep = new Map(); for (const [tp, at, src, sec] of r.preds) { const k = Math.round(at); if (!ep.has(k)) ep.set(k, { t0: tp, t1: tp, src, sec, n: 0 }); const e = ep.get(k); e.t1 = tp; e.n++; }
+        const detHi = r.sections.filter(([, l]) => l === 'high').map(([ts]) => ts);
+        console.log(`  PRED ${basename(f).slice(0, 30)} len ${(y.length / rate).toFixed(0)} s facit-high ${highStarts.map((x) => x.toFixed(0)).join(',')} det-high ${detHi.map((x) => x.toFixed(0)).join(',')} traff ${predHit}/${predTot} falska ${predFalse.toFixed(1)}/min`);
+        for (const [k, e] of [...ep.entries()].sort((a, b) => a[1].t0 - b[1].t0)) { const near = highStarts.find((hs) => Math.abs(k - hs) <= 4); const hit = highStarts.some((hs) => e.t0 >= hs - 12 && e.t0 <= hs - 1 && Math.abs(k - hs) <= 2 && r.preds.some(([tp, at]) => tp >= hs - 12 && tp <= hs - 1 && Math.abs(at - hs) <= 2 && Math.round(at) === k)); console.log(`    mal ${k} s (${e.t0.toFixed(0)}-${e.t1.toFixed(0)} s, ${e.n} pkt) kalla ${e.src} sektion ${e.sec} ${hit ? 'TRAFF' : near !== undefined ? 'nara' : 'FALSK'}`); }
+      }
     }
   }
   const a1Beats = meta.allin1?.beatsS || [];                              // all-in-one (ML-slagfoljare via Replicate) som tredje referens
