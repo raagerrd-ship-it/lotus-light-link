@@ -18,6 +18,46 @@ basbandet (halvkvot ≥ 0,6, tak 200). Resultat på syntetiskt test: 6/6 (92, 12
 110 m. kick varannan). Allt (kandidater med slagpoäng, halvkvot, conf) följer med i cacheraden så reglerna
 kan granskas mot analysatorn. Analysatorn är gemensam med pi-dmx: det som bevisas här ska in i analysatorn.
 
+## Minikorpus ur ladans inspelningar (`mkcorpus_mix.py`, 2026-09-21)
+
+Korpusen `corpus/` (facit-tjänstens snuttar från Pi:n) raderades 21 sep och bänken stod med bara syntet. `mkcorpus_mix.py`
+bygger ett **komplement** ur ladans egna inspelningar (`pi-dmx/engine/tools/`: `pop_ladan.wav` + `megamix_ladan.wav`, 48 kHz
+mono, 600 s var — strömmade WAV:ar med `dataLen 0` i huvudet, läses med egen tolerant läsare — samt de fem korta filerna
+`stranden/drickervin/tspel/utandig/real` hela, 45–60 s). Inga Pi-anrop, inget moln: **facit = Beat This!** (lokal ML-slagföljare,
+`.venv-ml`, ny `--batch`-läge i `beatthis_facit.py` så modellen laddas en gång), inte PC-facit ur molnet.
+
+Regler per 30 s-fönster (hopp 30 s): (1) ingen låtgräns i fönstret — nyhetsdetektor på klangen (MFCC 2–20 standardiserade,
+medel 4 s före mot 4 s efter, toppar ≥ median + 4·MAD, ≥ 15 s isär; `MIX_NOV_K` ändrar) OCH Beat This!-slagen passar ett stelt
+grid (residual ≤ 45 ms, tempohopp ≤ 5 % mellan tredjedelarna); (2) kvalitetsgrinden (brus) + RMS ≥ 0,01; (3) två röster överens:
+Beat This! mot PC:ns stela librosa-grid (`estimate_rigid`, produktionens PC-facit) inom 4 % (`facitVotes: 'bt+pc'`) eller i
+oktavförhållande (`'bt~pc-oktav'`, `voteClass: 'oktav'`). Bänken viker facit till [80,160) så oktaven kvittar där.
+Ut: `corpus-mix/<id>.wav` (48 kHz mono 16-bit) + `<id>.json` i bänkens schema (`result.bpm/beatsS/quality/analysis.onset.timesS`,
+`beatthis`, `row {artist:'ladan', title:'pop_ladan@600s'}`, `kind:'mix'`) + `_summary.json` med varje fönsters dom (även de
+bortfallna, med Beat This!-mått så nyhetsdetektorn kan dömas mot slagen). Katalogen är data (gitignorerad) och ligger i huvudrepot.
+
+    .venv\Scripts\python.exe mkcorpus_mix.py [--out DIR] [--src DIR] [--dry] [--limit N]
+    node bench.mjs --dir <absolut sökväg till corpus-mix> [--synth corpus-synth]
+
+**Första bygget 2026-09-21 (938 s, varav Beat This! 875 s på 45 fönster):** 45 fönster in → **21 ut**. Bortfall: 18 låtgräns
+enligt klangen (10 i pop, 8 i megamix), 5 där Beat This!-slagen inte passar ett stelt grid (residual 75–708 ms: pop@0, megamix@0
+och @150-trakten, `tspel` 75 ms, `real` 708 ms — kort, ojämnt material), 1 oense (megamix@150: BT 93,5 mot PC 62,2). Röster på de
+22 dömda: lika 13, oktav 8 (megamix 85,8/171,6, 93,5/187, 130/65; `utandig` 90/180), oense 1 — Beat This! och det stela gridet
+är alltså överens om slagperioden i 21/22, oktaven spretar i 8. Materialet är smalt: pop@240–540 är en sammanhängande sträcka
+126→130 BPM (troligen 2–3 beatmatchade låtar som klangdetektorn inte skiljer), megamix 93,5 ×3 och 130 ×3 är samma låtar — räkna
+med ~8 distinkta låtar, inte 21. Bänkens baslinje (`node bench.mjs --dir corpus-mix --synth corpus-synth`, 46 s):
+
+| variant | korpus-mix rätt | klasser | syntet |
+|---|---|---|---|
+| standard | 14/21 | lika 14, 3/2 3, annat 4 | 6/8 |
+| live (nattjobbets LIVE + BENCH_GRID) | **17/21** | lika 17, annat 4 | 6/8 |
+| evidence | 16/21 | lika 16, annat 2, 4/3 2, 2/3 1 | 6/8 |
+| ring10 | 14/21 | lika 14, 3/2 2, annat 4, 4/3 1 | 6/8 |
+
+Live: kick-recall 0,85/precision 0,69, on-beat-recall 0,88, gridfas mot Beat This! i fas 9/18, motfas 1, median 0,83. Standardens
+tre 3/2-fel är alla megamixens 130-låtar (analysatorn väljer 86–90); `pop_ladan@240s` (140 mot 126) och `utandig` (99/144 mot 90)
+faller i alla varianter. Facit-svagheter: Beat This! lästes inte mot katalog eller öra, oktaven är modellens val, och 30 s-fönster
+med hopp 30 s ger få låtar per mix — kör med `MIX_KEEP_STEADY=1` för att behålla gränsfönster där slagen ändå är stadiga.
+
 ## Mer än tempo (2026-09-19, "kör och bygg allt")
 
 Pi:n loggar under fångstfönstret (`<id>.events.json`): kick-ringen, gridpulsernas fyrtider (`getRecentPulses`),
