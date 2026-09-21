@@ -114,7 +114,8 @@ export interface Frame {
   /** SEKTIONSMINNE + FORUTSAGELSE (09-21, workern; agaren: "komma ihag hur laten lat for nagra sekunder sedan och forra sektionen").
    *  expectHighInMs: ms tills nasta 'high' vantas (-1 = ingen forutsagelse, 0 = vi ar i high). Tva kallor: (1) MINNE - en tidigare
    *  sektion med samma etikett foljdes av 'high' efter N takter (avrundat till 4) -> samma langd nu; (2) FRAS - energin stiger
-   *  (secRiseRun >= 2 eller buildUp > 0,35) -> nasta 8-taktsgrans fran sektionsstarten. prevSection = forra sektionens etikett.
+   *  (secRiseRun >= 4 raka stigande block, LOTUS_PREDICT_RISE) -> nasta 4-taktsgrans i ett frasgitter forankrat i senaste high-starten
+   *  (LOTUS_PREDICT_GRID/LAT); (3) SUG (opt-in LOTUS_PREDICT_DIP) - dyk i dB strax fore smallen -> high om 2 s. prevSection = forra sektionens etikett.
    *  levelVsHighDb = blockets dB mot senaste refrangens medel-dB (negativt = tystare an refrangen; 0 utan refrang) - latens EGEN
    *  referens for dynamiken. sectionBars = takter sedan sektionsstart (0 utan tempo). */
   expectHighInMs: number; prevSection: string; levelVsHighDb: number; sectionBars: number;
@@ -237,11 +238,22 @@ export class Analyser {
    *  hittills i laten (samma matt som facit, section_facit.py, fast i realtid); 'tier' = gamla intensity-tiern (bank: 0,53 = slump). */
   private static readonly SECTION_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_SECTION_MODE) || 'rank';
   /** Forutsagelsens kallor (bitmask): 1 = minne (tidigare sektion med samma etikett), 2 = fras (stigande energi -> 8-taktsgrans). Bank-A/B. */
-  private static readonly PREDICT_SRC = (typeof process !== 'undefined' && Number(process.env?.LOTUS_PREDICT_SRC)) || 3;
+  private static readonly PREDICT_SRC = typeof process !== 'undefined' && process.env?.LOTUS_PREDICT_SRC !== undefined ? Number(process.env.LOTUS_PREDICT_SRC) : 2;   // standard 2 sedan frasgittret: minnet gav +1,6 falska/min utan traffar (09-21 kvall)
   /** Frasregel: LOS (standard): 2 stigande block ELLER energi, horisont 16 takter; LOTUS_PREDICT_STRICT=1: 3 block OCH energi, 8 takter.
    *  Bank 09-21 (12 langfangster, 22 refrangstarter): los 8/22 forutsedda inom +-2 s, lead 11,9 s, 6,0 falska/min; stram 4/22, 4,0/min;
    *  bara minne 2/22, 2,0/min. Taket satts av sektionsdetektorn sjalv (high==high 0,51) - battre sektioner -> battre forutsagelse. */
   private static readonly PREDICT_STRICT = typeof process !== 'undefined' && process.env?.LOTUS_PREDICT_STRICT === '1';
+  /** FRASGITTER (09-21 kvall, agent-sec4): LOTUS_PREDICT_GRID = 'hi' (standard) forankrar frasgittret i senaste 'high'-STARTEN (fore forsta
+   *  refrangen: sektionsstarten) i stallet for i varje sektionsstart (som flimrar 6 byten/min) -> samma maltid oavsett nar regeln tander.
+   *  'sec' = gamla. LOTUS_PREDICT_LAT = gitterlangd i takter (standard 4; gamla 8). LOTUS_PREDICT_RISE = minsta antal raka stigande block
+   *  (secRiseRun) for frasregeln (standard 4; 0 = gamla losa regeln riseRun>=2 || buildUp>0,35 || bInt>0,55). LOTUS_PREDICT_DIP = dB (0 = av):
+   *  SUG-regel - blockets dB dyker >= DIP dB under medianen av de 6 blocken fore, i hog kontext (medianen >= refrangens dB - 4) -> high om 2 s
+   *  (kalla 3; bara pa dykets forsta block). Bank (12 langfangster, 22 refrangstarter): standard 8/22, 2,0 falska/min (var 8/22, 6,0);
+   *  RISE=0 12/22, 6,0/min; DIP=5 ensam 3/22, 0,8/min (kort lead 2,3 s) men +1,2/min ovanpa standard utan nya traffar. */
+  private static readonly PREDICT_GRID = (typeof process !== 'undefined' && process.env?.LOTUS_PREDICT_GRID) || 'hi';
+  private static readonly PREDICT_LAT = (typeof process !== 'undefined' && Number(process.env?.LOTUS_PREDICT_LAT)) || 4;
+  private static readonly PREDICT_RISE = typeof process !== 'undefined' && process.env?.LOTUS_PREDICT_RISE !== undefined ? Number(process.env.LOTUS_PREDICT_RISE) : 4;
+  private static readonly PREDICT_DIP = (typeof process !== 'undefined' && Number(process.env?.LOTUS_PREDICT_DIP)) || 0;
   private static readonly RANK_HI = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_RANK_HI)) || 0.67;
   private static readonly RANK_LO = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_RANK_LO)) || 0.33;
   private static secEnv(name: string, def: number): number { const v = typeof process !== 'undefined' ? process.env?.[name] : undefined; const x = Number(v); return v !== undefined && v !== '' && Number.isFinite(x) ? x : def; }
@@ -264,6 +276,7 @@ export class Analyser {
   section = 'intro'; sectionStartMs = 0; sectionIndex = 0; sectionTier = 1; repeatSim = 0; repeatAgoMs = 0; repeatSection = '';
   // Sektionsminne (se Frame.expectHighInMs): logg over avslutade sektioner + forutsagelse + referensniva
   expectHighMs = 0; expectSource = 0; prevSection = ''; levelVsHighDb = 0;
+  private secHiStartMs = 0; private secDipExpMs = 0; private secInDip = false;   // frasgittrets ankare (senaste high-start), sug-regelns mal + flank
   private secLog: Array<{ label: string; startMs: number; endMs: number; db: number; dens: number }> = [];
   private secCurDbSum = 0; private secCurDbN = 0; private secCurDens = 0; private lastHighDb = NaN;
   private secBlkMs = 0; private secBlkN = 0; private secBlkInt = 0; private secBlkKicks = 0; private secBlkCent = 0; private secBlkSpec = new Float32Array(8);
@@ -276,6 +289,8 @@ export class Analyser {
   private phaseScratchB = new Float32Array(128); private phaseScratchF = new Float32Array(128);
   /** Korbanks-telemetri for gridfasen: vald fas mot motfas per band. */
   dbgPhase = { conf: 0, bassOn: 0, bassAnti: 0, fullOn: 0, fullAnti: 0, bestPh: 0, nPh: 0, pending: 0 };
+  /** Korbanks-krok: ett anrop per sektionsblock (1 s) med blockets varden (null i drift, ingen kostnad). */
+  dbgSecBlock: ((b: Record<string, unknown>) => void) | null = null;
   private envFilled = 0;
   private envAccum = 0;
   private envAccumT = 0;
@@ -810,6 +825,7 @@ export class Analyser {
     this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
+    this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false;
   }
 
   /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
@@ -879,13 +895,14 @@ export class Analyser {
       if (this.secLog.length > 48) this.secLog.shift();
       if (prev === 'high') this.lastHighDb = dbMean;
       this.prevSection = prev; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0;
-      this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; } this.section = label;
+      this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; this.secHiStartMs = nowMs; } this.section = label;
     }
     this.secCurDbSum += blkDb; this.secCurDbN++; this.secCurDens += bKicks;
     if (this.secDump) { const row = [(nowMs - this.secSongStartMs) / 1000, blkDb, bKicks, bCent, bInt, breaking ? 1 : 0, dropped ? 1 : 0]; for (let i = 0; i < 8; i++) row.push(this.secBlkSpec[i] / n); row.push(st, ['intro', 'low', 'build', 'high', 'break'].indexOf(this.section)); this.secDump.push(row); }
     if (this.section === 'high') this.lastHighDb = this.secCurDbSum / this.secCurDbN;   // pagaende refrang = farskaste referensen
     this.levelVsHighDb = Number.isFinite(this.lastHighDb) ? blkDb - this.lastHighDb : 0;
     this.predictHigh(nowMs, bInt);
+    if (this.dbgSecBlock) this.dbgSecBlock({ nowMs, section: this.section, sectionStartMs: this.sectionStartMs, prev, label, bpm: this.localBpm, bInt, bKicks, bCent, blkDb, buildUp: this.buildUp, riseRun: this.secRiseRun, rise, dropped, breaking, tier: this.sectionTier, repeatSim: this.repeatSim, repeatAgoMs: this.repeatAgoMs, repeatSection: this.repeatSection, spec: Array.from(this.secBlkSpec, (v) => v / n), lastHighDb: this.lastHighDb, expectHighMs: this.expectHighMs, expectSource: this.expectSource, beatPhaseMs: this.beatPhaseMs, secLogN: this.secLog.length, secLogLast: this.secLog[this.secLog.length - 1] ?? null });
     // klangavtryck var 4:e sekund
     let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
     const acc = this.secFpAcc; for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
@@ -908,7 +925,9 @@ export class Analyser {
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0;
   }
 
-  /** FORUTSAGELSE av nasta 'high' (se Frame.expectHighInMs). Kors per sektionsblock (1 s) i workern. */
+  /** FORUTSAGELSE av nasta 'high' (se Frame.expectHighInMs). Kors per sektionsblock (1 s) i workern. Kallor: 1 minne, 2 fras
+   *  (stigande energi -> nasta gitterpunkt), 3 sug (dyk i dB strax fore smallen). Frasgittret ligger i takter fran senaste
+   *  high-starten (PREDICT_GRID 'hi') sa att en forutsagelse pekar pa samma tid oavsett i vilket block regeln tander. */
   private predictHigh(nowMs: number, bInt: number): void {
     const bpm = this.localBpm; const barMs = bpm > 0 ? 240000 / bpm : 0;
     let exp = 0, src = 0;
@@ -922,15 +941,29 @@ export class Analyser {
         if (cand > nowMs + 500) { exp = cand; src = 1; }
         break;
       }
-      // (2) FRAS: energin stiger -> nasta 8-taktsgrans fran sektionsstarten (minst en takt bort, hogst 16 takter)
-      const strict = Analyser.PREDICT_STRICT;
-      const rising = strict ? (this.secRiseRun >= 3 && (this.buildUp > 0.35 || bInt > 0.55)) : (this.secRiseRun >= 2 || this.buildUp > 0.35 || bInt > 0.55);
+      // (2) FRAS: energin stiger -> nasta gitterpunkt (PREDICT_LAT takter) fran ankaret (minst en takt bort, hogst 16 takter)
+      const strict = Analyser.PREDICT_STRICT; const minRise = Analyser.PREDICT_RISE;
+      const rising = strict ? (this.secRiseRun >= 3 && (this.buildUp > 0.35 || bInt > 0.55))
+        : minRise > 0 ? this.secRiseRun >= minRise : (this.secRiseRun >= 2 || this.buildUp > 0.35 || bInt > 0.55);
       if (!exp && (Analyser.PREDICT_SRC & 2) && rising) {
-        const elapsed = nowMs - this.sectionStartMs; const k = Math.ceil((elapsed + barMs) / (8 * barMs));
-        const cand = this.sectionStartMs + k * 8 * barMs;
+        const anchor = Analyser.PREDICT_GRID === 'hi' && this.secHiStartMs > 0 ? this.secHiStartMs : this.sectionStartMs;
+        const L = Analyser.PREDICT_LAT * barMs;
+        const elapsed = nowMs - anchor; const k = Math.ceil((elapsed + barMs) / L);
+        const cand = anchor + k * L;
         if (cand - nowMs <= (strict ? 8 : 16) * barMs) { exp = cand; src = 2; }
       }
     }
+    // (3) SUG (opt-in PREDICT_DIP): blockets dB >= DIP dB under medianen av de 6 blocken fore, kontexten hog (median >= refrangens dB - 4,
+    // utan refrang: alltid) -> high om 2 s; bara pa dykets forsta block, ateraktiveras nar dB ar tillbaka inom DIP/2.
+    const dip = Analyser.PREDICT_DIP; const nb = this.secBlkDb.length;
+    if (dip > 0 && nb >= 9 && this.section !== 'high') {
+      const w = this.secBlkDb.slice(nb - 8, nb - 2).sort((a, b) => a - b); const ref = w[3];
+      const loud = !Number.isFinite(this.lastHighDb) || ref >= this.lastHighDb - 4;
+      const isDip = loud && this.secBlkDb[nb - 1] <= ref - dip;
+      if (isDip && !this.secInDip) this.secDipExpMs = nowMs + 2000;
+      if (isDip) this.secInDip = true; else if (this.secBlkDb[nb - 1] >= ref - dip / 2) this.secInDip = false;
+    }
+    if (dip > 0 && this.secDipExpMs > nowMs - 1000 && this.section !== 'high') { exp = this.secDipExpMs; src = 3; }   // suget vinner: narmast i tid
     if (exp === 0 && this.expectHighMs > 0 && this.section !== 'high' && this.expectHighMs > nowMs - 2000) { exp = this.expectHighMs; src = this.expectSource; }   // hall forutsagelsen tills 2 s efter
     this.expectHighMs = exp; this.expectSource = src;
   }
