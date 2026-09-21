@@ -42,7 +42,7 @@ function runOne(y, rate) {
   const HOP = 128;
   const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015, onsetEnhancements: process.env.BENCH_ENH === '1' });   // standard AV = som Pi:n; BENCH_ENH=1 = 09-07-mergens onset-DSP (12/64 mot 30/64)
   an.setGainLock?.(false);
-  const buf = new Float32Array(HOP); const bpms = []; const confs = []; const raws = []; const kicks = []; const grids = []; const sections = []; let lastSec = ''; let repeats = 0; let lastPhaseMs = 0; let lastKick = 0; let hopCount = 0; const warm = Math.floor(10 * rate / HOP);
+  const buf = new Float32Array(HOP); const bpms = []; const confs = []; const raws = []; const kicks = []; const grids = []; const sections = []; const preds = []; let lastSec = ''; let repeats = 0; let lastPhaseMs = 0; let lastKick = 0; let hopCount = 0; const warm = Math.floor(10 * rate / HOP);
   const dbg = process.env.BENCH_DEBUG && runOne.name && runOne.current && runOne.current.includes(process.env.BENCH_DEBUG);
   for (let i = 0; i + HOP <= y.length; i += HOP) {
     buf.set(y.subarray(i, i + HOP));
@@ -53,6 +53,7 @@ function runOne(y, rate) {
     if (f && f.kickAtMs > 0 && f.kickAtMs !== lastKick) { lastKick = f.kickAtMs; kicks.push((f.kickAtMs > 1e11 ? f.kickAtMs - 1700000000000 : f.kickAtMs) / 1000); }   // virtuell epok (1,7e12) bort -> sekunder fran start   // analysatorns kickar (virtuell klocka = sekunder fran start)
     if (hopCount > warm && hopCount % 38 === 0 && f && f.bpm > 0) { bpms.push(f.bpm); confs.push(f.bpmConfidence ?? 0); if (an.rawBpmLast > 0) raws.push(an.rawBpmLast); }   // ~10 Hz
     if (f && f.section && f.section !== lastSec) { lastSec = f.section; sections.push([+(hopCount * HOP / rate).toFixed(1), f.section]); }
+    if (f && f.expectHighInMs > 0 && hopCount % 38 === 0) preds.push([hopCount * HOP / rate, hopCount * HOP / rate + f.expectHighInMs / 1000]);   // forutsagelse (~10 Hz): [nar, forutsedd high]
     if (f && f.repeatSim >= 0.92 && hopCount % 375 === 0) repeats++;
     if (hopCount > warm && f && f.bpm > 0 && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhaseMs) { lastPhaseMs = f.beatPhaseMs; grids.push({ t: hopCount * HOP / rate, bpm: f.bpm, anchor: (f.beatPhaseMs > 1e11 ? f.beatPhaseMs - 1700000000000 : f.beatPhaseMs) / 1000, conf: f.beatPhaseConf ?? 1 }); }   // analysatorns GRIDFAS (LOTUS_GRID_PHASE=1; s fran start) per hop - beatAnchorMs ar bara senaste kicken
     if (dbg && hopCount % (375 * 5) === 0 && an.dbgPhase) { const d = an.dbgPhase; console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s GRIDFAS conf ${d.conf.toFixed(2)} bas on/anti ${d.bassOn.toFixed(2)}/${d.bassAnti.toFixed(2)} hel on/anti ${d.fullOn.toFixed(2)}/${d.fullAnti.toFixed(2)} fas ${d.bestPh}/${d.nPh} vantande ${d.pending} beatPhaseMs ${f.beatPhaseMs > 0 ? ((f.beatPhaseMs - 1700000000000) / 1000).toFixed(3) : 0}`); }
@@ -62,11 +63,11 @@ function runOne(y, rate) {
   const med = s.length ? s[s.length >> 1] : 0;
   const rs = [...raws].sort((a, b) => a - b); const rawMed = rs.length ? rs[rs.length >> 1] : 0;
   const q = (p) => s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0;
-  return { med, rawMed, kicks, grids, sections, repeats, min: s[0] ?? 0, max: s[s.length - 1] ?? 0, q25: q(0.25), q75: q(0.75), conf: confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0, n: bpms.length };
+  return { med, rawMed, kicks, grids, sections, preds, repeats, min: s[0] ?? 0, max: s[s.length - 1] ?? 0, q25: q(0.25), q75: q(0.75), conf: confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0, n: bpms.length };
 }
 
 const rows = [];
-if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('.json'))) {
+if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('.json') && (!process.env.BENCH_FILTER || f.includes(process.env.BENCH_FILTER)))) {   // BENCH_FILTER=_smu9 -> bara langfangsterna
   const meta = JSON.parse(readFileSync(join(DIR, f), 'utf8')); const wav = join(DIR, f.replace(/\.json$/, '.wav'));
   if (!existsSync(wav)) continue;
   if (meta.result?.method === 'brus' || (meta.result?.quality && meta.result.quality.ok === false)) continue;   // brus-snuttar (kvalitetsgrinden) ar inget facit
@@ -108,7 +109,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
   const [phaseOn, phaseN] = phaseVs(pcBeats);
   // SEKTIONSFACIT (09-20): langfangst med all-in-one-segment -> andel sekunder dar analysatorns 'high' == facit 'chorus',
   // samt hur stor andel av facit-refrangerna analysatorn markerar som 'high' (recall) och hur mycket 'high' som ar utanfor (falsk).
-  let secAgree = null, secRecall = null, secFalse = null, secBound = null;
+  let secAgree = null, secRecall = null, secFalse = null, secBound = null, predHit = null, predTot = null, predLead = null, predFalse = null;
   // SEKTIONSFACIT = molnets granser + energirang per segment (section_facit.py -> sections.derived: tier high/mid/low/intro).
   // Matt: high==high-andel per sekund, refrang-recall (facit-high med analysator-high), falsk-high (analysator-high utanfor
   // facit-high), gransfel: andel av analysatorns byten som ligger inom +-3 s fran nagon facitgrans.
@@ -126,6 +127,15 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     const n = Math.max(1, total - 10); secAgree = agree / n; secRecall = chorusS ? chorusHit / chorusS : null; secFalse = highS ? highOut / highS : null;
     const bounds = segs.slice(1).map((g) => g.start); const changes = r.sections.slice(1).map(([ts]) => ts).filter((ts) => ts >= 10);
     if (changes.length) secBound = changes.filter((ts) => bounds.some((bd) => Math.abs(bd - ts) <= 3)).length / changes.length;
+    // FORUTSAGELSE (09-21): facitets high-starter (tier high efter icke-high, >= 20 s) - traff om nagon forutsagelse gjord 1-12 s
+    // fore starten pekade inom +-2 s; lead = tidigast traffande forutsagelse. Falsk = forutsedd tidpunkt > 4 s fran alla high-starter.
+    const highStarts = segs.filter((g, i) => g.tier === 'high' && i > 0 && segs[i - 1].tier !== 'high' && g.start >= 20).map((g) => g.start);
+    if (highStarts.length && r.preds) {
+      predTot = highStarts.length; predHit = 0; const leads = [];
+      for (const hs of highStarts) { const hits = r.preds.filter(([tp, at]) => tp >= hs - 12 && tp <= hs - 1 && Math.abs(at - hs) <= 2); if (hits.length) { predHit++; leads.push(hs - hits[0][0]); } }
+      leads.sort((a, b) => a - b); predLead = leads.length ? leads[leads.length >> 1] : null;
+      const uniq = [...new Set(r.preds.map(([, at]) => Math.round(at)))]; predFalse = uniq.filter((at) => !highStarts.some((hs) => Math.abs(at - hs) <= 4)).length / Math.max(1, y.length / rate / 60);
+    }
   }
   const a1Beats = meta.allin1?.beatsS || [];                              // all-in-one (ML-slagfoljare via Replicate) som tredje referens
   const [phaseA1] = phaseVs(a1Beats);
@@ -171,7 +181,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     let hitB = 0; for (const g of pcBeats) { let best = Infinity; for (const k of r.kicks) { const d = Math.abs(k - g); if (d < best) best = d; } if (best <= 0.06) hitB++; }
     beatR = hitB / pcBeats.length;
   }
-  rows.push({ set: 'korpus', secLenS: y.length / rate, follow, secAgree, secRecall, secFalse, secBound, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
+  rows.push({ set: 'korpus', secLenS: y.length / rate, follow, secAgree, secRecall, secFalse, secBound, predHit, predTot, predLead, predFalse, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
 }
 if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWith('.wav'))) {
   const facit = parseFloat(f); if (!facit) continue;
@@ -203,6 +213,8 @@ for (const set of ['korpus', 'synt']) {
   }
   const sf = rs.filter((r) => typeof r.secAgree === 'number');
   if (sf.length) console.log(`${set} sektionsfacit (langfangster n=${sf.length}): gransfel-traff median ${[...sf].filter((r) => r.secBound !== null).map((r) => r.secBound).sort((a, b) => a - b)[sf.filter((r) => r.secBound !== null).length >> 1]?.toFixed(2)}, high==high andel median ${[...sf].map((r) => r.secAgree).sort((a, b) => a - b)[sf.length >> 1].toFixed(2)}, refrang-recall median ${[...sf].filter((r) => r.secRecall !== null).map((r) => r.secRecall).sort((a, b) => a - b)[sf.filter((r) => r.secRecall !== null).length >> 1]?.toFixed(2)}, falsk-high median ${[...sf].filter((r) => r.secFalse !== null).map((r) => r.secFalse).sort((a, b) => a - b)[sf.filter((r) => r.secFalse !== null).length >> 1]?.toFixed(2)}`);
+  const prd = rs.filter((r) => r.predTot); if (prd.length) { const h = prd.reduce((a, r) => a + r.predHit, 0), t = prd.reduce((a, r) => a + r.predTot, 0); const leads = prd.map((r) => r.predLead).filter((x) => x !== null).sort((a, b) => a - b); const fl = prd.map((r) => r.predFalse).sort((a, b) => a - b);
+    console.log(`${set} forutsagelse (langfangster n=${prd.length}): refrangstart forutsedd ${h}/${t} (${(100 * h / Math.max(1, t)).toFixed(0)} %), lead median ${leads.length ? leads[leads.length >> 1].toFixed(1) : '-'} s, falska/min median ${fl.length ? fl[fl.length >> 1].toFixed(1) : '-'}`); }
   const sec = rs.filter((r) => r.sections && r.sections.length);
   if (sec.length && sec.some((r) => r.sections.length > 1)) { const cnt = {}; let hi = 0, rep = 0; for (const r of sec) { for (const [, l] of r.sections) cnt[l] = (cnt[l] || 0) + 1; if (r.sections.some(([, l]) => l === 'high')) hi++; if (r.repeats > 0) rep++; }
     const durs = []; for (const r of sec) for (let i = 1; i < r.sections.length; i++) durs.push(r.sections[i][0] - r.sections[i - 1][0]); durs.sort((a, b) => a - b);

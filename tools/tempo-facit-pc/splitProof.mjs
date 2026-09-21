@@ -32,7 +32,7 @@ function run(y, rate, mode) {
     an.setAudioClockMs(h * HOP / rate * 1000);
     if (h === 0) an.setVirtualClock(0); else an.advanceVirtualClock(h * HOP / rate * 1000);
     const f = an.process(buf); h++;
-    out.push([f.bpm, f.bpmConfidence, f.beatPhaseMs, f.beatPhaseConf, f.section, f.sectionTier, f.repeatSim]);
+    out.push([f.bpm, f.bpmConfidence, f.beatPhaseMs, f.beatPhaseConf, f.section, f.sectionTier, f.repeatSim, f.expectHighInMs, f.levelVsHighDb]);
   }
   return { out, an };
 }
@@ -46,7 +46,7 @@ for (const f of files) {
     const a = A[i], b = B[i];
     if (a[0] !== b[0] || a[1] !== b[1]) { td++; if (firstT < 0) firstT = i * HOP / rate; }
     if (a[2] !== b[2] || a[3] !== b[3]) pd++;
-    if (a[4] !== b[4]) sd++; if (a[5] !== b[5]) tr++; if (a[6] !== b[6]) rd++;
+    if (a[4] !== b[4]) sd++; if (a[5] !== b[5]) tr++; if (a[6] !== b[6] || a[7] !== b[7] || a[8] !== b[8]) rd++;
   }
   totHops += A.length; tempoDiff += td; phaseDiff += pd; secDiff += sd; tierDiff += tr; repDiff += rd;
   perFile.push(`${f.slice(0, 34).padEnd(34)} hop ${A.length}  tempo≠ ${td}${firstT >= 0 ? ` (forsta ${firstT.toFixed(1)} s)` : ''}  fas≠ ${pd}  sektion≠ ${sd}  tier≠ ${tr}  rep≠ ${rd}`);

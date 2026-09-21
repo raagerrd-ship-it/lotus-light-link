@@ -12,7 +12,7 @@ import {
   R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS,
   F_SIL350, F_SIL10, F_RESET_TEMPO, F_HINT, F_RESET_BAR, F_VCLOCK_SET, F_VCLOCK_NULL,
   C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PHASE_MS, S_PHASE_CONF, S_SECTION, S_SEC_START, S_SEC_INDEX, S_SEC_TIER,
-  S_REP_SIM, S_REP_AGO, S_REP_SEC, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
+  S_REP_SIM, S_REP_AGO, S_REP_SEC, S_EXPECT_MS, S_EXPECT_SRC, S_PREV_SEC, S_LVL_HIGH, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
   SECTIONS, sectionCode, viewsOf, stateWrite, stateRead, type SplitBuffers,
 } from './split.js';
 import FFT from "fft.js";
@@ -111,6 +111,13 @@ export interface Frame {
   /** UPPREPNING: likhet (cosinus, 0..1) mellan de senaste 4 s och det mest lika partiet >= 16 s tillbaka i laten,
    *  och hur langt tillbaka det lag samt vilken sektion det hade. repeatSim >= 0,92 mot 'high' = refrangen ar tillbaka. */
   repeatSim: number; repeatAgoMs: number; repeatSection: string;
+  /** SEKTIONSMINNE + FORUTSAGELSE (09-21, workern; agaren: "komma ihag hur laten lat for nagra sekunder sedan och forra sektionen").
+   *  expectHighInMs: ms tills nasta 'high' vantas (-1 = ingen forutsagelse, 0 = vi ar i high). Tva kallor: (1) MINNE - en tidigare
+   *  sektion med samma etikett foljdes av 'high' efter N takter (avrundat till 4) -> samma langd nu; (2) FRAS - energin stiger
+   *  (secRiseRun >= 2 eller buildUp > 0,35) -> nasta 8-taktsgrans fran sektionsstarten. prevSection = forra sektionens etikett.
+   *  levelVsHighDb = blockets dB mot senaste refrangens medel-dB (negativt = tystare an refrangen; 0 utan refrang) - latens EGEN
+   *  referens for dynamiken. sectionBars = takter sedan sektionsstart (0 utan tempo). */
+  expectHighInMs: number; prevSection: string; levelVsHighDb: number; sectionBars: number;
   /** Rikt spektrum + per-band onset (anslag) från dubbel-FFT:n (hög-upplöst). */
   spec: Spectrum;       // per-band NIVÅ (AGC 0..1)
   /** Absolut per-band magnitud före AGC, för Lotus ljusväg och bandandelar. */
@@ -229,10 +236,20 @@ export class Analyser {
   /** SEKTIONSLAGE: 'rank' (standard, 09-20 15:35) = kausal percentilrang av 4 s-fonstrets energi+anslagstathet mot alla block
    *  hittills i laten (samma matt som facit, section_facit.py, fast i realtid); 'tier' = gamla intensity-tiern (bank: 0,53 = slump). */
   private static readonly SECTION_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_SECTION_MODE) || 'rank';
+  /** Forutsagelsens kallor (bitmask): 1 = minne (tidigare sektion med samma etikett), 2 = fras (stigande energi -> 8-taktsgrans). Bank-A/B. */
+  private static readonly PREDICT_SRC = (typeof process !== 'undefined' && Number(process.env?.LOTUS_PREDICT_SRC)) || 3;
+  /** Frasregel: LOS (standard): 2 stigande block ELLER energi, horisont 16 takter; LOTUS_PREDICT_STRICT=1: 3 block OCH energi, 8 takter.
+   *  Bank 09-21 (12 langfangster, 22 refrangstarter): los 8/22 forutsedda inom +-2 s, lead 11,9 s, 6,0 falska/min; stram 4/22, 4,0/min;
+   *  bara minne 2/22, 2,0/min. Taket satts av sektionsdetektorn sjalv (high==high 0,51) - battre sektioner -> battre forutsagelse. */
+  private static readonly PREDICT_STRICT = typeof process !== 'undefined' && process.env?.LOTUS_PREDICT_STRICT === '1';
   private static readonly RANK_HI = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_RANK_HI)) || 0.67;
   private static readonly RANK_LO = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_RANK_LO)) || 0.33;
   private secBlkRms2 = 0; private secBlkDb: number[] = []; private secBlkDens: number[] = []; private secRankRun = 0; private secRankCand = 1;
   section = 'intro'; sectionStartMs = 0; sectionIndex = 0; sectionTier = 1; repeatSim = 0; repeatAgoMs = 0; repeatSection = '';
+  // Sektionsminne (se Frame.expectHighInMs): logg over avslutade sektioner + forutsagelse + referensniva
+  expectHighMs = 0; expectSource = 0; prevSection = ''; levelVsHighDb = 0;
+  private secLog: Array<{ label: string; startMs: number; endMs: number; db: number; dens: number }> = [];
+  private secCurDbSum = 0; private secCurDbN = 0; private secCurDens = 0; private lastHighDb = NaN;
   private secBlkMs = 0; private secBlkN = 0; private secBlkInt = 0; private secBlkKicks = 0; private secBlkCent = 0; private secBlkSpec = new Float32Array(8);
   private secTierRun = 0; private secTierCand = 1; private secRiseRun = 0; private secSongStartMs = 0; private secHighSeen = false; private secDropSeen = 0; private secSilentBlocks = 0;
   private secHist = new Float32Array(16); private secHistPos = 0; private secHistN = 0;
@@ -776,6 +793,7 @@ export class Analyser {
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0);
     this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
+    this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
   }
 
   /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
@@ -786,6 +804,7 @@ export class Analyser {
     for (let i = 0; i < 8; i++) this.secBlkSpec[i] += spec[specOff + i];
     if (this.secBlkMs < 1000) return;
     const n = this.secBlkN || 1; const bInt = this.secBlkInt / n; const bKicks = this.secBlkKicks; const bCent = this.secBlkCent / n;
+    const blkDb = 10 * Math.log10(this.secBlkRms2 / n + 1e-10);
     // tystnad mellan latar: 3 tysta block -> ny lat
     if (this.activeMs === 0) { if (++this.secSilentBlocks >= 10) { this.sectionReset(); return; } }   // 10 s tystnad (var 3: en tyst vers nollade laten, Regnblota 100 s)
     else this.secSilentBlocks = 0;
@@ -834,7 +853,19 @@ export class Analyser {
     // uppehallstid 8 s (var 4: build/low/high bytte var 4 s pa pop 14:30), utom in i 'high' (4 s) och high -> break (direkt)
     const dwellMs = label === 'high' ? 4000 : 8000;
     const dwellOk = nowMs - this.sectionStartMs >= dwellMs || (prev === 'high' && label === 'break');
-    if (label !== prev && dwellOk) { this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; } this.section = label; }
+    if (label !== prev && dwellOk) {
+      // MINNE: avslutad sektion till loggen (medel-dB, kickar/s); refrangens dB blir referensen for levelVsHighDb.
+      const dbMean = this.secCurDbN ? this.secCurDbSum / this.secCurDbN : blkDb;
+      this.secLog.push({ label: prev, startMs: this.sectionStartMs, endMs: nowMs, db: dbMean, dens: this.secCurDbN ? this.secCurDens / this.secCurDbN : 0 });
+      if (this.secLog.length > 48) this.secLog.shift();
+      if (prev === 'high') this.lastHighDb = dbMean;
+      this.prevSection = prev; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0;
+      this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; } this.section = label;
+    }
+    this.secCurDbSum += blkDb; this.secCurDbN++; this.secCurDens += bKicks;
+    if (this.section === 'high') this.lastHighDb = this.secCurDbSum / this.secCurDbN;   // pagaende refrang = farskaste referensen
+    this.levelVsHighDb = Number.isFinite(this.lastHighDb) ? blkDb - this.lastHighDb : 0;
+    this.predictHigh(nowMs, bInt);
     // klangavtryck var 4:e sekund
     let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
     const acc = this.secFpAcc; for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
@@ -855,6 +886,33 @@ export class Analyser {
       acc.fill(0); this.secFpAccN = 0;
     }
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0;
+  }
+
+  /** FORUTSAGELSE av nasta 'high' (se Frame.expectHighInMs). Kors per sektionsblock (1 s) i workern. */
+  private predictHigh(nowMs: number, bInt: number): void {
+    const bpm = this.localBpm; const barMs = bpm > 0 ? 240000 / bpm : 0;
+    let exp = 0, src = 0;
+    if (this.section !== 'high' && barMs > 0) {
+      // (1) MINNE: senaste tidigare sektion med samma etikett som foljdes av 'high' -> samma antal takter (avrundat till 4, minst 4)
+      if (Analyser.PREDICT_SRC & 1) for (let i = this.secLog.length - 2; i >= 0; i--) {
+        const a = this.secLog[i], b = this.secLog[i + 1];
+        if (a.label !== this.section || b.label !== 'high') continue;
+        const bars = Math.max(4, Math.round((a.endMs - a.startMs) / barMs / 4) * 4);
+        const cand = this.sectionStartMs + bars * barMs;
+        if (cand > nowMs + 500) { exp = cand; src = 1; }
+        break;
+      }
+      // (2) FRAS: energin stiger -> nasta 8-taktsgrans fran sektionsstarten (minst en takt bort, hogst 16 takter)
+      const strict = Analyser.PREDICT_STRICT;
+      const rising = strict ? (this.secRiseRun >= 3 && (this.buildUp > 0.35 || bInt > 0.55)) : (this.secRiseRun >= 2 || this.buildUp > 0.35 || bInt > 0.55);
+      if (!exp && (Analyser.PREDICT_SRC & 2) && rising) {
+        const elapsed = nowMs - this.sectionStartMs; const k = Math.ceil((elapsed + barMs) / (8 * barMs));
+        const cand = this.sectionStartMs + k * 8 * barMs;
+        if (cand - nowMs <= (strict ? 8 : 16) * barMs) { exp = cand; src = 2; }
+      }
+    }
+    if (exp === 0 && this.expectHighMs > 0 && this.section !== 'high' && this.expectHighMs > nowMs - 2000) { exp = this.expectHighMs; src = this.expectSource; }   // hall forutsagelsen tills 2 s efter
+    this.expectHighMs = exp; this.expectSource = src;
   }
 
   /** GRIDFAS (2026-09-20). Korpusens handelseloggar (39 latar med ratt tempo i samma oktav): motorns pulser i fas i 5,
@@ -964,6 +1022,7 @@ export class Analyser {
     this.beatPhaseMs = s[S_PHASE_MS]; this.beatPhaseConf = s[S_PHASE_CONF];
     this.section = SECTIONS[s[S_SECTION]] || 'intro'; this.sectionStartMs = s[S_SEC_START]; this.sectionIndex = s[S_SEC_INDEX]; this.sectionTier = s[S_SEC_TIER];
     this.repeatSim = s[S_REP_SIM]; this.repeatAgoMs = s[S_REP_AGO]; this.repeatSection = SECTIONS[s[S_REP_SEC]] || '';
+    this.expectHighMs = s[S_EXPECT_MS]; this.expectSource = s[S_EXPECT_SRC]; this.prevSection = SECTIONS[s[S_PREV_SEC]] || ''; this.levelVsHighDb = s[S_LVL_HIGH];
   }
   setInlinePeer(slow: Analyser | null): void { this.inlinePeer = slow; }
   /** Halsa for /api/live: hur langt efter workern ligger (records och ms), dess kostnad per record, tappade records. */
@@ -1001,6 +1060,7 @@ export class Analyser {
         s[S_PHASE_MS] = this.beatPhaseMs; s[S_PHASE_CONF] = this.beatPhaseConf;
         s[S_SECTION] = sectionCode(this.section); s[S_SEC_START] = this.sectionStartMs; s[S_SEC_INDEX] = this.sectionIndex; s[S_SEC_TIER] = this.sectionTier;
         s[S_REP_SIM] = this.repeatSim; s[S_REP_AGO] = this.repeatAgoMs; s[S_REP_SEC] = sectionCode(this.repeatSection);
+        s[S_EXPECT_MS] = this.expectHighMs; s[S_EXPECT_SRC] = this.expectSource; s[S_PREV_SEC] = sectionCode(this.prevSection); s[S_LVL_HIGH] = this.levelVsHighDb;
         s[S_PROCESSED] = this.slowProcessed; s[S_LAG_MS] = lagMs; s[S_LAG_MAX] = this.slowLagMaxMs; s[S_BUSY_US] = this.slowBusyEmaUs; s[S_BUSY_MAX_US] = this.slowBusyMaxUs; s[S_SKIPPED] = this.slowSkipped;
       });
     }
@@ -1795,7 +1855,7 @@ export class Analyser {
       level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
       dropCount: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
-      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '',
+      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
   }
@@ -2547,6 +2607,9 @@ export class Analyser {
     }
     f.section = this.section; f.sectionAgeMs = this.sectionStartMs > 0 ? nowWallA - this.sectionStartMs : 0; f.sectionIndex = this.sectionIndex; f.sectionTier = this.sectionTier;
     f.repeatSim = this.repeatSim; f.repeatAgoMs = this.repeatAgoMs; f.repeatSection = this.repeatSection;
+    f.expectHighInMs = this.section === 'high' ? 0 : this.expectHighMs > 0 ? Math.max(0, this.expectHighMs - nowWallA) : -1;
+    f.prevSection = this.prevSection; f.levelVsHighDb = this.levelVsHighDb;
+    f.sectionBars = this.localBpm > 0 && this.sectionStartMs > 0 ? (nowWallA - this.sectionStartMs) / (240000 / this.localBpm) : 0;
     return f;
   }
 }
