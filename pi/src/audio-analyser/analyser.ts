@@ -9,7 +9,8 @@
 import { TempoTracker } from './tempoTracker.js';
 import {
   REC_LEN, RING_N, R_SEQ, R_PERF, R_WALL, R_ENV, R_BASS, R_FLAGS, R_HINT_MS, R_VCLOCK, R_SEC_N, R_SEC_INT, R_SEC_KICKS, R_SEC_BREAK,
-  R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS,
+  R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS, R_FLAGCNT, RING_MARGIN, FLAG_BITS,
+  packFlagCounts, lostFlags, seqLow, seqDelta, C_WAITING, C_STATE_SEQ, S_LOST_FLAGS,
   F_SIL350, F_SIL10, F_RESET_TEMPO, F_HINT, F_RESET_BAR, F_VCLOCK_SET, F_VCLOCK_NULL,
   C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PHASE_MS, S_PHASE_CONF, S_SECTION, S_SEC_START, S_SEC_INDEX, S_SEC_TIER,
   S_REP_SIM, S_REP_AGO, S_REP_SEC, S_EXPECT_MS, S_EXPECT_SRC, S_PREV_SEC, S_LVL_HIGH, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
@@ -36,6 +37,9 @@ export interface AnalyserConfig {
    *  tillstandsblocket) | 'slow' (workern: matas ur SAB-ringen via drainRecords()). */
   role?: 'all' | 'fast' | 'slow';
   split?: SplitBuffers;
+  /** Seq att fortsätta från (slow: senast LÄSTA record, satt av index.ts vid omstart av workern; fast: senast SKRIVNA).
+   *  0/utelämnad = från början. Full JS-seq (inte de 32 låga bitarna). */
+  resumeSeq?: number;
 }
 
 /** Rikt log-spektrum (8 band) från den parallella 2048-FFT:n. Varje band är
@@ -327,9 +331,14 @@ export class Analyser {
   readonly role: 'all' | 'fast' | 'slow';
   private splitCtrl: Int32Array | null = null; private splitRing: Float64Array | null = null; private splitState: Float64Array | null = null;
   private stateCopy = new Float64Array(STATE_LEN);
-  private recSeq = 0;              // fast: senast skrivna record; slow: senast lasta
+  private recSeq = 0;              // fast: senast skrivna record; slow: senast lasta. JS-tal, wrap-sakert (split.ts seqDelta)
   private barrierSeq = 0;          // fast: tillstand aldre an detta record ignoreras (en flagga ar pa vag)
   private pendFlags = 0; private pendHintMs = 0; private pendVclock = 0;
+  private flagCnt = new Int32Array(FLAG_BITS);   // fast: antal ganger varje flagga rests (packas i R_FLAGCNT, se split.ts)
+  private slowLastCnt = -1;        // slow: R_FLAGCNT i senast behandlade record (-1 = okant, t.ex. direkt efter omstart)
+  private slowGap = false;         // slow: records tappade sedan senast behandlade -> kontrollera forlorade flaggor
+  private slowLostFlags = 0;       // slow: antal flaggor som aterskapats ur raknarna efter tapp (statistik)
+  splitRestarts = 0;               // fast: antal omstarter av workern (satts av index.ts)
   private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, spec: new Float64Array(8) };
   private inlinePeer: Analyser | null = null;
   private slowBusyEmaUs = 0; private slowBusyMaxUs = 0; private slowLagMaxMs = 0; private slowSkipped = 0; private slowProcessed = 0;
@@ -1171,7 +1180,11 @@ export class Analyser {
   }
 
   // ── DELAD ANALYSATOR: snabba sidan ────────────────────────────────────────────────────────────
-  private flagSlow(f: number): void { if (this.role === 'fast') { this.pendFlags |= f; this.barrierSeq = this.recSeq + 1; } }
+  private flagSlow(f: number): void {
+    if (this.role !== 'fast') return;
+    this.pendFlags |= f; this.barrierSeq = this.recSeq + 1;
+    for (let k = 0; k < FLAG_BITS; k++) if (f & (1 << k)) this.flagCnt[k]++;
+  }
   /** Ett record per env-sampel (100 Hz) till workern: ringvardena, flaggorna sedan forra recordet, sektionens blocksummor. */
   private pushSlowRecord(e: number, b: number): void {
     const r = this.splitRing!, ctrl = this.splitCtrl!;
@@ -1182,10 +1195,12 @@ export class Analyser {
     r[o + R_SEC_CENT] = g.cent; r[o + R_SEC_DT] = g.dt; r[o + R_SEC_WALL] = g.wall;
     for (let i = 0; i < 8; i++) r[o + R_SEC_SPEC0 + i] = g.spec[i];
     r[o + R_DROPS] = this.dropCount; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp;
+    r[o + R_FLAGCNT] = packFlagCounts(this.flagCnt);
     r[o + R_SEQ] = seq;                                    // sist: seq = recordet ar komplett
     g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0);
     this.pendFlags = 0;
-    Atomics.store(ctrl, C_WRITE, seq); Atomics.notify(ctrl, C_WRITE, 1);
+    Atomics.store(ctrl, C_WRITE, seqLow(seq));             // laga 32 bitarna; workern rekonstruerar via seqDelta (wrap-sakert)
+    if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WRITE, 1);   // Dekker: workern satter C_WAITING fore wait-jamforelsen
     if (this.inlinePeer) { this.inlinePeer.drainRecords(); this.pullSlowState(); }   // inline-lage (korbank): synkront har, tillstandet hamtas direkt
   }
   /** Hamta tempo/gridfas/sektion ur tillstandsblocket (varje hop, ~20 doubles). Aldre an barrierSeq ignoreras. */
@@ -1200,26 +1215,38 @@ export class Analyser {
   }
   setInlinePeer(slow: Analyser | null): void { this.inlinePeer = slow; }
   /** Halsa for /api/live: hur langt efter workern ligger (records och ms), dess kostnad per record, tappade records. */
-  getSplitStats(): { role: string; written: number; processed: number; behind: number; lagMs: number; lagMaxMs: number; busyUs: number; busyMaxUs: number; skipped: number } | null {
+  getSplitStats(): { role: string; written: number; processed: number; behind: number; lagMs: number; lagMaxMs: number; busyUs: number; busyMaxUs: number; skipped: number; lostFlags: number; restarts: number } | null {
     if (this.role !== 'fast') return null;
     const s = this.stateCopy;
     return { role: this.role, written: this.recSeq, processed: s[S_PROCESSED], behind: this.recSeq - s[S_REC_SEQ], lagMs: +s[S_LAG_MS].toFixed(1), lagMaxMs: +s[S_LAG_MAX].toFixed(1),
-      busyUs: Math.round(s[S_BUSY_US]), busyMaxUs: Math.round(s[S_BUSY_MAX_US]), skipped: s[S_SKIPPED] };
+      busyUs: Math.round(s[S_BUSY_US]), busyMaxUs: Math.round(s[S_BUSY_MAX_US]), skipped: s[S_SKIPPED], lostFlags: s[S_LOST_FLAGS], restarts: this.splitRestarts };
   }
+  /** fast: senast skrivna record (full seq) resp. senast LASTA enligt workern (C_READ, wrap-sakert) — for omstart av workern. */
+  fastWriteSeq(): number { return this.recSeq; }
+  fastReadSeq(): number { const d = seqDelta(Atomics.load(this.splitCtrl!, C_READ), this.recSeq); return d > 0 ? this.recSeq : this.recSeq + d; }
 
   // ── DELAD ANALYSATOR: langsamma sidan (workern / inline) ─────────────────────────────────────
   slowReadSeq(): number { return this.recSeq; }
   /** Behandla alla records som skrivits sedan sist, publicera tillstandet. Returnerar antal. */
   drainRecords(): number {
     const ctrl = this.splitCtrl!, r = this.splitRing!;
-    const w = Atomics.load(ctrl, C_WRITE); let n = 0;
-    if (w - this.recSeq > RING_N - 8) { this.slowSkipped += (w - this.recSeq) - (RING_N - 8); this.recSeq = w - (RING_N - 8); }   // ringen hann skrivas over
+    const w = this.recSeq + seqDelta(Atomics.load(ctrl, C_WRITE), this.recSeq); let n = 0;   // full seq ur 32 laga bitar (wrap-sakert)
+    if (w - this.recSeq > RING_N - RING_MARGIN) { this.slowSkipped += (w - this.recSeq) - (RING_N - RING_MARGIN); this.recSeq = w - (RING_N - RING_MARGIN); this.slowGap = true; }   // ringen hann skrivas over
     let lagMs = 0;
     while (this.recSeq < w) {
       const seq = ++this.recSeq; const o = (seq % RING_N) * REC_LEN;
-      if (r[o + R_SEQ] !== seq) { this.slowSkipped++; continue; }
+      if (r[o + R_SEQ] !== seq) { this.slowSkipped++; this.slowGap = true; continue; }
       const t0 = performance.now();
-      this.slowStep(o);
+      if (this.slowGap) {
+        // Records tappade sedan senast behandlade: flaggor som lag i dem far inte forsvinna utan konsekvens (split.ts).
+        // Vardena (hint-fonster, virtuell klocka) ar borta -> standard 5000 ms resp. recordets egen tid.
+        if (this.slowLastCnt >= 0) {
+          const lost = lostFlags(this.slowLastCnt, r[o + R_FLAGCNT], r[o + R_FLAGS]);
+          if (lost) { this.slowLostFlags++; this.applyFlags(lost, 5000, r[o + R_PERF]); }
+        }
+        this.slowGap = false;
+      }
+      this.slowStep(o); this.slowLastCnt = r[o + R_FLAGCNT];
       const us = (performance.now() - t0) * 1000;
       this.slowBusyEmaUs = this.slowBusyEmaUs === 0 ? us : this.slowBusyEmaUs + 0.02 * (us - this.slowBusyEmaUs);
       if (us > this.slowBusyMaxUs) this.slowBusyMaxUs = us;
@@ -1228,25 +1255,23 @@ export class Analyser {
     }
     if (n > 0) {
       this.slowProcessed += n;
-      Atomics.store(ctrl, C_READ, this.recSeq);
+      Atomics.store(ctrl, C_READ, seqLow(this.recSeq));
       stateWrite(ctrl, this.splitState!, (s) => {
         s[S_REC_SEQ] = this.recSeq; s[S_BPM] = this.localBpm; s[S_CONF] = this.localBpmConfidence; s[S_BPMF] = this.localBpmF;
         s[S_PHASE_MS] = this.beatPhaseMs; s[S_PHASE_CONF] = this.beatPhaseConf;
         s[S_SECTION] = sectionCode(this.section); s[S_SEC_START] = this.sectionStartMs; s[S_SEC_INDEX] = this.sectionIndex; s[S_SEC_TIER] = this.sectionTier;
         s[S_REP_SIM] = this.repeatSim; s[S_REP_AGO] = this.repeatAgoMs; s[S_REP_SEC] = sectionCode(this.repeatSection);
         s[S_EXPECT_MS] = this.expectHighMs; s[S_EXPECT_SRC] = this.expectSource; s[S_PREV_SEC] = sectionCode(this.prevSection); s[S_LVL_HIGH] = this.levelVsHighDb;
-        s[S_PROCESSED] = this.slowProcessed; s[S_LAG_MS] = lagMs; s[S_LAG_MAX] = this.slowLagMaxMs; s[S_BUSY_US] = this.slowBusyEmaUs; s[S_BUSY_MAX_US] = this.slowBusyMaxUs; s[S_SKIPPED] = this.slowSkipped;
+        s[S_PROCESSED] = this.slowProcessed; s[S_LAG_MS] = lagMs; s[S_LAG_MAX] = this.slowLagMaxMs; s[S_BUSY_US] = this.slowBusyEmaUs; s[S_BUSY_MAX_US] = this.slowBusyMaxUs; s[S_SKIPPED] = this.slowSkipped; s[S_LOST_FLAGS] = this.slowLostFlags;
       });
     }
     return n;
   }
-  /** Ett record = ett env-sampel: flaggor i ordning, ringvardena, snabba sidans fakta, env-steget, sektionsblocket. */
-  private slowStep(o: number): void {
-    const r = this.splitRing!; const flags = r[o + R_FLAGS];
-    if (flags & F_VCLOCK_NULL) this.setVirtualClock(null); else if (flags & F_VCLOCK_SET) this.setVirtualClock(r[o + R_VCLOCK]);
-    this.virtualMs = r[o + R_PERF];                        // perfNow() = snabba tradens tid vid sampeln (deterministiskt)
+  /** Snabba sidans kommandon i exakt den ordning de restes (virtuell klocka forst: den nollar ankare som resten skriver). */
+  private applyFlags(flags: number, hintMs: number, vclock: number): void {
+    if (flags & F_VCLOCK_NULL) this.setVirtualClock(null); else if (flags & F_VCLOCK_SET) this.setVirtualClock(vclock);
     if (flags & F_RESET_TEMPO) this.resetTempo();
-    if (flags & F_HINT) this.hintTrackChange(r[o + R_HINT_MS]);
+    if (flags & F_HINT) this.hintTrackChange(hintMs);
     if (flags & F_RESET_BAR) this.resetBar();
     if (flags & F_SIL350) {
       this.localBpmConfidence = 0; this.clearLockVotes();
@@ -1256,6 +1281,12 @@ export class Analyser {
       this.barAcc.fill(0); this.barCount = 0;
     }
     if (flags & F_SIL10) { this.localBpm = 0; this.tempoGram.fill(0); }
+  }
+  /** Ett record = ett env-sampel: flaggor i ordning, ringvardena, snabba sidans fakta, env-steget, sektionsblocket. */
+  private slowStep(o: number): void {
+    const r = this.splitRing!;
+    this.applyFlags(r[o + R_FLAGS], r[o + R_HINT_MS], r[o + R_VCLOCK]);
+    this.virtualMs = r[o + R_PERF];                        // perfNow() = snabba tradens tid vid sampeln (deterministiskt)
     this.envRing[this.envPos] = r[o + R_ENV]; this.envBassRing[this.envPos] = r[o + R_BASS];
     this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
     this.envLastWallMs = r[o + R_WALL];
@@ -1961,7 +1992,16 @@ export class Analyser {
     if (this.role !== 'all') {
       if (!cfgIn.split) throw new Error('Analyser: roll ' + this.role + ' kraver split-buffertar');
       const v = viewsOf(cfgIn.split); this.splitCtrl = v.ctrl; this.splitRing = v.ring; this.splitState = v.state;
-      if (this.role === 'slow') this.recSeq = Atomics.load(v.ctrl, C_READ);
+      // resumeSeq (full JS-seq) fran index.ts: slow = senast lasta record (omstart av workern fortsatter dar den dog,
+      // drainRecords klipper backloggen till RING_N-RING_MARGIN); C_READ ar bara 32 laga bitar och duger inte ensamt.
+      this.recSeq = cfgIn.resumeSeq ?? 0;
+      if (this.role === 'slow') {
+        this.slowGap = true;   // forsta recordet: okand forhistoria -> raknarna tas som utgangspunkt
+        // Seqlock-paritet: dog forra workern MITT I stateWrite (terminate/OOM) star C_STATE_SEQ udda for alltid och varje
+        // stateRead pa snabba sidan misslyckas — aven mot den nya workern (som skulle skriva udda→jamn→udda). En skribent
+        // i taget, sa det ar sakert att jamna till har.
+        const sq = Atomics.load(v.ctrl, C_STATE_SEQ); if (sq & 1) Atomics.store(v.ctrl, C_STATE_SEQ, sq + 1);
+      }
     }
     const cfg = this.cfg = {
       audio: { rate: cfgIn.sampleRate },
