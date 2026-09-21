@@ -808,7 +808,10 @@ async function main() {
             alsaMic.restartCapture('mic-stall-watchdog');
           }
 
-          if (lc.getLifecycleState() !== 'MOTOR_ON') {
+          // Motorn tickar bara nar den SPELAR (setPlaying(false) stoppar loopen). Efter PAUSED ligger lifecycle kvar i
+          // MOTOR_ON i 180 s (cancellerbar shutdown) - da ar "inga ticks" korrekt vila, inte frysning. Kroniskt fel 09-15..09-21:
+          // 1-3 'playback-watchdog-stuck'-omstarter per dag, alla ~10 s efter PAUSED.
+          if (lc.getLifecycleState() !== 'MOTOR_ON' || (engineInstance as any)?.playing !== true) {
             stuckMs = 0;
             recoveryAttempts = 0;
             lastEngineTicks = getEngineTickTotal();
