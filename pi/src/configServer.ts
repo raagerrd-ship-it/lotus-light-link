@@ -386,6 +386,19 @@ export function startConfigServer(port = 3050): void {
     res.json({ ok: true, durationMs: Date.now() - t0, steps });
   });
 
+  /** Sektionsminnet (workern) — EN sanning for bade /api/live och /api/status (2026-09-22: /api/status saknade det helt,
+   *  sa den som bara tittade dar sag inga sektioner alls). null nar micen inte levererar nagon frame. */
+  const sectionBlock = () => {
+    const f: any = getMic()?.getLatestFrame?.();
+    if (!f) return null;
+    return {
+      section: f.section, prev: f.prevSection, expectHighInMs: f.expectHighInMs,
+      levelVsHighDb: +(f.levelVsHighDb ?? 0).toFixed(1), bars: +(f.sectionBars ?? 0).toFixed(1),
+      repeatSim: +(f.repeatSim ?? 0).toFixed(2), index: f.sectionIndex ?? 0, tier: f.sectionTier ?? null,
+      ageMs: Math.round(f.sectionAgeMs ?? 0),
+    };
+  };
+
   const startSubsystem = async (id: SubsystemId, res: any) => {
     if (!_starters) {
       return res.status(503).json({ error: 'Subsystem-starters inte attachade ännu' });
@@ -666,7 +679,7 @@ export function startConfigServer(port = 3050): void {
         : { running: false, tickMs: null, hz: null, palette: [] },
       beat: engine?.getBeatInfo?.() ?? null,
       // Sektionsminnet (workern): sektion, forvarning (ms till vantad refrang, -1 ingen), niva mot senaste refrangen (dB)
-      section: (() => { const f: any = getMic()?.getLatestFrame?.(); return f ? { section: f.section, prev: f.prevSection, expectHighInMs: f.expectHighInMs, levelVsHighDb: +(f.levelVsHighDb ?? 0).toFixed(1), bars: +(f.sectionBars ?? 0).toFixed(1), repeatSim: +(f.repeatSim ?? 0).toFixed(2) } : null; })(),
+      section: sectionBlock(),
       sync: (engine as any)?.getSyncDiag?.() ?? null,   // tick-synk mot BLE-rastret (raster.ts), mätare även när synken är av
       captureEnabled: _captureGet ? _captureGet() : true,
       clapMode: (engine as any)?.isClapMode?.() ?? false,
@@ -821,6 +834,7 @@ export function startConfigServer(port = 3050): void {
       // Portable analyser-snapshot (parallell pipe, driver inget än — exponerad
       // för UI/framtida BPM-pulse, drop-orkestrering, mood-auto-select).
       analyser: analyserFrame,
+      section: sectionBlock(),   // sektionsminnet aven har (samma kalla som /api/live)
       // Taktklockan: locked/bpm/phase/nextBeatMs/beatErr/gridPulses/leadMs
       beat: engine?.getBeatInfo?.() ?? null,
       analyserCost, // { msEMA, msMax, hops, overBudget, budgetMs } — larma om msMax>budgetMs
