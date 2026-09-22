@@ -274,6 +274,20 @@ export class Analyser {
   private static readonly RANK_W_CENT = Analyser.secEnv('LOTUS_SECTION_W_CENT', 0.5);
   private static readonly RANK_HYST = Analyser.secEnv('LOTUS_SECTION_HYST', 0.15);
   private static readonly RANK_RUN = Analyser.secEnv('LOTUS_SECTION_RUN', 3);
+  /** SNABB ATTACK (09-22, agent-sec5, matt REFRANG 2): LOTUS_SECTION_RUN_IN = antal raka block for att ga IN i tier 2 (high) fran en
+   *  lagre tier (0 = som RANK_RUN). Ut ur high galler RANK_RUN som forr (asymmetrisk hysteres: refrangen ska synas direkt, slappa langsamt).
+   *  LOTUS_SECTION_HOLD_BARS = N (0 = av): uppehallet i high (REPEAT bit 16/32) ersatts av TAKTSTRUKTUR - minst N takter fran high-starten,
+   *  sedan slapps high bara pa en 4-taktsgrans (fas +-1 takt) nar rangen inte langre sager high. */
+  private static readonly RANK_RUN_IN = Analyser.secEnv('LOTUS_SECTION_RUN_IN', 0);
+  private static readonly HOLD_BARS = Analyser.secEnv('LOTUS_SECTION_HOLD_BARS', 0);
+  /** ATERINTRADE (09-22, agent-sec5): efter forsta refrangen ar refrangnivan kand (lastHighDb). Ar 2-blocksmedlet tillbaka pa den nivan
+   *  (>= lastHighDb - REENTRY_DB) och 4 s-fonstrets rang >= REENTRY_PCT (under RANK_HI 0,67) -> 'high' DIREKT utan 3-blocks-run.
+   *  Offline-sim pa train-dumpen (14 latar med refrang 2): refrang 2 <= 4 s 0 -> 3/14 (median 12,3 -> 8,0 s), vers 2 oforandrad,
+   *  refrang-recall 0,58 -> 0,67, falsk-high 0,54 -> 0,55; dB-gransen binder nastan aldrig (0,5-2,0 lika), rangen ar det som avgor.
+   *  REENTRY_PCT = 0 (standard) = av. */
+  private static readonly REENTRY_PCT = Analyser.secEnv('LOTUS_SECTION_REENTRY_PCT', 0);
+  private static readonly REENTRY_DB = Analyser.secEnv('LOTUS_SECTION_REENTRY_DB', 1.0);
+  private secPct = 0;
   private secBlkCentH: number[] = []; private secScoreBuf = new Float64Array(600);
   private secBlkRms2 = 0; private secBlkDb: number[] = []; private secBlkDens: number[] = []; private secRankRun = 0; private secRankCand = 1;
   /** Korbanks-dump (LOTUS_SECTION_DUMP=1): en rad per 1 s-block [tS, dB, kickar, centroid, bInt, breaking, dropped, spec0..7, tier, label] for offline-simulering av rangloggiken. */
@@ -862,7 +876,7 @@ export class Analyser {
     this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
-    this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false;
+    this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false; this.secPct = 0;
     this.secFp2N = 0; this.secFp2Pos = 0; this.secFp2Lab.length = 0; this.secFp2Acc.fill(0); this.secFp2AccN = 0; this.secFp2AccDb = 0; this.secFp2AccDens = 0;
     this.secBlkT.length = 0; this.secScoreSorted.length = 0; this.secRank.md = 0; this.secRank.sd = 1; this.secRank.mk = 0; this.secRank.sk = 1; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0; this.repeatHighRun = 0; this.secHighRunMs = 0;
   }
@@ -898,12 +912,13 @@ export class Analyser {
         let below = 0, cnt = 0;
         if (Analyser.RANK_VS_WIN) { let acc = 0; for (let e = 1; e <= nb; e++) { acc += S[e - 1]; if (e > W) acc -= S[e - 1 - W]; if (e >= W) { cnt++; if (acc / W < win) below++; } } }
         else { cnt = nb; for (let i = 0; i < nb; i++) if (S[i] < win) below++; }
-        const pct = below / cnt; const cur = this.sectionTier, h = Analyser.RANK_HYST;
+        const pct = below / cnt; const cur = this.sectionTier, h = Analyser.RANK_HYST; this.secPct = pct;
         tier = pct >= Analyser.RANK_HI - (cur === 2 ? h : 0) ? 2 : pct <= Analyser.RANK_LO + (cur === 0 ? h : 0) ? 0 : 1;
-      } else tier = 1;
+      } else { tier = 1; this.secPct = 0; }
     }
     if (tier === this.secTierCand) this.secTierRun++; else { this.secTierCand = tier; this.secTierRun = 1; }
-    if (this.secTierRun >= (Analyser.SECTION_MODE === 'rank' ? Analyser.RANK_RUN : 3)) this.sectionTier = this.secTierCand;
+    const runNeed = Analyser.SECTION_MODE !== 'rank' ? 3 : (Analyser.RANK_RUN_IN > 0 && this.secTierCand === 2 && this.sectionTier < 2) ? Analyser.RANK_RUN_IN : Analyser.RANK_RUN;
+    if (this.secTierRun >= runNeed) this.sectionTier = this.secTierCand;
     const st = this.sectionTier;
     // trend mot 8 s sedan
     this.secHist[this.secHistPos] = bInt; this.secHistPos = (this.secHistPos + 1) & 15; if (this.secHistN < 16) this.secHistN++;
@@ -926,12 +941,23 @@ export class Analyser {
       if ((Analyser.REPEAT & 64) && this.repeatSim >= Analyser.REPEAT_THR && this.repeatHighAtMs > 0 && st >= 1 && label !== 'high' && !dropped) {
         const d = this.repeatHighAtMs - nowMs; if (d >= -1500 && d <= 1000) label = 'high';
       }
+      // ATERINTRADE (REENTRY_PCT): nivan ar tillbaka pa refrangens och rangen nastan uppe -> high direkt (refrang 2 <= 4 s)
+      if (Analyser.REENTRY_PCT > 0 && label !== 'high' && prev !== 'high' && st >= 1 && !dropped && Number.isFinite(this.lastHighDb) && this.secBlkDb.length >= 20) {
+        const D = this.secBlkDb, nb = D.length; const m2 = (D[nb - 1] + D[nb - 2]) / 2;
+        if (m2 >= this.lastHighDb - Analyser.REENTRY_DB && this.secPct >= Analyser.REENTRY_PCT) label = 'high';
+      }
       // UPPEHALL I HIGH (bit 16 minne / bit 32 prior 8 takter): rangen dippar till mellan mitt i refrangen (4 s-fonster) -> high -> break -> high
       // var 4 s (baslinjen: joaquinphoenix 24h 28b 32h 36b 45h mot facit high 27-102 s). Sa lange forra refrangen varade halls high; tier 0 slapper.
       if ((Analyser.REPEAT & 48) && prev === 'high' && label === 'break' && st === 1) {
-        let hold = (Analyser.REPEAT & 16) ? Math.min(40000, this.secHighRunMs) : 0;
-        if ((Analyser.REPEAT & 32) && this.localBpm > 0) hold = Math.max(hold, 8 * 240000 / this.localBpm);
-        if (nowMs - this.sectionStartMs < hold) label = 'high';
+        if (Analyser.HOLD_BARS > 0 && this.localBpm > 0 && this.secHiStartMs > 0) {
+          // TAKTSTRUKTUR (HOLD_BARS): minst N takter i high, sedan slapp bara pa 4-taktsgrans (fas < 1 eller > 3 takter in i blocket)
+          const bars = (nowMs - this.secHiStartMs) / (240000 / this.localBpm); const ph = bars % 4;
+          if (bars < Analyser.HOLD_BARS || !(ph < 1.0 || ph > 3.0)) label = 'high';
+        } else {
+          let hold = (Analyser.REPEAT & 16) ? Math.min(40000, this.secHighRunMs) : 0;
+          if ((Analyser.REPEAT & 32) && this.localBpm > 0) hold = Math.max(hold, 8 * 240000 / this.localBpm);
+          if (nowMs - this.sectionStartMs < hold) label = 'high';
+        }
       }
       // UTGANG VIA LAG (bit 128): det forflutnas high-SLUT + lag. Sa lange det forflutna fortfarande ar high halls high (st 1);
       // nar slutet ar NU (-1,5..+1,5 s) och rangen inte langre sager high -> 'break' direkt (minnets grans i stallet for uppehallets slut).
