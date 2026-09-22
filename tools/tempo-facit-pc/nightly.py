@@ -27,7 +27,7 @@ def run_bench(env_extra):
     # encoding utf-8 + errors replace (09-21): cp1252-lasartraden dog pa en latitel (0x81) -> stdout None -> krasch 106 ggr i rad.
     p = subprocess.run(['node', 'bench.mjs'], cwd=HERE, env=env, capture_output=True, encoding='utf-8', errors='replace', timeout=1800)
     out = p.stdout or ''
-    res = {'rows': [], 'korpus': None, 'synt': None, 'kick': None, 'onBeat': None, 'error': p.stderr.strip()[-300:] if p.returncode else ''}
+    res = {'rows': [], 'korpus': None, 'synt': None, 'kick': None, 'onBeat': None, 'sektion': None, 'forutsagelse': None, 'refrang2': None, 'error': p.stderr.strip()[-300:] if p.returncode else ''}
     for line in out.splitlines():
         m = re.match(r'^(korpus|synt): (\d+)/(\d+) ratt \(lika\)\s+klasser (\{.*?\})\s+spann-median (\S+) BPM', line)
         if m: res[m.group(1)] = {'ok': int(m.group(2)), 'n': int(m.group(3)), 'klasser': json.loads(m.group(4)), 'spann': m.group(5)}; continue
@@ -35,6 +35,12 @@ def run_bench(env_extra):
         if mk: res['kick'] = {'recall': float(mk.group(1)), 'precision': float(mk.group(2)), 'biasMs': float(mk.group(3)), 'n': int(mk.group(4))}; continue
         mb = re.match(r'^korpus on-beat-recall: (\S+) \(median, n=(\d+)', line)
         if mb: res['onBeat'] = {'recall': float(mb.group(1)), 'n': int(mb.group(2))}; continue
+        ms_ = re.match(r'^korpus sektionsfacit \(langfangster n=(\d+)\): gransfel-traff median (\S+), high==high andel median (\S+), refrang-recall median (\S+), falsk-high median (\S+)', line)
+        if ms_: res['sektion'] = {'n': int(ms_.group(1)), 'gransfel': float(ms_.group(2)), 'highEqHigh': float(ms_.group(3)), 'recall': float(ms_.group(4)), 'falskHigh': float(ms_.group(5))}; continue
+        mp = re.match(r'^korpus forutsagelse \(langfangster n=(\d+)\): refrangstart forutsedd (\d+)/(\d+) \((\d+) %\), lead median (\S+) s, falska/min median (\S+)', line)
+        if mp: res['forutsagelse'] = {'n': int(mp.group(1)), 'hit': int(mp.group(2)), 'tot': int(mp.group(3)), 'leadS': float(mp.group(5)), 'falskaPerMin': float(mp.group(6))}; continue
+        mr = re.match(r'^korpus refrang2 (?:facit=(\w+) )?\(n=(\d+)\): refrang 2 igenkand <=4 s (\d+)/(\d+), <=8 s (\d+)/(\d+), median (\S+) s \| refrang 1 <=4 s (\d+)/(\d+), median (\S+) s \| vers 2 ej high median (\S+) \| refrang 2 forutsedd (\d+)/(\d+)', line)
+        if mr: res['refrang2'] = {'facit': mr.group(1) or 'tier', 'n': int(mr.group(2)), 'ch2le4': int(mr.group(3)), 'ch2le8': int(mr.group(5)), 'ch2MedianS': (float(mr.group(7)) if mr.group(7) != '-' else None), 'ch1le4': int(mr.group(8)), 'ch1MedianS': (float(mr.group(10)) if mr.group(10) != '-' else None), 'vers2EjHigh': (float(mr.group(11)) if mr.group(11) != '-' else None), 'ch2Forutsedd': int(mr.group(12))}; continue
         mf = re.match(r'^korpus fas mot Beat This!: on-beat-andel median (\S+), motfas (\d+), i fas (\d+), mellan (\d+) \(n=(\d+)', line)
         if mf: res['phaseBt'] = {'median': float(mf.group(1)), 'motfas': int(mf.group(2)), 'ifas': int(mf.group(3)), 'mellan': int(mf.group(4)), 'n': int(mf.group(5))}; continue
         elif line.startswith(('korpus ', 'synt   ')):
@@ -101,13 +107,43 @@ def sections_step():
     return out
 
 
+# SEKTIONSBANK (2026-09-22 kvall, agaren: "lagg till all sektionsanalys for de som jobbar i natt"). Pi:ns sektionsflaggor
+# (LOTUS_SECTION/GRID_PHASE/SECTION_REPEAT=117 - HALL I SYNK MED PI:NS DROP-INS) korrs pa hela korpusen och pa testhalvan
+# (BENCH_SPLIT=test; trainhalvan ar tuning-mangd, aldrig rapport), bade mot energitier-proxyn (derived) och mot det AKUSTISKA
+# upprepningsfacitet (repeat_facit.py -> repeats/<id>.json, backfyllt forst for nya langfangster). Bada faciten ar svaga var for
+# sig (10/26 overens om refrang 2) - rapportera alltid bada. Baslinje 09-22 test: tier 0/13 <=4 s, vers 2 0,26; akustiskt 11/30,
+# median 5,1 s, vers 2 0,46; sektionsfacit 0,27/0,54/0,65/0,52; forutsagelse 4/45 @ 2,0/min. LOTUS_NIGHTLY_SECTIONS=0 stanger av.
+SECTION_ENV = {'LOTUS_SECTION': '1', 'LOTUS_GRID_PHASE': '1', 'LOTUS_SECTION_REPEAT': os.environ.get('LOTUS_NIGHTLY_SECTION_REPEAT', '117')}
+REPEATS = os.path.join(HERE, 'repeats')
+def repeats_step():
+    py = os.path.join(HERE, '.venv', 'Scripts', 'python.exe'); py = py if os.path.exists(py) else sys.executable
+    if not os.path.exists(os.path.join(HERE, 'repeat_facit.py')): return {'error': 'repeat_facit.py saknas'}
+    try:
+        p = subprocess.run([py, 'repeat_facit.py', '--out', REPEATS], cwd=HERE, capture_output=True, encoding='utf-8', errors='replace', timeout=3600)
+        n = len([f for f in os.listdir(REPEATS) if f.endswith('.json')]) if os.path.isdir(REPEATS) else 0
+        return {'filer': n, 'rc': p.returncode, 'tail': (p.stdout or '').strip()[-200:], 'err': (p.stderr or '').strip()[-200:] if p.returncode else ''}
+    except Exception as e: return {'error': str(e)[:200]}
+def section_bench():
+    if os.environ.get('LOTUS_NIGHTLY_SECTIONS') == '0': return None
+    out = {'env': SECTION_ENV, 'repeats': repeats_step()}
+    keys = ('sektion', 'forutsagelse', 'refrang2', 'error')
+    for split in ('alla', 'test'):
+        for facit in ('tier', 'repeat'):
+            env = dict(SECTION_ENV); env.pop('BENCH_GRID', None)
+            if split == 'test': env['BENCH_SPLIT'] = 'test'
+            if facit == 'repeat': env['BENCH_REPEATS_DIR'] = REPEATS
+            r = run_bench(env); out[f'{split}-{facit}'] = {k: r.get(k) for k in keys}
+    return out
+
+
 def main():
     if already_done(): print('redan kort i dag'); return
     t0 = time.time()
     sections = sections_step()
     bench = {name: run_bench(env) for name, env in VARIANTS.items()}
+    sektionsbank = section_bench()
     pi = pi_stats()
-    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sections': sections, 'sek': round(time.time() - t0)}
+    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sections': sections, 'sektionsbank': sektionsbank, 'sek': round(time.time() - t0)}
     os.makedirs(DAILY, exist_ok=True)
     with open(os.path.join(DAILY, TODAY + '.json'), 'w', encoding='utf-8') as f: json.dump({'entry': entry, 'benchRows': {k: v['rows'] for k, v in bench.items()}}, f, ensure_ascii=False, indent=1)
     with open(SB, 'a', encoding='utf-8') as f: f.write(json.dumps(entry, ensure_ascii=False) + '\n')
@@ -129,6 +165,15 @@ def main():
         lines.append(f"| {e['date']} | {cell(e,'standard')} | {cell(e,'live')} | {cell(e,'evidence')} | {cell(e,'ring10')} | {cell(e,'live-cd80')} | {cell(e,'live-cd120')} | {p.get('dygn','–')} ({p.get('medFacit','–')} facit) | {p.get('okAndel','–')} | {p.get('gridLagMs','–')} ms | {p.get('onsetRecall','–')} | {p.get('onsetPrecision','–')} | {p.get('levelR','–')} |")
     lines += ['', f"Senaste dygnet: domar {json.dumps(pi.get('domar'), ensure_ascii=False)}; kick-bias {pi.get('kickBiasMs')} ms; nivå-lag {pi.get('levelLagMs')} ms; analysatorns spann inom låt {pi.get('anSpann')} BPM (median); tempoledtrådar ≠ 1: {pi.get('tempoHints')}; dropfångster {pi.get('drops')} {json.dumps(pi.get('dropDomar'))}.",
               '', 'Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.']
+    sb_ = entry.get('sektionsbank') or {}
+    def secline(tag):
+        b = sb_.get(tag) or {}; s_ = b.get('sektion') or {}; r2 = b.get('refrang2') or {}; fp = b.get('forutsagelse') or {}
+        if not s_ and not r2: return f'{tag}: –'
+        return (f"{tag}: high==high {s_.get('highEqHigh','–')} · recall {s_.get('recall','–')} · falsk {s_.get('falskHigh','–')} · gransfel {s_.get('gransfel','–')} (n {s_.get('n','–')}) | "
+                f"refrang 2 <=4 s {r2.get('ch2le4','–')}/{r2.get('n','–')}, <=8 s {r2.get('ch2le8','–')}, median {r2.get('ch2MedianS','–')} s · refrang 1 <=4 s {r2.get('ch1le4','–')} · vers 2 ej high {r2.get('vers2EjHigh','–')} · forutsedd {r2.get('ch2Forutsedd','–')} | "
+                f"forutsagelse {fp.get('hit','–')}/{fp.get('tot','–')} @ {fp.get('falskaPerMin','–')}/min")
+    if sb_: lines += ['', f"Sektioner (Pi-flaggor {json.dumps(sb_.get('env'))}, repeats {json.dumps(sb_.get('repeats'))}):", '', '- ' + secline('test-tier'), '- ' + secline('test-repeat'), '- ' + secline('alla-tier'), '- ' + secline('alla-repeat'),
+                 '', 'Tolkning: tier = energirang-proxy (forsta high = refrang 1, andra = refrang 2), repeat = akustisk upprepning (repeat_facit.py). Tuna pa train (BENCH_SPLIT=train), rapportera test; en sektionsandring provas live bara om den vinner pa test mot BADA faciten.']
     with open(MD, 'w', encoding='utf-8') as f: f.write('\n'.join(lines) + '\n')
     print(json.dumps(entry, ensure_ascii=False)[:600]); print('skrev', MD)
 
