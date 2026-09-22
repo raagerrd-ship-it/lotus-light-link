@@ -151,13 +151,14 @@ async function toMotorOn(): Promise<void> {
     // STEG 2: micen startas FÖRST och oberoende av BLE. BLE-stacken får aldrig
     // gata ljudinsamlingen (tidigare return vid ready=false lämnade micen ostartad).
     const tasks: Promise<unknown>[] = [];
-    if (getSubsystemState('mic').status !== 'ready') {
-      tasks.push(
-        deps.startMicSubsystem().catch(e =>
-          console.warn('[Lifecycle] startMicSubsystem fel:', e?.message ?? e),
-        ),
-      );
-    }
+    // ALLTID (2026-09-22): villkoret 'status !== ready' hoppade over micstarten efter en idle-nedrivning, eftersom statusen
+    // stannade pa 'ready' medan ALSA var stangt. startMicSubsystem() har en EGEN grind (ready OCH isMicActive()), sa anropet
+    // kostar ingenting nar micen redan lever - men det ar enda garantin att den vaknar nar den inte gor det.
+    tasks.push(
+      deps.startMicSubsystem().catch(e =>
+        console.warn('[Lifecycle] startMicSubsystem fel:', e?.message ?? e),
+      ),
+    );
 
     // STEG 3: BLE-stack + connect.
     try {

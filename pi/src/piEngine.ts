@@ -57,6 +57,7 @@ const SECTION_DYN_DB = Math.max(0, Number(process.env.LOTUS_SECTION_DYN_DB ?? 12
 const SECTION_DYN_FLOOR = Math.min(1, Math.max(0.1, Number(process.env.LOTUS_SECTION_DYN_FLOOR ?? 0.45) || 0.45));
 const PULSE_LAMP_MS = Math.max(0, Math.min(200, Number(process.env.LOTUS_PULSE_LAMP_MS) || 0));
 import { getItem, setItem, DATA_DIR } from './storage.js';
+import { resetSubsystem } from './ble/subsystem-state.js';
 import { writeFile, appendFileSync, writeFileSync } from 'node:fs';
 import { PerformanceObserver } from 'node:perf_hooks';
 import type { Landmark } from './fingerprint.js';
@@ -2170,8 +2171,12 @@ export class PiLightEngine {
     // 5. Stoppa ALSA-mic → ~20-25% CPU-besparing under idle.
     try {
       stopMic();
+      // STATUSEN MASTE FOLJA VERKLIGHETEN (2026-09-22): subsystemet stod kvar pa 'ready' efter stopMic(), och da hoppade
+      // bade lifecycle:s toMotorOn och POST /api/subsystem/mic/start over starten -> ALSA oppnades aldrig igen. Ljuset frots
+      // pa sista bandvardet i 45 min (bara gridpulsen rorde sig). 'idle' = micen ar nere och far startas om.
+      resetSubsystem('mic');
       this._micPausedForIdle = true;
-      dlog('[Engine] ALSA-mic stoppad — väntar på Sonos PLAYING-event');
+      dlog('[Engine] ALSA-mic stoppad (subsystem → idle) — väntar på Sonos PLAYING-event');
     } catch (e: any) {
       dlog(`[Engine] stopMic failed: ${e?.message ?? e}`);
     }

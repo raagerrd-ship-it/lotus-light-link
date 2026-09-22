@@ -391,7 +391,10 @@ export function startConfigServer(port = 3050): void {
       return res.status(503).json({ error: 'Subsystem-starters inte attachade ännu' });
     }
     const before = getSubsystemState(id);
-    if (before.status === 'ready') {
+    // 'ready' racker inte for micen: efter stopMic() vid idle kan statusen ljuga (2026-09-22). Kravet ar att ALSA-capture
+    // faktiskt lever - annars ska anropet starta om den, vilket ar hela poangen med den manuella vagen.
+    const micDead = id === 'mic' && (attachedMic as any)?.isMicActive?.() === false;
+    if (before.status === 'ready' && !micDead) {
       return res.json({ ok: true, alreadyReady: true, subsystem: before });
     }
     try {
