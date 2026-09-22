@@ -143,6 +143,7 @@ if (existsSync(DIR)) for (const f of _files.filter((_, i) => _keep(i))) {
         ch1Ms = firstHighAfter(c1.start); ch2Ms = firstHighAfter(c2.start);
         let vN = 0, vOk = 0; for (let t = Math.ceil(c1.end); t < c2.start; t++) { vN++; if (labAt(t) !== 'high') vOk++; } v2Ok = vN ? vOk / vN : null;
         ch2Pred = r.preds ? (r.preds.some(([tp, at]) => tp >= c2.start - 12 && tp <= c2.start - 1 && Math.abs(at - c2.start) <= 2) ? 1 : 0) : null;
+        if (process.env.BENCH_DEBUG === 'ch2') console.log(`  CH2 ${basename(f).slice(0, 30).padEnd(31)} refrang1 ${c1.start.toFixed(0)}-${c1.end.toFixed(0)} s (igenkand ${ch1Ms === null ? '-' : ch1Ms.toFixed(1)} s) vers2 ${c1.end.toFixed(0)}-${c2.start.toFixed(0)} s (ej high ${v2Ok?.toFixed(2)}) refrang2 ${c2.start.toFixed(0)}-${c2.end.toFixed(0)} s (igenkand ${ch2Ms === null ? '-' : ch2Ms.toFixed(1)} s) | detektor ${r.sections.filter(([ts]) => ts >= c1.start - 5 && ts <= c2.end).map(([t, l]) => `${t.toFixed(0)}${l[0]}`).join(' ')}`);
       } }
     // FORUTSAGELSE (09-21): facitets high-starter (tier high efter icke-high, >= 20 s) - traff om nagon forutsagelse gjord 1-12 s
     // fore starten pekade inom +-2 s; lead = tidigast traffande forutsagelse. Falsk = forutsedd tidpunkt > 4 s fran alla high-starter.

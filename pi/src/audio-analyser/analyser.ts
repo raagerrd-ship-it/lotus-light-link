@@ -304,7 +304,10 @@ export class Analyser {
    *    baslinje (0):        0,32 / 0,51 / 0,34 / 0,58;  8/22, 11,9 s, 6,0
    *    REKOMMENDERAD 117:   0,23 / 0,57 / 0,61 / 0,45;  9/22, 11,2 s, 5,2   (W 2; bit 2 gav inget utover 64, bit 8 sankte recall 0,54->0,47)
    *    245 (= 117 + 128):   0,29 / 0,57 / 0,56 / 0,48; 10/22, 11,2 s, 5,2
-   *  Obs: repeatSim byter betydelse med bit 1 (cosinus av z-vektorer, -1..1, typiskt 0,2-0,9; gamla 0,92-troskeln galler inte). */
+   *  Obs: repeatSim byter betydelse med bit 1 (cosinus av z-vektorer, -1..1, typiskt 0,2-0,9; gamla 0,92-troskeln galler inte).
+   *  bit 256/512: KLANGMALL (09-22), se TEMPL_*. Varfor bit 2 inte gav nagot: avtryck var 2 s + sekvens 2 rutor = nuet syns forst
+   *  4-6 s in i refrangen, dessutom kravs st >= 1 (rangens 3-blocks-hysteres) och att det MATCHADE partiet omrankas high (dB+kickar,
+   *  percentil >= 0,67 - i platt country ligger refrangen ofta under). Nar bit 64 (lag-intrade) traffar ar bit 2 overflodig; annars for sen. */
   private static readonly REPEAT = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT)) || 0;
   private static readonly REPEAT_THR = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT_THR)) || 0.7;
   private static readonly REPEAT_STEP = (typeof process !== 'undefined' && Number(process.env?.LOTUS_SECTION_REPEAT_STEP)) || 2;
@@ -315,6 +318,35 @@ export class Analyser {
   private secFp2N = 0; private secFp2Pos = 0; private secFp2Acc = new Float32Array(Analyser.FP2_DIM); private secFp2AccN = 0; private secFp2AccDb = 0; private secFp2AccDens = 0;
   private secFp2Mu = new Float32Array(Analyser.FP2_DIM); private secFp2Sd = new Float32Array(Analyser.FP2_DIM);
   private secBlkT: number[] = []; private secRank = { md: 0, sd: 1, mk: 0, sk: 1 }; private secScoreSorted: number[] = [];
+  /** KLANGMALL (09-22, REPEAT bit 256/512; bank agent 'refrang 2'): refrang 2 later som refrang 1. I stallet for W rutor mot EN punkt
+   *  (bit 2: avtryck var 2 s, sekvens 2 rutor = nuet syns forst 4-6 s in i refrangen, och st >= 1 kravde rangens 3-blocks-hysteres) matchas
+   *  VARJE 1 s-block (glidande medel TEMPL_SM block) mot MEDELAVTRYCKET av alla block som hittills varit refrang (TEMPL_SRC 'lab' = egna
+   *  'high'-etiketter, 'rank' = omrankade high-block) resp. INTE refrang, minst 8 s gamla; z-normerat mot latens alla block, cosinus.
+   *  bit 256: simHi >= TEMPL_THR och simHi - simLo >= TEMPL_MARGIN och 4 s-fonstrets rang >= TEMPL_MINPCT -> 'high' direkt (ingen rang-dwell).
+   *  bit 512: i 'high' som halls av minnet/prior (st < 2): simLo - simHi >= TEMPL_MARGIN i TEMPL_RUN raka block -> 'break' (vers 2 liknar vers 1).
+   *  TEMPL_W: dimensionsvikter 'full' | 'nobass' (band 0-2 bort) | 'timbre' (bara band + centroid) | 'nolvl' (dB bort).
+   *  BANK 09-22 (bench.mjs 'refrang2': refrang 2 igenkand <= 4 s / <= 8 s, median; vers 2 ej high; sektionsfacit gransfel/high==high/recall/falsk):
+   *    train (n 14)  117 (Pi):            0/14, 5/14, 12,3 s; 0,43; 0,31/0,51/0,58/0,54      119 (bit 2): identiskt med 117
+   *                  373 rank (117+256):  4/14, 7/14,  7,8 s; 0,43; 0,30/0,51/0,71/0,55      373 lab: 2/14, 5/14, 11,9 s
+   *                  325 rank (uppehall 16/32 AV + 256): 5/14, 8/14, 5,2 s; 0,51; 0,31/0,52/0,62/0,52   <- REKOMMENDERAD
+   *    test  (n 13)  117: 0/13, 3/13, 30,1 s; 0,26; 0,27/0,54/0,65/0,52   373 rank: 3/13, 5/13, 25,4 s; 0,17   325 rank: 4/13, 6/13, 15,3 s; 0,26; 0,33/0,52/0,71/0,53
+   *  Uppehallet (16/32) var det som gjorde vers 2 till 'high' (halls sa lange som forra refrangen); med mallinträdet ateroppnas high inom
+   *  1-2 s nar refrangen ar tillbaka, sa uppehallet behovs inte. Bit 512 (utgang pa klang) ar INTE bankad: offline ar klangen per block
+   *  inte separerbar (vers 2 liknar refrangmallen lika ofta som refrang 2; nyhet vid gransen = nyhet inne i sektionen), sa den ar av. */
+  private static readonly TEMPL_THR = Analyser.secEnv('LOTUS_SECTION_TEMPL_THR', 0.5);
+  private static readonly TEMPL_MARGIN = Analyser.secEnv('LOTUS_SECTION_TEMPL_MARGIN', 0.1);
+  private static readonly TEMPL_MINPCT = Analyser.secEnv('LOTUS_SECTION_TEMPL_MINPCT', 0.33);
+  private static readonly TEMPL_SM = Analyser.secEnv('LOTUS_SECTION_TEMPL_SM', 2);
+  private static readonly TEMPL_RUN = Analyser.secEnv('LOTUS_SECTION_TEMPL_RUN', 2);
+  private static readonly TEMPL_MINN = Analyser.secEnv('LOTUS_SECTION_TEMPL_MINN', 8);
+  private static readonly TEMPL_SRC = (typeof process !== 'undefined' && process.env?.LOTUS_SECTION_TEMPL_SRC) || 'rank';   // 'rank' (standard, bank 09-22) | 'lab'
+  private static readonly TEMPL_WV: Float32Array = (() => { const w = (typeof process !== 'undefined' && process.env?.LOTUS_SECTION_TEMPL_W) || 'full';
+    const t: Record<string, number[]> = { full: [1,1,1,1,1,1,1,1,1,1,1,1], nobass: [0,0,0,1,1,1,1,1,1,1,1,1], timbre: [1,1,1,1,1,1,1,1,1,0,0,0], nolvl: [1,1,1,1,1,1,1,1,1,1,1,0], halfbass: [0.5,0.5,0.5,1,1,1,1,1,1,1,1,1] };
+    return new Float32Array(t[w] || t.full); })();
+  private secBlkFeat: Float32Array[] = []; private secBlkHi: number[] = []; private secPct = 0; private templLoRun = 0;
+  private templMu = new Float32Array(Analyser.FP2_DIM); private templSd = new Float32Array(Analyser.FP2_DIM); private templHi = new Float32Array(Analyser.FP2_DIM); private templLo = new Float32Array(Analyser.FP2_DIM); private templZ = new Float32Array(Analyser.FP2_DIM);
+  /** Klangmallens likhet for senaste blocket: mot refrangmallen / mot icke-refrangmallen (-1..1; 0 utan mall), antal mallblock. Bank-telemetri. */
+  templSimHi = 0; templSimLo = 0; templN = 0;
   /** Matchat parti: tier med dagens rankning (-1 = inget), och nar 'high' vantas om det forflutna upprepas (absolut tid, 0 = ingen). */
   repeatTier = -1; repeatHighAtMs = 0; repeatHighEndAtMs = 0; private repeatHighRun = 0; private secHighRunMs = 0;
   beatPhaseMs = 0; beatPhaseConf = 0; private phaseAnti = 0; private phaseLastBeatMs = 0; private phaseScratch = new Float32Array(128);
@@ -865,6 +897,7 @@ export class Analyser {
     this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false;
     this.secFp2N = 0; this.secFp2Pos = 0; this.secFp2Lab.length = 0; this.secFp2Acc.fill(0); this.secFp2AccN = 0; this.secFp2AccDb = 0; this.secFp2AccDens = 0;
     this.secBlkT.length = 0; this.secScoreSorted.length = 0; this.secRank.md = 0; this.secRank.sd = 1; this.secRank.mk = 0; this.secRank.sk = 1; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0; this.repeatHighRun = 0; this.secHighRunMs = 0;
+    this.secBlkFeat.length = 0; this.secBlkHi.length = 0; this.secPct = 0; this.templLoRun = 0; this.templSimHi = 0; this.templSimLo = 0; this.templN = 0;
   }
 
   /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
@@ -884,8 +917,9 @@ export class Analyser {
     if (Analyser.SECTION_MODE === 'rank') {
       // KAUSAL PERCENTILRANG (15:35): blockets dB (ra rms, fore AGC) och basonset-tathet (kickar/s) z-normeras mot alla block
       // hittills i laten, 4 s-fonstrets medelpoang rangordnas mot alla blockpoang hittills. Minst 20 s historik; innan dess 'intro'.
-      const db = 10 * Math.log10(this.secBlkRms2 / n + 1e-10); this.secBlkDb.push(db); this.secBlkDens.push(bKicks); this.secBlkCentH.push(bCent); if (Analyser.REPEAT & 1) this.secBlkT.push(nowMs);
-      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); if (Analyser.REPEAT & 1) this.secBlkT.shift(); }
+      const db = 10 * Math.log10(this.secBlkRms2 / n + 1e-10); this.secBlkDb.push(db); this.secBlkDens.push(bKicks); this.secBlkCentH.push(bCent); if (Analyser.REPEAT & 769) this.secBlkT.push(nowMs);
+      if (Analyser.REPEAT & 768) { const ft = new Float32Array(Analyser.FP2_DIM); let ssum = 0; for (let i = 0; i < 8; i++) ssum += this.secBlkSpec[i]; for (let i = 0; i < 8; i++) ft[i] = ssum > 0 ? this.secBlkSpec[i] / ssum : 0; ft[8] = bCent; ft[9] = Math.min(1, bKicks / 4); ft[10] = bInt; ft[11] = db / 10; this.secBlkFeat.push(ft); this.secBlkHi.push(0); }
+      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); if (Analyser.REPEAT & 769) this.secBlkT.shift(); if (Analyser.REPEAT & 768) { this.secBlkFeat.shift(); this.secBlkHi.shift(); } }
       const nb = this.secBlkDb.length;
       if (nb >= 20) {
         const D = this.secBlkDb, K = this.secBlkDens, C = this.secBlkCentH, wk = Analyser.RANK_W_DENS, wc = Analyser.RANK_W_CENT;
@@ -898,9 +932,10 @@ export class Analyser {
         let below = 0, cnt = 0;
         if (Analyser.RANK_VS_WIN) { let acc = 0; for (let e = 1; e <= nb; e++) { acc += S[e - 1]; if (e > W) acc -= S[e - 1 - W]; if (e >= W) { cnt++; if (acc / W < win) below++; } } }
         else { cnt = nb; for (let i = 0; i < nb; i++) if (S[i] < win) below++; }
-        const pct = below / cnt; const cur = this.sectionTier, h = Analyser.RANK_HYST;
+        const pct = below / cnt; const cur = this.sectionTier, h = Analyser.RANK_HYST; this.secPct = pct;
         tier = pct >= Analyser.RANK_HI - (cur === 2 ? h : 0) ? 2 : pct <= Analyser.RANK_LO + (cur === 0 ? h : 0) ? 0 : 1;
-      } else tier = 1;
+      } else { tier = 1; this.secPct = 0; }
+      if (Analyser.REPEAT & 768) this.templStep(nowMs);
     }
     if (tier === this.secTierCand) this.secTierRun++; else { this.secTierCand = tier; this.secTierRun = 1; }
     if (this.secTierRun >= (Analyser.SECTION_MODE === 'rank' ? Analyser.RANK_RUN : 3)) this.sectionTier = this.secTierCand;
@@ -926,6 +961,8 @@ export class Analyser {
       if ((Analyser.REPEAT & 64) && this.repeatSim >= Analyser.REPEAT_THR && this.repeatHighAtMs > 0 && st >= 1 && label !== 'high' && !dropped) {
         const d = this.repeatHighAtMs - nowMs; if (d >= -1500 && d <= 1000) label = 'high';
       }
+      // KLANGMALL IN (bit 256): blocket later som refrangen hittills (och inte som resten) och rangen ar inte tydligt lag -> high direkt
+      if ((Analyser.REPEAT & 256) && label !== 'high' && !dropped && this.templN >= Analyser.TEMPL_MINN && this.templSimHi >= Analyser.TEMPL_THR && this.templSimHi - this.templSimLo >= Analyser.TEMPL_MARGIN && this.secPct >= Analyser.TEMPL_MINPCT) label = 'high';
       // UPPEHALL I HIGH (bit 16 minne / bit 32 prior 8 takter): rangen dippar till mellan mitt i refrangen (4 s-fonster) -> high -> break -> high
       // var 4 s (baslinjen: joaquinphoenix 24h 28b 32h 36b 45h mot facit high 27-102 s). Sa lange forra refrangen varade halls high; tier 0 slapper.
       if ((Analyser.REPEAT & 48) && prev === 'high' && label === 'break' && st === 1) {
@@ -938,6 +975,12 @@ export class Analyser {
       if ((Analyser.REPEAT & 128) && prev === 'high' && this.repeatSim >= Analyser.REPEAT_THR && this.repeatHighEndAtMs > 0 && st <= 1 && !dropped) {
         const d = this.repeatHighEndAtMs - nowMs;
         if (d > 1500 && st === 1) label = 'high'; else if (d >= -1500 && d <= 1500) label = 'break';
+      }
+      // KLANGMALL UT (bit 512): high som bara halls (rangen sager inte high) men blocket later som icke-refrangen i TEMPL_RUN raka block -> break
+      if (Analyser.REPEAT & 512) {
+        const verseLike = this.templN >= Analyser.TEMPL_MINN && this.templSimLo - this.templSimHi >= Analyser.TEMPL_MARGIN;
+        this.templLoRun = verseLike ? this.templLoRun + 1 : 0;
+        if (prev === 'high' && label === 'high' && st < 2 && !dropped && this.templLoRun >= Analyser.TEMPL_RUN) label = 'break';
       }
     }
     else if (dropped || st === 2) label = 'high';
@@ -960,6 +1003,7 @@ export class Analyser {
       this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; this.secHiStartMs = nowMs; } this.section = label;
     }
     this.secCurDbSum += blkDb; this.secCurDbN++; this.secCurDens += bKicks;
+    if ((Analyser.REPEAT & 768) && this.secBlkHi.length) this.secBlkHi[this.secBlkHi.length - 1] = this.section === 'high' ? 1 : 0;
     if (this.secDump) { const row = [(nowMs - this.secSongStartMs) / 1000, blkDb, bKicks, bCent, bInt, breaking ? 1 : 0, dropped ? 1 : 0]; for (let i = 0; i < 8; i++) row.push(this.secBlkSpec[i] / n); row.push(st, ['intro', 'low', 'build', 'high', 'break'].indexOf(this.section)); this.secDump.push(row); }
     if (this.section === 'high') this.lastHighDb = this.secCurDbSum / this.secCurDbN;   // pagaende refrang = farskaste referensen
     this.levelVsHighDb = Number.isFinite(this.lastHighDb) ? blkDb - this.lastHighDb : 0;
@@ -986,6 +1030,40 @@ export class Analyser {
       acc.fill(0); this.secFpAccN = 0;
     }
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0;
+  }
+
+  /** KLANGMALL (se TEMPL_*). Kors per sektionsblock i rank-laget nar bit 256/512 ar pa, efter att blockets sardrag lagts i secBlkFeat.
+   *  Mallar: medel av z-normerade sardrag over block >= 8 s gamla som var refrang (secBlkHi, eller omrankade high vid TEMPL_SRC 'rank')
+   *  resp. inte. Nuet = glidande medel over TEMPL_SM block. Kostnad: ~nb x 12 x 3 flops per sekund (nb <= 600). */
+  private templStep(nowMs: number): void {
+    const D = Analyser.FP2_DIM, F = this.secBlkFeat, nb = F.length, w = Analyser.TEMPL_WV;
+    this.templSimHi = 0; this.templSimLo = 0; this.templN = 0;
+    if (nb < 20) return;
+    const mu = this.templMu, sd = this.templSd; mu.fill(0); sd.fill(0);
+    for (let j = 0; j < nb; j++) { const f = F[j]; for (let i = 0; i < D; i++) mu[i] += f[i]; }
+    for (let i = 0; i < D; i++) mu[i] /= nb;
+    for (let j = 0; j < nb; j++) { const f = F[j]; for (let i = 0; i < D; i++) sd[i] += (f[i] - mu[i]) ** 2; }
+    for (let i = 0; i < D; i++) sd[i] = Math.max(1e-3, Math.sqrt(sd[i] / nb));
+    // vilka block ar refrang: egna etiketter, eller omrankning (dB + kicktathet mot alla block, percentil >= RANK_HI) vid TEMPL_SRC 'rank'
+    let isHi: (j: number) => boolean;
+    if (Analyser.TEMPL_SRC === 'rank') {
+      const R = this.secRank; const score = (j: number) => (this.secBlkDb[j] - R.md) / R.sd + (this.secBlkDens[j] - R.mk) / R.sk;
+      const ss = this.secScoreSorted; ss.length = nb; for (let j = 0; j < nb; j++) ss[j] = score(j); ss.sort((a, b) => a - b);
+      const thr = ss[Math.min(nb - 1, Math.floor(Analyser.RANK_HI * nb))];
+      isHi = (j) => score(j) >= thr;
+    } else isHi = (j) => this.secBlkHi[j] === 1;
+    const hi = this.templHi, lo = this.templLo, z = this.templZ; hi.fill(0); lo.fill(0); let nHi = 0, nLo = 0;
+    const T = this.secBlkT; const cut = nowMs - 8000;
+    const zOf = (j: number, out: Float32Array, add: boolean) => { let nrm = 0; for (let i = 0; i < D; i++) { const v = w[i] * (F[j][i] - mu[i]) / sd[i]; z[i] = v; nrm += v * v; } nrm = Math.sqrt(nrm) || 1; for (let i = 0; i < D; i++) { if (add) out[i] += z[i] / nrm; else out[i] = z[i] / nrm; } };
+    for (let j = 0; j < nb; j++) { if (T[j] >= cut) break; if (isHi(j)) { zOf(j, hi, true); nHi++; } else { zOf(j, lo, true); nLo++; } }
+    this.templN = Math.min(nHi, nLo);
+    if (nHi < 2 || nLo < 2) return;
+    // nuet: glidande medel over TEMPL_SM block (ra sardrag), sedan z + enhetslangd
+    const S = Math.min(Analyser.TEMPL_SM, nb); const cur = this.templZ; let nrm = 0;
+    for (let i = 0; i < D; i++) { let a = 0; for (let j = nb - S; j < nb; j++) a += F[j][i]; const v = w[i] * (a / S - mu[i]) / sd[i]; cur[i] = v; nrm += v * v; }
+    nrm = Math.sqrt(nrm) || 1;
+    let nh = 0, nl = 0, dh = 0, dl = 0; for (let i = 0; i < D; i++) { nh += hi[i] * hi[i]; nl += lo[i] * lo[i]; dh += cur[i] * hi[i]; dl += cur[i] * lo[i]; }
+    this.templSimHi = dh / nrm / (Math.sqrt(nh) || 1); this.templSimLo = dl / nrm / (Math.sqrt(nl) || 1);
   }
 
   /** UPPREPNINGSMINNE v2 (se REPEAT). Kors per sektionsblock; avtryck var REPEAT_STEP:e block. Bara sectionHops blocksummor + egna falt. */
