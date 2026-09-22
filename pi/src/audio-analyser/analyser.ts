@@ -287,7 +287,6 @@ export class Analyser {
    *  REENTRY_PCT = 0 (standard) = av. */
   private static readonly REENTRY_PCT = Analyser.secEnv('LOTUS_SECTION_REENTRY_PCT', 0);
   private static readonly REENTRY_DB = Analyser.secEnv('LOTUS_SECTION_REENTRY_DB', 1.0);
-  private secPct = 0;
   /** NIVAMINNE (09-22, agent-a47; opt-in LOTUS_SECTION_LEVELREF bitmask): efter refrang 1 finns en ABSOLUT referens (lastHighDb =
    *  refrangens medel-dB, lastHighDens = dess kickar/s). Percentilrangen ar relativ mot allt hittills och trog (4 s-fonster, 3 block,
    *  hysteres) - refrang 2 tog lika lang tid som refrang 1 (bank 09-22: median 12 s). bit 1 INTRADE: blockets dB >= ref - LVL_IN och
