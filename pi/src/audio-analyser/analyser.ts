@@ -288,6 +288,28 @@ export class Analyser {
   private static readonly REENTRY_PCT = Analyser.secEnv('LOTUS_SECTION_REENTRY_PCT', 0);
   private static readonly REENTRY_DB = Analyser.secEnv('LOTUS_SECTION_REENTRY_DB', 1.0);
   private secPct = 0;
+  /** NIVAMINNE (09-22, agent-a47; opt-in LOTUS_SECTION_LEVELREF bitmask): efter refrang 1 finns en ABSOLUT referens (lastHighDb =
+   *  refrangens medel-dB, lastHighDens = dess kickar/s). Percentilrangen ar relativ mot allt hittills och trog (4 s-fonster, 3 block,
+   *  hysteres) - refrang 2 tog lika lang tid som refrang 1 (bank 09-22: median 12 s). bit 1 INTRADE: blockets dB >= ref - LVL_IN och
+   *  kickar >= ref x LVL_IN_DENS i LVL_IN_RUN block i rad -> 'high' direkt, forbi rangen. bit 2 UTTRADE/GRIND: dB <= ref - LVL_OUT i
+   *  LVL_OUT_RUN block i rad -> inte 'high' (ur high: 'break'), aven om uppehallet (REPEAT 16/32) sager high - det ar vers 2.
+   *  bit 4 REFRANG 1 SNABBT: fore forsta high - blocket >= latens hittills hogsta 4 s-fonstermedel + LVL_PEAK dB och kickar >= medel,
+   *  LVL_IN_RUN block i rad -> 'high' (fran 10 s, i stallet for rangens 20 s historik). Referensen nollas med sectionReset (10 s tystnad).
+   *  BANK 09-22 (korpus, bench.mjs REFRANG 2, REPEAT 117): block-dB ar i praktiken PLATT genom latarna (median refrang 1 - vers 2 = 0,0 dB,
+   *  refrang 2 - refrang 1 = 0,2 dB) och kickraknaren mattad (~5,8/s overallt) - facitets energitiers vilar pa sub-dB-skillnader +
+   *  librosa-basonsettathet. Darfor: LVL_IN 2 dB fyrar nastan alltid (vers 2 ej high 0,43 -> 0,22), LVL_OUT 5 dB fyrar aldrig, 1 dB
+   *  sanker recall (0,58 -> 0,53); bit 4 gor inget (+1,5 dB over hittills hogsta finns inte). Basta: bit 1 med LVL_IN 0 (hogre an
+   *  refrangens medel) i 3 block: train refrang 2 <= 4 s 0/14 -> 5/14, <= 8 s 5 -> 7, median 12,3 -> 6,8 s, vers 2 ej high 0,43 (of.),
+   *  refrang-recall 0,58 -> 0,69; med 2 block 6/14, 8/14, 5,4 s men vers 2 0,39. TEST (2 block): 0/13 -> 1/13, 3 -> 4, 30 -> 25 s,
+   *  vers 2 0,26 -> 0,21, high==high 0,54 -> 0,49 - vinsten overfors svagt. Standard = 0 (av). */
+  private static readonly LEVELREF = Analyser.secEnv('LOTUS_SECTION_LEVELREF', 0);
+  private static readonly LVL_IN_DB = Analyser.secEnv('LOTUS_SECTION_LVL_IN', 0);
+  private static readonly LVL_IN_DENS = Analyser.secEnv('LOTUS_SECTION_LVL_IN_DENS', 0.8);
+  private static readonly LVL_IN_RUN = Analyser.secEnv('LOTUS_SECTION_LVL_IN_RUN', 3);
+  private static readonly LVL_OUT_DB = Analyser.secEnv('LOTUS_SECTION_LVL_OUT', 5);
+  private static readonly LVL_OUT_RUN = Analyser.secEnv('LOTUS_SECTION_LVL_OUT_RUN', 3);
+  private static readonly LVL_PEAK_DB = Analyser.secEnv('LOTUS_SECTION_LVL_PEAK', 1.5);
+  private lastHighDens = NaN; private secLvlInRun = 0; private secLvlOutRun = 0; private secLvlOutRef = NaN; private secPeakRun = 0;
   private secBlkCentH: number[] = []; private secScoreBuf = new Float64Array(600);
   private secBlkRms2 = 0; private secBlkDb: number[] = []; private secBlkDens: number[] = []; private secRankRun = 0; private secRankCand = 1;
   /** Korbanks-dump (LOTUS_SECTION_DUMP=1): en rad per 1 s-block [tS, dB, kickar, centroid, bInt, breaking, dropped, spec0..7, tier, label] for offline-simulering av rangloggiken. */
@@ -876,6 +898,7 @@ export class Analyser {
     this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
+    this.lastHighDens = NaN; this.secLvlInRun = 0; this.secLvlOutRun = 0; this.secLvlOutRef = NaN; this.secPeakRun = 0;
     this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false; this.secPct = 0;
     this.secFp2N = 0; this.secFp2Pos = 0; this.secFp2Lab.length = 0; this.secFp2Acc.fill(0); this.secFp2AccN = 0; this.secFp2AccDb = 0; this.secFp2AccDens = 0;
     this.secBlkT.length = 0; this.secScoreSorted.length = 0; this.secRank.md = 0; this.secRank.sd = 1; this.secRank.mk = 0; this.secRank.sk = 1; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0; this.repeatHighRun = 0; this.secHighRunMs = 0;
@@ -965,6 +988,32 @@ export class Analyser {
         const d = this.repeatHighEndAtMs - nowMs;
         if (d > 1500 && st === 1) label = 'high'; else if (d >= -1500 && d <= 1500) label = 'break';
       }
+      // NIVAMINNE (LEVELREF, se flaggan): absolut referens fran refrang 1 i stallet for den troga percentilrangen. Drop vinner alltid.
+      if (Analyser.LEVELREF && !dropped) {
+        const L = Analyser.LEVELREF; const haveRef = Number.isFinite(this.lastHighDb); const nb = this.secBlkDb.length;
+        if ((L & 1) && haveRef && prev !== 'high') {
+          const ok = blkDb >= this.lastHighDb - Analyser.LVL_IN_DB && (!(this.lastHighDens > 0) || bKicks >= this.lastHighDens * Analyser.LVL_IN_DENS);
+          this.secLvlInRun = ok ? this.secLvlInRun + 1 : 0;
+          if (this.secLvlInRun >= Analyser.LVL_IN_RUN) label = 'high';
+        } else this.secLvlInRun = 0;
+        if ((L & 4) && !this.secHighSeen && prev !== 'high') {
+          const D = this.secBlkDb, K = this.secBlkDens, R = Analyser.LVL_IN_RUN, W = 4;
+          if (nb >= 10 + R) {
+            let mx = -Infinity, acc = 0, mk = 0; const m = nb - R;
+            for (let i = 0; i < m; i++) { acc += D[i]; if (i >= W) acc -= D[i - W]; if (i >= W - 1 && acc / W > mx) mx = acc / W; mk += K[i]; } mk /= m;
+            const ok = blkDb >= mx + Analyser.LVL_PEAK_DB && bKicks >= mk;
+            this.secPeakRun = ok ? this.secPeakRun + 1 : 0;
+            if (this.secPeakRun >= R) label = 'high';
+          }
+        } else this.secPeakRun = 0;
+        if ((L & 4) && prev === 'high' && nb < 20 && label === 'intro') label = 'high';   // tidig refrang: rangens 'intro' (< 20 s historik) far inte avbryta
+        if ((L & 2) && haveRef) {
+          if (this.secLvlOutRun === 0) this.secLvlOutRef = this.lastHighDb;   // frys referensen vid lagkorningens start (lopande medlet dras annars ner av versen)
+          const low = blkDb <= this.secLvlOutRef - Analyser.LVL_OUT_DB;
+          this.secLvlOutRun = low ? this.secLvlOutRun + 1 : 0;
+          if (this.secLvlOutRun >= Analyser.LVL_OUT_RUN && label === 'high') label = prev === 'high' ? 'break' : st === 0 ? 'low' : prev;
+        }
+      }
     }
     else if (dropped || st === 2) label = 'high';
     else if (prev === 'high' && (breaking || rise <= -0.2)) label = 'break';
@@ -981,13 +1030,13 @@ export class Analyser {
       const dbMean = this.secCurDbN ? this.secCurDbSum / this.secCurDbN : blkDb;
       this.secLog.push({ label: prev, startMs: this.sectionStartMs, endMs: nowMs, db: dbMean, dens: this.secCurDbN ? this.secCurDens / this.secCurDbN : 0 });
       if (this.secLog.length > 48) this.secLog.shift();
-      if (prev === 'high') this.lastHighDb = dbMean;
+      if (prev === 'high') { this.lastHighDb = dbMean; this.lastHighDens = this.secCurDbN ? this.secCurDens / this.secCurDbN : 0; }
       this.prevSection = prev; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0;
       this.sectionStartMs = nowMs; if (label === 'high') { this.sectionIndex++; this.secHighSeen = true; this.secHiStartMs = nowMs; } this.section = label;
     }
     this.secCurDbSum += blkDb; this.secCurDbN++; this.secCurDens += bKicks;
     if (this.secDump) { const row = [(nowMs - this.secSongStartMs) / 1000, blkDb, bKicks, bCent, bInt, breaking ? 1 : 0, dropped ? 1 : 0]; for (let i = 0; i < 8; i++) row.push(this.secBlkSpec[i] / n); row.push(st, ['intro', 'low', 'build', 'high', 'break'].indexOf(this.section)); this.secDump.push(row); }
-    if (this.section === 'high') this.lastHighDb = this.secCurDbSum / this.secCurDbN;   // pagaende refrang = farskaste referensen
+    if (this.section === 'high') { this.lastHighDb = this.secCurDbSum / this.secCurDbN; this.lastHighDens = this.secCurDens / this.secCurDbN; }   // pagaende refrang = farskaste referensen
     this.levelVsHighDb = Number.isFinite(this.lastHighDb) ? blkDb - this.lastHighDb : 0;
     this.predictHigh(nowMs, bInt);
     if (this.dbgSecBlock) this.dbgSecBlock({ nowMs, section: this.section, sectionStartMs: this.sectionStartMs, prev, label, bpm: this.localBpm, bInt, bKicks, bCent, blkDb, buildUp: this.buildUp, riseRun: this.secRiseRun, rise, dropped, breaking, tier: this.sectionTier, repeatSim: this.repeatSim, repeatAgoMs: this.repeatAgoMs, repeatSection: this.repeatSection, spec: Array.from(this.secBlkSpec, (v) => v / n), lastHighDb: this.lastHighDb, expectHighMs: this.expectHighMs, expectSource: this.expectSource, beatPhaseMs: this.beatPhaseMs, secLogN: this.secLog.length, secLogLast: this.secLog[this.secLog.length - 1] ?? null });
