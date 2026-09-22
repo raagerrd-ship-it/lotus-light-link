@@ -68,7 +68,10 @@ function runOne(y, rate) {
 }
 
 const rows = [];
-if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('.json') && (!process.env.BENCH_FILTER || f.includes(process.env.BENCH_FILTER)))) {   // BENCH_FILTER=_smu9 -> bara langfangsterna
+const _files = readdirSync(DIR).filter((f) => f.endsWith('.json') && (!process.env.BENCH_FILTER || f.includes(process.env.BENCH_FILTER))).sort();   // BENCH_FILTER=_smu9 -> bara langfangsterna
+// BENCH_SPLIT=train|test (09-22): jamna index = train, udda = test, pa SORTERAD filordning - tuna pa train, rapportera test. Utan = alla.
+const _split = process.env.BENCH_SPLIT; const _keep = (i) => !_split || (_split === 'train' ? i % 2 === 0 : i % 2 === 1);
+if (existsSync(DIR)) for (const f of _files.filter((_, i) => _keep(i))) {
   const meta = JSON.parse(readFileSync(join(DIR, f), 'utf8')); const wav = join(DIR, f.replace(/\.json$/, '.wav'));
   if (!existsSync(wav)) continue;
   if (meta.result?.method === 'brus' || (meta.result?.quality && meta.result.quality.ok === false)) continue;   // brus-snuttar (kvalitetsgrinden) ar inget facit
@@ -111,10 +114,13 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
   // SEKTIONSFACIT (09-20): langfangst med all-in-one-segment -> andel sekunder dar analysatorns 'high' == facit 'chorus',
   // samt hur stor andel av facit-refrangerna analysatorn markerar som 'high' (recall) och hur mycket 'high' som ar utanfor (falsk).
   let secAgree = null, secRecall = null, secFalse = null, secBound = null, predHit = null, predTot = null, predLead = null, predFalse = null;
+  let ch1Ms = null, ch2Ms = null, v2Ok = null, ch2Pred = null;   // REFRANG 2 (09-22): se blocket nedan
   // SEKTIONSFACIT = molnets granser + energirang per segment (section_facit.py -> sections.derived: tier high/mid/low/intro).
   // Matt: high==high-andel per sekund, refrang-recall (facit-high med analysator-high), falsk-high (analysator-high utanfor
   // facit-high), gransfel: andel av analysatorns byten som ligger inom +-3 s fran nagon facitgrans.
-  const segs = meta.result?.analysis?.sections?.derived || [];
+  // BENCH_SECSRC=cloud|local: bara facit fran den kallan (derivedSource; saknas = cloud). Lokalt facit (section_facit_local.py) har andra granser.
+  const secSrc = meta.result?.analysis?.sections?.derivedSource || 'cloud';
+  const segs = (!process.env.BENCH_SECSRC || process.env.BENCH_SECSRC === secSrc) ? (meta.result?.analysis?.sections?.derived || []) : [];
   if (segs.length >= 2 && r.sections && r.sections.length >= 1 && y.length / rate > 60) {
     const total = Math.floor(y.length / rate); let agree = 0, chorusS = 0, chorusHit = 0, highS = 0, highOut = 0;
     const labAt = (t) => { let l = r.sections[0][1]; for (const [ts, ll] of r.sections) { if (ts <= t) l = ll; else break; } return l; };
@@ -128,6 +134,16 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     const n = Math.max(1, total - 10); secAgree = agree / n; secRecall = chorusS ? chorusHit / chorusS : null; secFalse = highS ? highOut / highS : null;
     const bounds = segs.slice(1).map((g) => g.start); const changes = r.sections.slice(1).map(([ts]) => ts).filter((ts) => ts >= 10);
     if (changes.length) secBound = changes.filter((ts) => bounds.some((bd) => Math.abs(bd - ts) <= 3)).length / changes.length;
+    // REFRANG 2 (09-22, agaren: 'iaf vers nr 2 och refrang 2'): facit-proxy ur energitiers - forsta high-segmentet = refrang 1, andra high-
+    // segmentet (med icke-high emellan) = refrang 2, det emellan = vers 2. Igenkanningstid = forsta realtids-'high' fran 2 s fore starten,
+    // i sekunder efter starten (negativ = fore). Vers 2 ratt = andel sekunder i vers 2 som INTE ar 'high'. ch2Pred = forutsedd (+-2 s) fore refrang 2.
+    { const hi = segs.map((g, i) => g.tier === 'high' ? i : -1).filter((i) => i >= 0);
+      if (hi.length >= 2 && segs.slice(hi[0] + 1, hi[1]).some((g) => g.tier !== 'high')) {
+        const c1 = segs[hi[0]], c2 = segs[hi[1]]; const firstHighAfter = (t0) => { const e = r.sections.find(([ts, l]) => l === 'high' && ts >= t0 - 2); return e ? e[0] - t0 : null; };
+        ch1Ms = firstHighAfter(c1.start); ch2Ms = firstHighAfter(c2.start);
+        let vN = 0, vOk = 0; for (let t = Math.ceil(c1.end); t < c2.start; t++) { vN++; if (labAt(t) !== 'high') vOk++; } v2Ok = vN ? vOk / vN : null;
+        ch2Pred = r.preds ? (r.preds.some(([tp, at]) => tp >= c2.start - 12 && tp <= c2.start - 1 && Math.abs(at - c2.start) <= 2) ? 1 : 0) : null;
+      } }
     // FORUTSAGELSE (09-21): facitets high-starter (tier high efter icke-high, >= 20 s) - traff om nagon forutsagelse gjord 1-12 s
     // fore starten pekade inom +-2 s; lead = tidigast traffande forutsagelse. Falsk = forutsedd tidpunkt > 4 s fran alla high-starter.
     const highStarts = segs.filter((g, i) => g.tier === 'high' && i > 0 && segs[i - 1].tier !== 'high' && g.start >= 20).map((g) => g.start);
@@ -192,7 +208,7 @@ if (existsSync(DIR)) for (const f of readdirSync(DIR).filter((f) => f.endsWith('
     let hitB = 0; for (const g of pcBeats) { let best = Infinity; for (const k of r.kicks) { const d = Math.abs(k - g); if (d < best) best = d; } if (best <= 0.06) hitB++; }
     beatR = hitB / pcBeats.length;
   }
-  rows.push({ set: 'korpus', secLenS: y.length / rate, follow, secAgree, secRecall, secFalse, secBound, predHit, predTot, predLead, predFalse, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
+  rows.push({ set: 'korpus', secLenS: y.length / rate, follow, secAgree, secRecall, secFalse, secBound, predHit, predTot, predLead, predFalse, ch1Ms, ch2Ms, v2Ok, ch2Pred, phaseOn, phaseN, phaseA1, phaseBt, pcVsA1, beatR, kickP, kickR, kickBias, nKick: r.kicks.length, nOn: pcOn.length, name: `${meta.row?.artist ?? ''} – ${meta.row?.title ?? basename(f)}`.slice(0, 40), facit, ...r, cls, ratio });
 }
 if (existsSync(SYNTH)) for (const f of readdirSync(SYNTH).filter((f) => f.endsWith('.wav'))) {
   const facit = parseFloat(f); if (!facit) continue;
@@ -226,6 +242,10 @@ for (const set of ['korpus', 'synt']) {
   if (sf.length) console.log(`${set} sektionsfacit (langfangster n=${sf.length}): gransfel-traff median ${[...sf].filter((r) => r.secBound !== null).map((r) => r.secBound).sort((a, b) => a - b)[sf.filter((r) => r.secBound !== null).length >> 1]?.toFixed(2)}, high==high andel median ${[...sf].map((r) => r.secAgree).sort((a, b) => a - b)[sf.length >> 1].toFixed(2)}, refrang-recall median ${[...sf].filter((r) => r.secRecall !== null).map((r) => r.secRecall).sort((a, b) => a - b)[sf.filter((r) => r.secRecall !== null).length >> 1]?.toFixed(2)}, falsk-high median ${[...sf].filter((r) => r.secFalse !== null).map((r) => r.secFalse).sort((a, b) => a - b)[sf.filter((r) => r.secFalse !== null).length >> 1]?.toFixed(2)}`);
   const prd = rs.filter((r) => r.predTot); if (prd.length) { const h = prd.reduce((a, r) => a + r.predHit, 0), t = prd.reduce((a, r) => a + r.predTot, 0); const leads = prd.map((r) => r.predLead).filter((x) => x !== null).sort((a, b) => a - b); const fl = prd.map((r) => r.predFalse).sort((a, b) => a - b);
     console.log(`${set} forutsagelse (langfangster n=${prd.length}): refrangstart forutsedd ${h}/${t} (${(100 * h / Math.max(1, t)).toFixed(0)} %), lead median ${leads.length ? leads[leads.length >> 1].toFixed(1) : '-'} s, falska/min median ${fl.length ? fl[fl.length >> 1].toFixed(1) : '-'}`); }
+  const c2 = rs.filter((r) => r.v2Ok !== null && r.v2Ok !== undefined);
+  if (c2.length) { const med = (a) => { const b = a.filter((x) => x !== null && x !== undefined).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : null; };
+    const hit = (k, lim) => c2.filter((r) => r[k] !== null && r[k] <= lim).length;
+    console.log(`${set} refrang2 (n=${c2.length}): refrang 2 igenkand <=4 s ${hit('ch2Ms', 4)}/${c2.length}, <=8 s ${hit('ch2Ms', 8)}/${c2.length}, median ${med(c2.map((r) => r.ch2Ms))?.toFixed(1) ?? '-'} s | refrang 1 <=4 s ${hit('ch1Ms', 4)}/${c2.length}, median ${med(c2.map((r) => r.ch1Ms))?.toFixed(1) ?? '-'} s | vers 2 ej high median ${med(c2.map((r) => r.v2Ok))?.toFixed(2)} | refrang 2 forutsedd ${c2.filter((r) => r.ch2Pred === 1).length}/${c2.length}`); }
   const sec = rs.filter((r) => r.sections && r.sections.length);
   if (sec.length && sec.some((r) => r.sections.length > 1)) { const cnt = {}; let hi = 0, rep = 0; for (const r of sec) { for (const [, l] of r.sections) cnt[l] = (cnt[l] || 0) + 1; if (r.sections.some(([, l]) => l === 'high')) hi++; if (r.repeats > 0) rep++; }
     const durs = []; for (const r of sec) for (let i = 1; i < r.sections.length; i++) durs.push(r.sections[i][0] - r.sections[i - 1][0]); durs.sort((a, b) => a - b);
