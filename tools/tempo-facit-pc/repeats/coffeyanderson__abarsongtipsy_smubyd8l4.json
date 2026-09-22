@@ -1,0 +1,305 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 12.12,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.28,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 12.12,
+   "end": 20.96,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.43,
+   "bars": [
+    4,
+    7
+   ]
+  },
+  {
+   "start": 20.96,
+   "end": 33.49,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.63,
+   "bars": [
+    7,
+    11
+   ]
+  },
+  {
+   "start": 33.49,
+   "end": 42.33,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.63,
+   "bars": [
+    11,
+    14
+   ]
+  },
+  {
+   "start": 42.33,
+   "end": 62.96,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.65,
+   "bars": [
+    14,
+    24
+   ]
+  },
+  {
+   "start": 62.96,
+   "end": 74.75,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.53,
+   "bars": [
+    24,
+    28
+   ]
+  },
+  {
+   "start": 74.75,
+   "end": 83.59,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.84,
+   "bars": [
+    28,
+    31
+   ]
+  },
+  {
+   "start": 83.59,
+   "end": 93.91,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.42,
+   "bars": [
+    31,
+    36
+   ]
+  },
+  {
+   "start": 93.91,
+   "end": 99.81,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    36,
+    40
+   ]
+  },
+  {
+   "start": 99.81,
+   "end": 108.65,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.67,
+   "bars": [
+    40,
+    46
+   ]
+  },
+  {
+   "start": 108.65,
+   "end": 117.49,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    46,
+    52
+   ]
+  },
+  {
+   "start": 117.49,
+   "end": 132.22,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.55,
+   "bars": [
+    52,
+    58
+   ]
+  },
+  {
+   "start": 132.22,
+   "end": 150.0,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.3,
+   "bars": [
+    58,
+    66
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 93.91,
+  "end": 117.49
+ },
+ "verse2": {
+  "start": 117.49,
+  "end": 132.22
+ },
+ "chorus2": {
+  "start": 132.22,
+  "end": 150.0
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 66,
+ "barS": 2.947,
+ "thr": 0.349,
+ "ssmMedian": 0.043,
+ "ssmMad": 0.153,
+ "stripes": [
+  {
+   "bars": [
+    34,
+    38
+   ],
+   "lagBars": 8,
+   "startS": 90.96,
+   "endS": 96.86,
+   "repeatAtS": 102.75,
+   "score": 0.413
+  },
+  {
+   "bars": [
+    47,
+    52
+   ],
+   "lagBars": 14,
+   "startS": 110.12,
+   "endS": 117.49,
+   "repeatAtS": 141.07,
+   "score": 0.45
+  },
+  {
+   "bars": [
+    43,
+    48
+   ],
+   "lagBars": 18,
+   "startS": 104.23,
+   "endS": 111.59,
+   "repeatAtS": 141.07,
+   "score": 0.475
+  },
+  {
+   "bars": [
+    39,
+    44
+   ],
+   "lagBars": 22,
+   "startS": 98.33,
+   "endS": 105.7,
+   "repeatAtS": 141.07,
+   "score": 0.527
+  },
+  {
+   "bars": [
+    35,
+    40
+   ],
+   "lagBars": 26,
+   "startS": 92.44,
+   "endS": 99.81,
+   "repeatAtS": 141.07,
+   "score": 0.445
+  }
+ ],
+ "pairs": [
+  [
+   7,
+   9,
+   0.4,
+   2
+  ],
+  [
+   7,
+   12,
+   0.2,
+   1
+  ],
+  [
+   8,
+   9,
+   0.5,
+   2
+  ],
+  [
+   8,
+   12,
+   1.0,
+   4
+  ],
+  [
+   9,
+   12,
+   1.0,
+   6
+  ],
+  [
+   10,
+   12,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.66
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.7,
+ "at": 1790103094,
+ "id": "coffeyanderson__abarsongtipsy_smubyd8l4",
+ "title": "Coffey Anderson - A Bar Song (Tipsy)",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

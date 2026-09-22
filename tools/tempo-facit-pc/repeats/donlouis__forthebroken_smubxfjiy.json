@@ -1,0 +1,259 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 13.94,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -35.98,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 13.94,
+   "end": 26.74,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -36.23,
+   "bars": [
+    4,
+    8
+   ]
+  },
+  {
+   "start": 26.74,
+   "end": 39.55,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.1,
+   "bars": [
+    8,
+    12
+   ]
+  },
+  {
+   "start": 39.55,
+   "end": 49.15,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -36.34,
+   "bars": [
+    12,
+    16
+   ]
+  },
+  {
+   "start": 49.15,
+   "end": 71.56,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.29,
+   "bars": [
+    16,
+    23
+   ]
+  },
+  {
+   "start": 71.56,
+   "end": 84.37,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.7,
+   "bars": [
+    23,
+    27
+   ]
+  },
+  {
+   "start": 84.37,
+   "end": 93.97,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -34.97,
+   "bars": [
+    27,
+    30
+   ]
+  },
+  {
+   "start": 93.97,
+   "end": 122.78,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.38,
+   "bars": [
+    30,
+    39
+   ]
+  },
+  {
+   "start": 122.78,
+   "end": 135.59,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.42,
+   "bars": [
+    39,
+    43
+   ]
+  },
+  {
+   "start": 135.59,
+   "end": 150.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -45.06,
+   "bars": [
+    43,
+    44
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 49.15,
+  "end": 71.56
+ },
+ "verse2": {
+  "start": 71.56,
+  "end": 93.97
+ },
+ "chorus2": {
+  "start": 93.97,
+  "end": 122.78
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "beatthis-grid",
+ "nBars": 44,
+ "barS": 3.201,
+ "thr": 0.411,
+ "ssmMedian": 0.062,
+ "ssmMad": 0.175,
+ "stripes": [
+  {
+   "bars": [
+    5,
+    13
+   ],
+   "lagBars": 13,
+   "startS": 17.14,
+   "endS": 42.75,
+   "repeatAtS": 55.55,
+   "score": 0.614
+  },
+  {
+   "bars": [
+    17,
+    24
+   ],
+   "lagBars": 14,
+   "startS": 52.35,
+   "endS": 74.76,
+   "repeatAtS": 97.17,
+   "score": 0.555
+  },
+  {
+   "bars": [
+    5,
+    10
+   ],
+   "lagBars": 27,
+   "startS": 17.14,
+   "endS": 33.15,
+   "repeatAtS": 100.37,
+   "score": 0.537
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   0.75,
+   3
+  ],
+  [
+   1,
+   7,
+   0.75,
+   3
+  ],
+  [
+   2,
+   4,
+   0.5,
+   2
+  ],
+  [
+   2,
+   5,
+   0.5,
+   2
+  ],
+  [
+   2,
+   7,
+   0.5,
+   2
+  ],
+  [
+   3,
+   5,
+   0.25,
+   1
+  ],
+  [
+   4,
+   7,
+   0.86,
+   6
+  ],
+  [
+   5,
+   7,
+   0.25,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.3
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 16.3,
+ "at": 1790103391,
+ "id": "donlouis__forthebroken_smubxfjiy",
+ "title": "Don Louis - For The Broken",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

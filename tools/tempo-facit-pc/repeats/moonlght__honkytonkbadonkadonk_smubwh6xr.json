@@ -1,0 +1,159 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 20.99,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.04,
+   "bars": [
+    0,
+    8
+   ]
+  },
+  {
+   "start": 20.99,
+   "end": 35.54,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -35.6,
+   "bars": [
+    8,
+    16
+   ]
+  },
+  {
+   "start": 35.54,
+   "end": 50.07,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -40.29,
+   "bars": [
+    16,
+    24
+   ]
+  },
+  {
+   "start": 50.07,
+   "end": 64.61,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.62,
+   "bars": [
+    24,
+    32
+   ]
+  },
+  {
+   "start": 64.61,
+   "end": 86.33,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.57,
+   "bars": [
+    32,
+    44
+   ]
+  },
+  {
+   "start": 86.33,
+   "end": 105.14,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.79,
+   "bars": [
+    44,
+    51
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.0,
+  "end": 20.99
+ },
+ "verse2": {
+  "start": 20.99,
+  "end": 64.61
+ },
+ "chorus2": {
+  "start": 64.61,
+  "end": 86.33
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 51,
+ "barS": 1.82,
+ "thr": 0.516,
+ "ssmMedian": 0.009,
+ "ssmMad": 0.254,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    15
+   ],
+   "lagBars": 32,
+   "startS": 6.45,
+   "endS": 33.71,
+   "repeatAtS": 64.61,
+   "score": 0.748
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   4,
+   1.0,
+   8
+  ],
+  [
+   1,
+   4,
+   0.5,
+   4
+  ],
+  [
+   1,
+   5,
+   0.43,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "A": -35.8
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 11.1,
+ "at": 1790103701,
+ "id": "moonlght__honkytonkbadonkadonk_smubwh6xr",
+ "title": "MOONLGHT - HONKY TONK BADONKADONK",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,126 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 57.42,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.61,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 57.42,
+   "end": 67.1,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -41.22,
+   "bars": [
+    6,
+    11
+   ]
+  },
+  {
+   "start": 67.1,
+   "end": 105.71,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -40.17,
+   "bars": [
+    11,
+    31
+   ]
+  },
+  {
+   "start": 105.71,
+   "end": 121.19,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.52,
+   "bars": [
+    31,
+    39
+   ]
+  },
+  {
+   "start": 121.19,
+   "end": 149.73,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -40.56,
+   "bars": [
+    39,
+    53
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 53,
+ "barS": 1.93,
+ "thr": 0.452,
+ "ssmMedian": 0.052,
+ "ssmMad": 0.2,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 32,
+   "startS": 45.82,
+   "endS": 57.42,
+   "repeatAtS": 107.64,
+   "score": 0.725
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.56
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.9,
+ "at": 1790103506,
+ "id": "jaibeau__bootsonthebass_smubse5wp",
+ "title": "Jai Beau - Boots On The Bass",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

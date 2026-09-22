@@ -1,0 +1,368 @@
+{
+ "segments": [
+  {
+   "start": 1.79,
+   "end": 15.88,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.95,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 15.88,
+   "end": 25.94,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.62,
+   "bars": [
+    7,
+    12
+   ]
+  },
+  {
+   "start": 25.94,
+   "end": 54.63,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.9,
+   "bars": [
+    12,
+    26
+   ]
+  },
+  {
+   "start": 54.63,
+   "end": 62.68,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.79,
+   "bars": [
+    26,
+    30
+   ]
+  },
+  {
+   "start": 62.68,
+   "end": 70.73,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.58,
+   "bars": [
+    30,
+    34
+   ]
+  },
+  {
+   "start": 70.73,
+   "end": 84.82,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.67,
+   "bars": [
+    34,
+    41
+   ]
+  },
+  {
+   "start": 84.82,
+   "end": 103.44,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.43,
+   "bars": [
+    41,
+    50
+   ]
+  },
+  {
+   "start": 103.44,
+   "end": 115.52,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.82,
+   "bars": [
+    50,
+    56
+   ]
+  },
+  {
+   "start": 115.52,
+   "end": 123.57,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    56,
+    60
+   ]
+  },
+  {
+   "start": 123.57,
+   "end": 131.62,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.68,
+   "bars": [
+    60,
+    64
+   ]
+  },
+  {
+   "start": 131.62,
+   "end": 149.74,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -40.27,
+   "bars": [
+    64,
+    72
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 15.88,
+  "end": 25.94
+ },
+ "verse2": {
+  "start": 25.94,
+  "end": 54.63
+ },
+ "chorus2": {
+  "start": 54.63,
+  "end": 84.82
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 72,
+ "barS": 2.013,
+ "thr": 0.523,
+ "ssmMedian": 0.055,
+ "ssmMad": 0.234,
+ "stripes": [
+  {
+   "bars": [
+    52,
+    56
+   ],
+   "lagBars": 8,
+   "startS": 107.46,
+   "endS": 115.52,
+   "repeatAtS": 123.57,
+   "score": 0.563
+  },
+  {
+   "bars": [
+    31,
+    42
+   ],
+   "lagBars": 20,
+   "startS": 64.69,
+   "endS": 86.83,
+   "repeatAtS": 105.45,
+   "score": 0.66
+  },
+  {
+   "bars": [
+    7,
+    12
+   ],
+   "lagBars": 22,
+   "startS": 15.88,
+   "endS": 25.94,
+   "repeatAtS": 60.66,
+   "score": 0.68
+  },
+  {
+   "bars": [
+    26,
+    41
+   ],
+   "lagBars": 24,
+   "startS": 54.63,
+   "endS": 84.82,
+   "repeatAtS": 103.44,
+   "score": 0.722
+  },
+  {
+   "bars": [
+    30,
+    35
+   ],
+   "lagBars": 26,
+   "startS": 62.68,
+   "endS": 72.74,
+   "repeatAtS": 115.52,
+   "score": 0.549
+  },
+  {
+   "bars": [
+    33,
+    37
+   ],
+   "lagBars": 28,
+   "startS": 68.72,
+   "endS": 76.77,
+   "repeatAtS": 125.58,
+   "score": 0.632
+  },
+  {
+   "bars": [
+    28,
+    32
+   ],
+   "lagBars": 32,
+   "startS": 58.65,
+   "endS": 66.7,
+   "repeatAtS": 123.57,
+   "score": 0.55
+  },
+  {
+   "bars": [
+    7,
+    12
+   ],
+   "lagBars": 46,
+   "startS": 15.88,
+   "endS": 25.94,
+   "repeatAtS": 109.48,
+   "score": 0.593
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   0.25,
+   1
+  ],
+  [
+   1,
+   4,
+   1.0,
+   4
+  ],
+  [
+   1,
+   7,
+   0.6,
+   3
+  ],
+  [
+   1,
+   8,
+   0.5,
+   2
+  ],
+  [
+   3,
+   7,
+   1.0,
+   4
+  ],
+  [
+   3,
+   9,
+   0.5,
+   2
+  ],
+  [
+   4,
+   7,
+   1.0,
+   4
+  ],
+  [
+   4,
+   8,
+   1.0,
+   4
+  ],
+  [
+   4,
+   9,
+   0.75,
+   3
+  ],
+  [
+   5,
+   7,
+   0.33,
+   2
+  ],
+  [
+   5,
+   8,
+   1.0,
+   4
+  ],
+  [
+   5,
+   9,
+   1.0,
+   4
+  ],
+  [
+   5,
+   10,
+   0.29,
+   2
+  ],
+  [
+   6,
+   9,
+   0.25,
+   1
+  ],
+  [
+   7,
+   9,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.7
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 9.1,
+ "at": 1790103860,
+ "id": "thehighkings__chasingrainbowsremix_smuc47wuq",
+ "title": "The High Kings - Chasing Rainbows - Remix",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

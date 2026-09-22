@@ -1,0 +1,224 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 11.36,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.12,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 11.36,
+   "end": 27.35,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.85,
+   "bars": [
+    5,
+    13
+   ]
+  },
+  {
+   "start": 27.35,
+   "end": 45.33,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.22,
+   "bars": [
+    13,
+    22
+   ]
+  },
+  {
+   "start": 45.33,
+   "end": 53.32,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.27,
+   "bars": [
+    22,
+    26
+   ]
+  },
+  {
+   "start": 53.32,
+   "end": 69.31,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.6,
+   "bars": [
+    26,
+    34
+   ]
+  },
+  {
+   "start": 69.31,
+   "end": 83.29,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.91,
+   "bars": [
+    34,
+    41
+   ]
+  },
+  {
+   "start": 83.29,
+   "end": 101.27,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.21,
+   "bars": [
+    41,
+    50
+   ]
+  },
+  {
+   "start": 101.27,
+   "end": 109.26,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.2,
+   "bars": [
+    50,
+    54
+   ]
+  },
+  {
+   "start": 109.26,
+   "end": 127.25,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.34,
+   "bars": [
+    54,
+    63
+   ]
+  },
+  {
+   "start": 127.25,
+   "end": 141.23,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.86,
+   "bars": [
+    63,
+    70
+   ]
+  },
+  {
+   "start": 141.23,
+   "end": 150.0,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.78,
+   "bars": [
+    70,
+    74
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 27.35,
+  "end": 45.33
+ },
+ "verse2": {
+  "start": 45.33,
+  "end": 83.29
+ },
+ "chorus2": {
+  "start": 83.29,
+  "end": 101.27
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 74,
+ "barS": 1.998,
+ "thr": 0.364,
+ "ssmMedian": 0.049,
+ "ssmMad": 0.158,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 8,
+   "startS": 1.37,
+   "endS": 9.37,
+   "repeatAtS": 17.36,
+   "score": 0.45
+  },
+  {
+   "bars": [
+    15,
+    22
+   ],
+   "lagBars": 28,
+   "startS": 31.34,
+   "endS": 45.33,
+   "repeatAtS": 87.29,
+   "score": 0.495
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   1,
+   0.8,
+   4
+  ],
+  [
+   2,
+   6,
+   0.78,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.22
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 9.5,
+ "at": 1790103851,
+ "id": "the615house__mexicanjailfeatthomasmactreylewisampcooperalan_smubzyh1d",
+ "title": "The 615 House - Mexican Jail (feat. Thomas Mac, Trey Lewis &amp; Cooper Alan)",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

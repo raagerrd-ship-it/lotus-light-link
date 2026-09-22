@@ -1,0 +1,291 @@
+{
+ "segments": [
+  {
+   "start": 0.29,
+   "end": 23.81,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.58,
+   "bars": [
+    0,
+    11
+   ]
+  },
+  {
+   "start": 23.81,
+   "end": 35.62,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -35.96,
+   "bars": [
+    11,
+    17
+   ]
+  },
+  {
+   "start": 35.62,
+   "end": 47.42,
+   "group": "B",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -35.54,
+   "bars": [
+    17,
+    23
+   ]
+  },
+  {
+   "start": 47.42,
+   "end": 82.82,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.13,
+   "bars": [
+    23,
+    41
+   ]
+  },
+  {
+   "start": 82.82,
+   "end": 90.69,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -35.68,
+   "bars": [
+    41,
+    45
+   ]
+  },
+  {
+   "start": 90.69,
+   "end": 98.55,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -35.36,
+   "bars": [
+    45,
+    49
+   ]
+  },
+  {
+   "start": 98.55,
+   "end": 106.42,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -35.83,
+   "bars": [
+    49,
+    53
+   ]
+  },
+  {
+   "start": 106.42,
+   "end": 122.15,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -36.36,
+   "bars": [
+    53,
+    61
+   ]
+  },
+  {
+   "start": 122.15,
+   "end": 137.87,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.4,
+   "bars": [
+    61,
+    69
+   ]
+  },
+  {
+   "start": 137.87,
+   "end": 149.67,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.96,
+   "bars": [
+    69,
+    75
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 75,
+ "barS": 1.97,
+ "thr": 0.413,
+ "ssmMedian": 0.067,
+ "ssmMad": 0.173,
+ "stripes": [
+  {
+   "bars": [
+    42,
+    46
+   ],
+   "lagBars": 12,
+   "startS": 84.79,
+   "endS": 92.64,
+   "repeatAtS": 108.38,
+   "score": 0.447
+  },
+  {
+   "bars": [
+    45,
+    49
+   ],
+   "lagBars": 24,
+   "startS": 90.69,
+   "endS": 98.55,
+   "repeatAtS": 137.87,
+   "score": 0.451
+  },
+  {
+   "bars": [
+    42,
+    47
+   ],
+   "lagBars": 28,
+   "startS": 84.79,
+   "endS": 94.61,
+   "repeatAtS": 139.84,
+   "score": 0.707
+  },
+  {
+   "bars": [
+    9,
+    24
+   ],
+   "lagBars": 30,
+   "startS": 19.86,
+   "endS": 49.38,
+   "repeatAtS": 78.89,
+   "score": 0.694
+  },
+  {
+   "bars": [
+    11,
+    17
+   ],
+   "lagBars": 58,
+   "startS": 23.81,
+   "endS": 35.62,
+   "repeatAtS": 137.87,
+   "score": 0.594
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   0.18,
+   2
+  ],
+  [
+   1,
+   4,
+   1.0,
+   4
+  ],
+  [
+   1,
+   5,
+   0.5,
+   2
+  ],
+  [
+   1,
+   9,
+   1.0,
+   6
+  ],
+  [
+   2,
+   5,
+   0.5,
+   2
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   3,
+   7,
+   0.12,
+   1
+  ],
+  [
+   4,
+   7,
+   0.75,
+   3
+  ],
+  [
+   4,
+   9,
+   0.75,
+   3
+  ],
+  [
+   5,
+   7,
+   0.25,
+   1
+  ],
+  [
+   5,
+   9,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -35.69,
+  "A": -35.86
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.4,
+ "at": 1790103977,
+ "id": "zacampgeorge__callitaday_smubsi1t2",
+ "title": "Zac &amp; George - Call It A Day",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

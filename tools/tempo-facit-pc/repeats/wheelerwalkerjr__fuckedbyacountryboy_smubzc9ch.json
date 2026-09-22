@@ -1,0 +1,331 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 8.94,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.17,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 8.94,
+   "end": 22.41,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.71,
+   "bars": [
+    6,
+    15
+   ]
+  },
+  {
+   "start": 22.41,
+   "end": 32.93,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    15,
+    22
+   ]
+  },
+  {
+   "start": 32.93,
+   "end": 43.42,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.87,
+   "bars": [
+    22,
+    29
+   ]
+  },
+  {
+   "start": 43.42,
+   "end": 52.45,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.78,
+   "bars": [
+    29,
+    35
+   ]
+  },
+  {
+   "start": 52.45,
+   "end": 62.95,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.03,
+   "bars": [
+    35,
+    42
+   ]
+  },
+  {
+   "start": 62.95,
+   "end": 75.0,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.97,
+   "bars": [
+    42,
+    50
+   ]
+  },
+  {
+   "start": 75.0,
+   "end": 85.52,
+   "group": "C",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.99,
+   "bars": [
+    50,
+    57
+   ]
+  },
+  {
+   "start": 85.52,
+   "end": 100.7,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.54,
+   "bars": [
+    57,
+    67
+   ]
+  },
+  {
+   "start": 100.7,
+   "end": 111.48,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.95,
+   "bars": [
+    67,
+    74
+   ]
+  },
+  {
+   "start": 111.48,
+   "end": 122.0,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.78,
+   "bars": [
+    74,
+    81
+   ]
+  },
+  {
+   "start": 122.0,
+   "end": 131.03,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.88,
+   "bars": [
+    81,
+    87
+   ]
+  },
+  {
+   "start": 131.03,
+   "end": 142.13,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -43.73,
+   "bars": [
+    87,
+    94
+   ]
+  },
+  {
+   "start": 142.13,
+   "end": 150.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.1,
+   "bars": [
+    94,
+    99
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 22.41,
+  "end": 32.93
+ },
+ "verse2": {
+  "start": 32.93,
+  "end": 62.95
+ },
+ "chorus2": {
+  "start": 62.95,
+  "end": 75.0
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "librosa",
+ "nBars": 99,
+ "barS": 1.509,
+ "thr": 0.376,
+ "ssmMedian": 0.093,
+ "ssmMad": 0.141,
+ "stripes": [
+  {
+   "bars": [
+    39,
+    43
+   ],
+   "lagBars": 25,
+   "startS": 58.47,
+   "endS": 64.46,
+   "repeatAtS": 96.15,
+   "score": 0.474
+  },
+  {
+   "bars": [
+    50,
+    56
+   ],
+   "lagBars": 25,
+   "startS": 75.0,
+   "endS": 84.03,
+   "repeatAtS": 112.99,
+   "score": 0.554
+  },
+  {
+   "bars": [
+    15,
+    29
+   ],
+   "lagBars": 27,
+   "startS": 22.41,
+   "endS": 43.42,
+   "repeatAtS": 62.95,
+   "score": 0.588
+  },
+  {
+   "bars": [
+    2,
+    6
+   ],
+   "lagBars": 33,
+   "startS": 2.9,
+   "endS": 8.94,
+   "repeatAtS": 52.45,
+   "score": 0.454
+  },
+  {
+   "bars": [
+    22,
+    29
+   ],
+   "lagBars": 52,
+   "startS": 32.93,
+   "endS": 43.42,
+   "repeatAtS": 111.48,
+   "score": 0.574
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   5,
+   0.67,
+   4
+  ],
+  [
+   2,
+   6,
+   1.0,
+   7
+  ],
+  [
+   3,
+   6,
+   0.14,
+   1
+  ],
+  [
+   3,
+   7,
+   0.86,
+   6
+  ],
+  [
+   3,
+   10,
+   1.0,
+   7
+  ],
+  [
+   5,
+   8,
+   0.43,
+   3
+  ],
+  [
+   6,
+   9,
+   0.14,
+   1
+  ],
+  [
+   7,
+   10,
+   0.86,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "C": -37.88,
+  "B": -37.95,
+  "A": -38.1
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.8,
+ "at": 1790103949,
+ "id": "wheelerwalkerjr__fuckedbyacountryboy_smubzc9ch",
+ "title": "Wheeler Walker Jr. - Fucked By A Country Boy",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

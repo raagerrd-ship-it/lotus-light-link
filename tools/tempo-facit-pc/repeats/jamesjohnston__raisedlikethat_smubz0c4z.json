@@ -1,0 +1,236 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 14.45,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.02,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 14.45,
+   "end": 23.02,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.49,
+   "bars": [
+    6,
+    10
+   ]
+  },
+  {
+   "start": 23.02,
+   "end": 31.6,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.64,
+   "bars": [
+    10,
+    14
+   ]
+  },
+  {
+   "start": 31.6,
+   "end": 48.75,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.56,
+   "bars": [
+    14,
+    22
+   ]
+  },
+  {
+   "start": 48.75,
+   "end": 65.9,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.09,
+   "bars": [
+    22,
+    30
+   ]
+  },
+  {
+   "start": 65.9,
+   "end": 81.45,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.69,
+   "bars": [
+    30,
+    37
+   ]
+  },
+  {
+   "start": 81.45,
+   "end": 102.89,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.2,
+   "bars": [
+    37,
+    47
+   ]
+  },
+  {
+   "start": 102.89,
+   "end": 117.89,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.94,
+   "bars": [
+    47,
+    54
+   ]
+  },
+  {
+   "start": 117.89,
+   "end": 126.47,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.57,
+   "bars": [
+    54,
+    58
+   ]
+  },
+  {
+   "start": 126.47,
+   "end": 150.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.37,
+   "bars": [
+    58,
+    68
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 48.75,
+  "end": 65.9
+ },
+ "verse2": {
+  "start": 65.9,
+  "end": 102.89
+ },
+ "chorus2": {
+  "start": 102.89,
+  "end": 117.89
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 68,
+ "barS": 2.144,
+ "thr": 0.457,
+ "ssmMedian": 0.03,
+ "ssmMad": 0.213,
+ "stripes": [
+  {
+   "bars": [
+    7,
+    13
+   ],
+   "lagBars": 24,
+   "startS": 16.59,
+   "endS": 29.46,
+   "repeatAtS": 68.05,
+   "score": 0.532
+  },
+  {
+   "bars": [
+    23,
+    30
+   ],
+   "lagBars": 24,
+   "startS": 50.9,
+   "endS": 65.9,
+   "repeatAtS": 102.89,
+   "score": 0.606
+  },
+  {
+   "bars": [
+    15,
+    19
+   ],
+   "lagBars": 46,
+   "startS": 33.74,
+   "endS": 42.32,
+   "repeatAtS": 132.9,
+   "score": 0.564
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   5,
+   0.75,
+   3
+  ],
+  [
+   2,
+   5,
+   0.75,
+   3
+  ],
+  [
+   3,
+   9,
+   0.5,
+   4
+  ],
+  [
+   4,
+   7,
+   1.0,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "B": -36.02,
+  "A": -37.61
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 13.5,
+ "at": 1790103593,
+ "id": "jamesjohnston__raisedlikethat_smubz0c4z",
+ "title": "James Johnston - RAISED LIKE THAT",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

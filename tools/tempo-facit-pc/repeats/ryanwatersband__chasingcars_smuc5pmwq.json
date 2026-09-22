@@ -1,0 +1,206 @@
+{
+ "segments": [
+  {
+   "start": 0.62,
+   "end": 51.34,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.46,
+   "bars": [
+    0,
+    19
+   ]
+  },
+  {
+   "start": 51.34,
+   "end": 59.98,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.01,
+   "bars": [
+    19,
+    23
+   ]
+  },
+  {
+   "start": 59.98,
+   "end": 68.61,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.06,
+   "bars": [
+    23,
+    27
+   ]
+  },
+  {
+   "start": 68.61,
+   "end": 77.25,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.1,
+   "bars": [
+    27,
+    31
+   ]
+  },
+  {
+   "start": 77.25,
+   "end": 97.22,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.19,
+   "bars": [
+    31,
+    40
+   ]
+  },
+  {
+   "start": 97.22,
+   "end": 118.8,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.7,
+   "bars": [
+    40,
+    50
+   ]
+  },
+  {
+   "start": 118.8,
+   "end": 134.45,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.17,
+   "bars": [
+    50,
+    57
+   ]
+  },
+  {
+   "start": 134.45,
+   "end": 149.56,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.16,
+   "bars": [
+    57,
+    64
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 77.25,
+  "end": 118.8
+ },
+ "verse2": {
+  "start": 118.8,
+  "end": 134.45
+ },
+ "chorus2": {
+  "start": 134.45,
+  "end": 149.56
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 64,
+ "barS": 2.159,
+ "thr": 0.454,
+ "ssmMedian": -0.025,
+ "ssmMad": 0.239,
+ "stripes": [
+  {
+   "bars": [
+    19,
+    23
+   ],
+   "lagBars": 8,
+   "startS": 51.34,
+   "endS": 59.98,
+   "repeatAtS": 68.61,
+   "score": 0.598
+  },
+  {
+   "bars": [
+    34,
+    42
+   ],
+   "lagBars": 8,
+   "startS": 84.26,
+   "endS": 101.53,
+   "repeatAtS": 101.53,
+   "score": 0.544
+  },
+  {
+   "bars": [
+    33,
+    40
+   ],
+   "lagBars": 24,
+   "startS": 81.56,
+   "endS": 97.22,
+   "repeatAtS": 134.45,
+   "score": 0.647
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   4
+  ],
+  [
+   4,
+   5,
+   0.67,
+   6
+  ],
+  [
+   4,
+   7,
+   1.0,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "B": -38.02,
+  "A": -38.05
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 9.2,
+ "at": 1790103810,
+ "id": "ryanwatersband__chasingcars_smuc5pmwq",
+ "title": "Ryan Waters Band - Chasing Cars",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

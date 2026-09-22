@@ -1,0 +1,135 @@
+{
+ "segments": [
+  {
+   "start": 0.56,
+   "end": 26.49,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.47,
+   "bars": [
+    0,
+    14
+   ]
+  },
+  {
+   "start": 26.49,
+   "end": 36.83,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.91,
+   "bars": [
+    14,
+    21
+   ]
+  },
+  {
+   "start": 36.83,
+   "end": 68.82,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.53,
+   "bars": [
+    21,
+    42
+   ]
+  },
+  {
+   "start": 68.82,
+   "end": 78.99,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.87,
+   "bars": [
+    42,
+    49
+   ]
+  },
+  {
+   "start": 78.99,
+   "end": 149.14,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.68,
+   "bars": [
+    49,
+    89
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 26.49,
+  "end": 36.83
+ },
+ "verse2": {
+  "start": 36.83,
+  "end": 68.82
+ },
+ "chorus2": {
+  "start": 68.82,
+  "end": 78.99
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "librosa",
+ "nBars": 89,
+ "barS": 1.463,
+ "thr": 0.346,
+ "ssmMedian": 0.052,
+ "ssmMad": 0.147,
+ "stripes": [
+  {
+   "bars": [
+    14,
+    21
+   ],
+   "lagBars": 28,
+   "startS": 26.49,
+   "endS": 36.83,
+   "repeatAtS": 68.82,
+   "score": 0.546
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.89
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 14.0,
+ "at": 1790103552,
+ "id": "jamesjohnston__mypeople_smuc2ovcz",
+ "title": "James Johnston - MY PEOPLE",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

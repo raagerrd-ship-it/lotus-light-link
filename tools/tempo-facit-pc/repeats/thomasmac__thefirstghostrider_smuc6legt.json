@@ -1,0 +1,200 @@
+{
+ "segments": [
+  {
+   "start": 5.76,
+   "end": 33.4,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.49,
+   "bars": [
+    0,
+    12
+   ]
+  },
+  {
+   "start": 33.4,
+   "end": 52.21,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.05,
+   "bars": [
+    12,
+    20
+   ]
+  },
+  {
+   "start": 52.21,
+   "end": 83.96,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.11,
+   "bars": [
+    20,
+    40
+   ]
+  },
+  {
+   "start": 83.96,
+   "end": 92.19,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.74,
+   "bars": [
+    40,
+    44
+   ]
+  },
+  {
+   "start": 92.19,
+   "end": 114.53,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.5,
+   "bars": [
+    44,
+    55
+   ]
+  },
+  {
+   "start": 114.53,
+   "end": 138.05,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.28,
+   "bars": [
+    55,
+    65
+   ]
+  },
+  {
+   "start": 138.05,
+   "end": 149.81,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.96,
+   "bars": [
+    65,
+    71
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 33.4,
+  "end": 52.21
+ },
+ "verse2": {
+  "start": 52.21,
+  "end": 92.19
+ },
+ "chorus2": {
+  "start": 92.19,
+  "end": 138.05
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 71,
+ "barS": 2.352,
+ "thr": 0.372,
+ "ssmMedian": 0.066,
+ "ssmMad": 0.153,
+ "stripes": [
+  {
+   "bars": [
+    40,
+    44
+   ],
+   "lagBars": 27,
+   "startS": 83.96,
+   "endS": 92.19,
+   "repeatAtS": 142.75,
+   "score": 0.421
+  },
+  {
+   "bars": [
+    12,
+    20
+   ],
+   "lagBars": 35,
+   "startS": 33.4,
+   "endS": 52.21,
+   "repeatAtS": 96.89,
+   "score": 0.714
+  },
+  {
+   "bars": [
+    13,
+    23
+   ],
+   "lagBars": 42,
+   "startS": 35.75,
+   "endS": 59.27,
+   "repeatAtS": 114.53,
+   "score": 0.533
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   1.0,
+   8
+  ],
+  [
+   1,
+   5,
+   0.88,
+   7
+  ],
+  [
+   2,
+   5,
+   0.3,
+   3
+  ],
+  [
+   3,
+   6,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.28,
+  "B": -38.85
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 5.9,
+ "at": 1790103928,
+ "id": "thomasmac__thefirstghostrider_smuc6legt",
+ "title": "Thomas Mac - The First Ghost Rider",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

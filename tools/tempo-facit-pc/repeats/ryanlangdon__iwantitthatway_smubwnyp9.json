@@ -1,0 +1,201 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 15.16,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.94,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 15.16,
+   "end": 34.55,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.54,
+   "bars": [
+    6,
+    14
+   ]
+  },
+  {
+   "start": 34.55,
+   "end": 51.52,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.09,
+   "bars": [
+    14,
+    21
+   ]
+  },
+  {
+   "start": 51.52,
+   "end": 75.75,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.71,
+   "bars": [
+    21,
+    31
+   ]
+  },
+  {
+   "start": 75.75,
+   "end": 95.14,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.88,
+   "bars": [
+    31,
+    39
+   ]
+  },
+  {
+   "start": 95.14,
+   "end": 104.84,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -36.06,
+   "bars": [
+    39,
+    43
+   ]
+  },
+  {
+   "start": 104.84,
+   "end": 114.53,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.12,
+   "bars": [
+    43,
+    47
+   ]
+  },
+  {
+   "start": 114.53,
+   "end": 124.23,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.96,
+   "bars": [
+    47,
+    51
+   ]
+  },
+  {
+   "start": 124.23,
+   "end": 133.92,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.21,
+   "bars": [
+    51,
+    55
+   ]
+  },
+  {
+   "start": 133.92,
+   "end": 150.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.92,
+   "bars": [
+    55,
+    61
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 34.55,
+  "end": 51.52
+ },
+ "verse2": {
+  "start": 51.52,
+  "end": 75.75
+ },
+ "chorus2": {
+  "start": 75.75,
+  "end": 95.14
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 61,
+ "barS": 2.424,
+ "thr": 0.405,
+ "ssmMedian": 0.076,
+ "ssmMad": 0.164,
+ "stripes": [
+  {
+   "bars": [
+    14,
+    21
+   ],
+   "lagBars": 16,
+   "startS": 34.55,
+   "endS": 51.52,
+   "repeatAtS": 73.33,
+   "score": 0.556
+  }
+ ],
+ "pairs": [
+  [
+   2,
+   3,
+   0.14,
+   1
+  ],
+  [
+   2,
+   4,
+   0.86,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.98
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.8,
+ "at": 1790103791,
+ "id": "ryanlangdon__iwantitthatway_smubwnyp9",
+ "title": "Ryan Langdon - I Want It That Way",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

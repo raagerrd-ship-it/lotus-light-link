@@ -1,0 +1,202 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 26.11,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -38.22,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 26.11,
+   "end": 39.83,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.05,
+   "bars": [
+    5,
+    11
+   ]
+  },
+  {
+   "start": 39.83,
+   "end": 53.46,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.19,
+   "bars": [
+    11,
+    17
+   ]
+  },
+  {
+   "start": 53.46,
+   "end": 64.89,
+   "group": "C",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.04,
+   "bars": [
+    17,
+    22
+   ]
+  },
+  {
+   "start": 64.89,
+   "end": 83.16,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.9,
+   "bars": [
+    22,
+    30
+   ]
+  },
+  {
+   "start": 83.16,
+   "end": 99.17,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.84,
+   "bars": [
+    30,
+    37
+   ]
+  },
+  {
+   "start": 99.17,
+   "end": 110.58,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.25,
+   "bars": [
+    37,
+    42
+   ]
+  },
+  {
+   "start": 110.58,
+   "end": 149.99,
+   "group": "C",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.06,
+   "bars": [
+    42,
+    49
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 53.46,
+  "end": 64.89
+ },
+ "verse2": {
+  "start": 64.89,
+  "end": 110.58
+ },
+ "chorus2": {
+  "start": 110.58,
+  "end": 149.99
+ },
+ "chorusGroup": "C",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 49,
+ "barS": 2.28,
+ "thr": 0.349,
+ "ssmMedian": 0.072,
+ "ssmMad": 0.139,
+ "stripes": [
+  {
+   "bars": [
+    5,
+    12
+   ],
+   "lagBars": 25,
+   "startS": 26.11,
+   "endS": 42.1,
+   "repeatAtS": 83.16,
+   "score": 0.573
+  },
+  {
+   "bars": [
+    14,
+    20
+   ],
+   "lagBars": 25,
+   "startS": 46.61,
+   "endS": 60.32,
+   "repeatAtS": 103.74,
+   "score": 0.549
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   5,
+   1.0,
+   6
+  ],
+  [
+   2,
+   5,
+   0.17,
+   1
+  ],
+  [
+   2,
+   6,
+   0.6,
+   3
+  ],
+  [
+   3,
+   7,
+   0.6,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.95,
+  "C": -38.05,
+  "B": -38.22
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 14.6,
+ "at": 1790103406,
+ "id": "doremibyai__itaintthesizeoftheboat_smubtq8q3",
+ "title": "Do Re Mi By AI - It Ain't The Size Of The Boat",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,405 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 28.05,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -36.62,
+   "bars": [
+    0,
+    17
+   ]
+  },
+  {
+   "start": 28.05,
+   "end": 40.84,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.54,
+   "bars": [
+    17,
+    25
+   ]
+  },
+  {
+   "start": 40.84,
+   "end": 47.25,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.39,
+   "bars": [
+    25,
+    29
+   ]
+  },
+  {
+   "start": 47.25,
+   "end": 53.64,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.55,
+   "bars": [
+    29,
+    33
+   ]
+  },
+  {
+   "start": 53.64,
+   "end": 79.25,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.39,
+   "bars": [
+    33,
+    49
+   ]
+  },
+  {
+   "start": 79.25,
+   "end": 92.02,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.1,
+   "bars": [
+    49,
+    57
+   ]
+  },
+  {
+   "start": 92.02,
+   "end": 98.43,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.41,
+   "bars": [
+    57,
+    61
+   ]
+  },
+  {
+   "start": 98.43,
+   "end": 104.81,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -34.89,
+   "bars": [
+    61,
+    65
+   ]
+  },
+  {
+   "start": 104.81,
+   "end": 116.03,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.61,
+   "bars": [
+    65,
+    72
+   ]
+  },
+  {
+   "start": 116.03,
+   "end": 128.82,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.8,
+   "bars": [
+    72,
+    80
+   ]
+  },
+  {
+   "start": 128.82,
+   "end": 135.23,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.99,
+   "bars": [
+    80,
+    84
+   ]
+  },
+  {
+   "start": 135.23,
+   "end": 141.62,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.46,
+   "bars": [
+    84,
+    88
+   ]
+  },
+  {
+   "start": 141.62,
+   "end": 150.0,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.56,
+   "bars": [
+    88,
+    93
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 40.84,
+  "end": 53.64
+ },
+ "verse2": {
+  "start": 53.64,
+  "end": 92.02
+ },
+ "chorus2": {
+  "start": 92.02,
+  "end": 104.81
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "librosa",
+ "nBars": 93,
+ "barS": 1.602,
+ "thr": 0.475,
+ "ssmMedian": 0.072,
+ "ssmMad": 0.202,
+ "stripes": [
+  {
+   "bars": [
+    60,
+    64
+   ],
+   "lagBars": 20,
+   "startS": 96.83,
+   "endS": 103.24,
+   "repeatAtS": 128.82,
+   "score": 0.556
+  },
+  {
+   "bars": [
+    57,
+    64
+   ],
+   "lagBars": 24,
+   "startS": 92.02,
+   "endS": 103.24,
+   "repeatAtS": 130.43,
+   "score": 0.706
+  },
+  {
+   "bars": [
+    29,
+    33
+   ],
+   "lagBars": 28,
+   "startS": 47.25,
+   "endS": 53.64,
+   "repeatAtS": 92.02,
+   "score": 0.64
+  },
+  {
+   "bars": [
+    57,
+    62
+   ],
+   "lagBars": 28,
+   "startS": 92.02,
+   "endS": 100.03,
+   "repeatAtS": 136.84,
+   "score": 0.64
+  },
+  {
+   "bars": [
+    15,
+    32
+   ],
+   "lagBars": 32,
+   "startS": 24.85,
+   "endS": 52.06,
+   "repeatAtS": 76.05,
+   "score": 0.676
+  },
+  {
+   "bars": [
+    28,
+    32
+   ],
+   "lagBars": 52,
+   "startS": 45.65,
+   "endS": 52.06,
+   "repeatAtS": 128.82,
+   "score": 0.571
+  },
+  {
+   "bars": [
+    25,
+    33
+   ],
+   "lagBars": 56,
+   "startS": 40.84,
+   "endS": 53.64,
+   "repeatAtS": 130.43,
+   "score": 0.673
+  },
+  {
+   "bars": [
+    25,
+    31
+   ],
+   "lagBars": 60,
+   "startS": 40.84,
+   "endS": 50.46,
+   "repeatAtS": 136.84,
+   "score": 0.623
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   4,
+   0.12,
+   2
+  ],
+  [
+   1,
+   5,
+   1.0,
+   8
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   2,
+   10,
+   1.0,
+   4
+  ],
+  [
+   2,
+   11,
+   1.0,
+   4
+  ],
+  [
+   2,
+   12,
+   0.25,
+   1
+  ],
+  [
+   3,
+   6,
+   1.0,
+   4
+  ],
+  [
+   3,
+   7,
+   0.75,
+   3
+  ],
+  [
+   3,
+   10,
+   0.75,
+   3
+  ],
+  [
+   3,
+   11,
+   0.75,
+   3
+  ],
+  [
+   3,
+   12,
+   0.75,
+   3
+  ],
+  [
+   6,
+   10,
+   1.0,
+   4
+  ],
+  [
+   6,
+   11,
+   1.0,
+   4
+  ],
+  [
+   6,
+   12,
+   0.25,
+   1
+  ],
+  [
+   7,
+   10,
+   0.75,
+   3
+  ],
+  [
+   7,
+   11,
+   0.75,
+   3
+  ],
+  [
+   7,
+   12,
+   0.25,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "B": -35.46,
+  "A": -37.82
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 13.8,
+ "at": 1790103679,
+ "id": "kevinnichols__townlikemine_smubxnntu",
+ "title": "Kevin Nichols - Town Like Mine",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

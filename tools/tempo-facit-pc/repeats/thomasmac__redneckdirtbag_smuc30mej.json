@@ -1,0 +1,135 @@
+{
+ "segments": [
+  {
+   "start": 1.19,
+   "end": 15.13,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.67,
+   "bars": [
+    0,
+    8
+   ]
+  },
+  {
+   "start": 15.13,
+   "end": 31.6,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.62,
+   "bars": [
+    8,
+    15
+   ]
+  },
+  {
+   "start": 31.6,
+   "end": 60.74,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.61,
+   "bars": [
+    15,
+    31
+   ]
+  },
+  {
+   "start": 60.74,
+   "end": 78.47,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.27,
+   "bars": [
+    31,
+    38
+   ]
+  },
+  {
+   "start": 78.47,
+   "end": 147.52,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.08,
+   "bars": [
+    38,
+    66
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 15.13,
+  "end": 31.6
+ },
+ "verse2": {
+  "start": 31.6,
+  "end": 60.74
+ },
+ "chorus2": {
+  "start": 60.74,
+  "end": 78.47
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 66,
+ "barS": 2.534,
+ "thr": 0.348,
+ "ssmMedian": 0.063,
+ "ssmMad": 0.142,
+ "stripes": [
+  {
+   "bars": [
+    8,
+    15
+   ],
+   "lagBars": 23,
+   "startS": 15.13,
+   "endS": 31.6,
+   "repeatAtS": 60.74,
+   "score": 0.473
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.45
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 4.7,
+ "at": 1790103918,
+ "id": "thomasmac__redneckdirtbag_smuc30mej",
+ "title": "Thomas Mac - Redneck Dirtbag",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,158 @@
+{
+ "segments": [
+  {
+   "start": 0.17,
+   "end": 59.26,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -40.37,
+   "bars": [
+    0,
+    3
+   ]
+  },
+  {
+   "start": 59.26,
+   "end": 83.79,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.3,
+   "bars": [
+    3,
+    12
+   ]
+  },
+  {
+   "start": 83.79,
+   "end": 100.16,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.78,
+   "bars": [
+    12,
+    18
+   ]
+  },
+  {
+   "start": 100.16,
+   "end": 113.79,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.06,
+   "bars": [
+    18,
+    23
+   ]
+  },
+  {
+   "start": 113.79,
+   "end": 130.15,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.95,
+   "bars": [
+    23,
+    29
+   ]
+  },
+  {
+   "start": 130.15,
+   "end": 149.99,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.0,
+   "bars": [
+    29,
+    35
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 59.26,
+  "end": 83.79
+ },
+ "verse2": {
+  "start": 83.79,
+  "end": 130.15
+ },
+ "chorus2": {
+  "start": 130.15,
+  "end": 149.99
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 35,
+ "barS": 2.73,
+ "thr": 0.565,
+ "ssmMedian": -0.097,
+ "ssmMad": 0.331,
+ "stripes": [
+  {
+   "bars": [
+    6,
+    11
+   ],
+   "lagBars": 24,
+   "startS": 67.44,
+   "endS": 81.07,
+   "repeatAtS": 132.88,
+   "score": 0.628
+  },
+  {
+   "bars": [
+    3,
+    9
+   ],
+   "lagBars": 26,
+   "startS": 59.26,
+   "endS": 75.62,
+   "repeatAtS": 130.15,
+   "score": 0.823
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   5,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.15
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 6.6,
+ "at": 1790103078,
+ "id": "chaycebeckham__23_smubslyxv",
+ "title": "Chayce Beckham - 23",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

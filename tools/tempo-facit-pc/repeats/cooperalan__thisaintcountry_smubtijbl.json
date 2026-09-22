@@ -1,0 +1,382 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 45.58,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.93,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 45.58,
+   "end": 59.22,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -40.06,
+   "bars": [
+    4,
+    9
+   ]
+  },
+  {
+   "start": 59.22,
+   "end": 75.58,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -39.11,
+   "bars": [
+    9,
+    15
+   ]
+  },
+  {
+   "start": 75.58,
+   "end": 89.21,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.16,
+   "bars": [
+    15,
+    20
+   ]
+  },
+  {
+   "start": 89.21,
+   "end": 108.3,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.24,
+   "bars": [
+    20,
+    27
+   ]
+  },
+  {
+   "start": 108.3,
+   "end": 127.39,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -39.67,
+   "bars": [
+    27,
+    34
+   ]
+  },
+  {
+   "start": 127.39,
+   "end": 149.99,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.16,
+   "bars": [
+    34,
+    41
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 41,
+ "barS": 2.73,
+ "thr": 0.446,
+ "ssmMedian": 0.037,
+ "ssmMad": 0.205,
+ "stripes": [
+  {
+   "bars": [
+    17,
+    22
+   ],
+   "lagBars": 8,
+   "startS": 81.04,
+   "endS": 94.67,
+   "repeatAtS": 102.85,
+   "score": 0.614
+  },
+  {
+   "bars": [
+    25,
+    30
+   ],
+   "lagBars": 11,
+   "startS": 102.85,
+   "endS": 116.48,
+   "repeatAtS": 132.84,
+   "score": 0.508
+  },
+  {
+   "bars": [
+    23,
+    28
+   ],
+   "lagBars": 13,
+   "startS": 97.4,
+   "endS": 111.03,
+   "repeatAtS": 132.84,
+   "score": 0.575
+  },
+  {
+   "bars": [
+    2,
+    7
+   ],
+   "lagBars": 14,
+   "startS": 40.13,
+   "endS": 53.76,
+   "repeatAtS": 78.31,
+   "score": 0.559
+  },
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 16,
+   "startS": 34.67,
+   "endS": 51.04,
+   "repeatAtS": 78.31,
+   "score": 0.541
+  },
+  {
+   "bars": [
+    18,
+    24
+   ],
+   "lagBars": 17,
+   "startS": 83.76,
+   "endS": 100.12,
+   "repeatAtS": 130.11,
+   "score": 0.883
+  },
+  {
+   "bars": [
+    0,
+    7
+   ],
+   "lagBars": 18,
+   "startS": 34.67,
+   "endS": 53.76,
+   "repeatAtS": 83.76,
+   "score": 0.836
+  },
+  {
+   "bars": [
+    16,
+    22
+   ],
+   "lagBars": 19,
+   "startS": 78.31,
+   "endS": 94.67,
+   "repeatAtS": 130.11,
+   "score": 0.539
+  },
+  {
+   "bars": [
+    0,
+    7
+   ],
+   "lagBars": 20,
+   "startS": 34.67,
+   "endS": 53.76,
+   "repeatAtS": 89.21,
+   "score": 0.537
+  },
+  {
+   "bars": [
+    16,
+    20
+   ],
+   "lagBars": 21,
+   "startS": 78.31,
+   "endS": 89.21,
+   "repeatAtS": 135.56,
+   "score": 0.602
+  },
+  {
+   "bars": [
+    0,
+    7
+   ],
+   "lagBars": 22,
+   "startS": 34.67,
+   "endS": 53.76,
+   "repeatAtS": 94.67,
+   "score": 0.537
+  },
+  {
+   "bars": [
+    1,
+    8
+   ],
+   "lagBars": 24,
+   "startS": 37.4,
+   "endS": 56.46,
+   "repeatAtS": 102.85,
+   "score": 0.546
+  },
+  {
+   "bars": [
+    1,
+    5
+   ],
+   "lagBars": 26,
+   "startS": 37.4,
+   "endS": 48.31,
+   "repeatAtS": 108.3,
+   "score": 0.548
+  },
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 35,
+   "startS": 34.67,
+   "endS": 51.04,
+   "repeatAtS": 130.11,
+   "score": 0.887
+  },
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 37,
+   "startS": 34.67,
+   "endS": 45.58,
+   "repeatAtS": 135.56,
+   "score": 0.524
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   1.0,
+   4
+  ],
+  [
+   0,
+   4,
+   1.0,
+   4
+  ],
+  [
+   0,
+   5,
+   0.75,
+   3
+  ],
+  [
+   0,
+   6,
+   1.0,
+   4
+  ],
+  [
+   1,
+   3,
+   0.4,
+   2
+  ],
+  [
+   1,
+   4,
+   1.0,
+   5
+  ],
+  [
+   1,
+   5,
+   1.0,
+   5
+  ],
+  [
+   1,
+   6,
+   0.4,
+   2
+  ],
+  [
+   3,
+   4,
+   0.4,
+   2
+  ],
+  [
+   3,
+   5,
+   0.2,
+   1
+  ],
+  [
+   3,
+   6,
+   1.0,
+   5
+  ],
+  [
+   4,
+   5,
+   0.29,
+   2
+  ],
+  [
+   4,
+   6,
+   1.0,
+   7
+  ],
+  [
+   5,
+   6,
+   0.43,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.7
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.5,
+ "at": 1790103314,
+ "id": "cooperalan__thisaintcountry_smubtijbl",
+ "title": "Cooper Alan - This Ain't Country",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

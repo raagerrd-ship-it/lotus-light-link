@@ -1,0 +1,211 @@
+{
+ "segments": [
+  {
+   "start": 0.44,
+   "end": 20.67,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.07,
+   "bars": [
+    0,
+    8
+   ]
+  },
+  {
+   "start": 20.67,
+   "end": 40.9,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.09,
+   "bars": [
+    8,
+    16
+   ]
+  },
+  {
+   "start": 40.9,
+   "end": 71.24,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.22,
+   "bars": [
+    16,
+    28
+   ]
+  },
+  {
+   "start": 71.24,
+   "end": 88.94,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.3,
+   "bars": [
+    28,
+    35
+   ]
+  },
+  {
+   "start": 88.94,
+   "end": 116.75,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.91,
+   "bars": [
+    35,
+    46
+   ]
+  },
+  {
+   "start": 116.75,
+   "end": 131.92,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.22,
+   "bars": [
+    46,
+    52
+   ]
+  },
+  {
+   "start": 131.92,
+   "end": 148.99,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -40.56,
+   "bars": [
+    52,
+    58
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 20.67,
+  "end": 40.9
+ },
+ "verse2": {
+  "start": 40.9,
+  "end": 71.24
+ },
+ "chorus2": {
+  "start": 71.24,
+  "end": 88.94
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 58,
+ "barS": 2.529,
+ "thr": 0.419,
+ "ssmMedian": 0.063,
+ "ssmMad": 0.178,
+ "stripes": [
+  {
+   "bars": [
+    29,
+    35
+   ],
+   "lagBars": 17,
+   "startS": 73.77,
+   "endS": 88.94,
+   "repeatAtS": 116.75,
+   "score": 0.552
+  },
+  {
+   "bars": [
+    8,
+    17
+   ],
+   "lagBars": 20,
+   "startS": 20.67,
+   "endS": 43.42,
+   "repeatAtS": 71.24,
+   "score": 0.529
+  },
+  {
+   "bars": [
+    9,
+    16
+   ],
+   "lagBars": 37,
+   "startS": 23.2,
+   "endS": 40.9,
+   "repeatAtS": 116.75,
+   "score": 0.586
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   7
+  ],
+  [
+   1,
+   4,
+   0.12,
+   1
+  ],
+  [
+   1,
+   5,
+   1.0,
+   6
+  ],
+  [
+   1,
+   6,
+   0.17,
+   1
+  ],
+  [
+   2,
+   4,
+   0.09,
+   1
+  ],
+  [
+   3,
+   5,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.2
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 8.1,
+ "at": 1790103137,
+ "id": "cooperalan__devilinmymind_smuc3ln6u",
+ "title": "Cooper Alan - Devil In My Mind",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

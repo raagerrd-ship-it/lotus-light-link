@@ -1,0 +1,162 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 21.55,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -36.52,
+   "bars": [
+    0,
+    12
+   ]
+  },
+  {
+   "start": 21.55,
+   "end": 40.96,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -36.64,
+   "bars": [
+    12,
+    25
+   ]
+  },
+  {
+   "start": 40.96,
+   "end": 55.97,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -36.59,
+   "bars": [
+    25,
+    35
+   ]
+  },
+  {
+   "start": 55.97,
+   "end": 66.46,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.26,
+   "bars": [
+    35,
+    42
+   ]
+  },
+  {
+   "start": 66.46,
+   "end": 81.46,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.67,
+   "bars": [
+    42,
+    52
+   ]
+  },
+  {
+   "start": 81.46,
+   "end": 88.96,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.7,
+   "bars": [
+    52,
+    57
+   ]
+  },
+  {
+   "start": 88.96,
+   "end": 106.96,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.95,
+   "bars": [
+    57,
+    69
+   ]
+  },
+  {
+   "start": 106.96,
+   "end": 140.63,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -35.68,
+   "bars": [
+    69,
+    82
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 82,
+ "barS": 1.5,
+ "thr": 0.409,
+ "ssmMedian": 0.082,
+ "ssmMad": 0.163,
+ "stripes": [
+  {
+   "bars": [
+    12,
+    22
+   ],
+   "lagBars": 30,
+   "startS": 21.55,
+   "endS": 36.46,
+   "repeatAtS": 66.46,
+   "score": 0.566
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   1.0,
+   10
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.66
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 15.6,
+ "at": 1790103422,
+ "id": "drakemilligan__baddaytobeabeer_smubu63fn",
+ "title": "Drake Milligan - Bad Day To Be A Beer",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

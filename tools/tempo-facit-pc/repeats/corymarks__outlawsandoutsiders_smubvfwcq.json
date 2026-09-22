@@ -1,0 +1,190 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 26.53,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.21,
+   "bars": [
+    0,
+    9
+   ]
+  },
+  {
+   "start": 26.53,
+   "end": 42.9,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.04,
+   "bars": [
+    9,
+    15
+   ]
+  },
+  {
+   "start": 42.9,
+   "end": 59.25,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.25,
+   "bars": [
+    15,
+    21
+   ]
+  },
+  {
+   "start": 59.25,
+   "end": 75.61,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.2,
+   "bars": [
+    21,
+    27
+   ]
+  },
+  {
+   "start": 75.61,
+   "end": 86.52,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.45,
+   "bars": [
+    27,
+    31
+   ]
+  },
+  {
+   "start": 86.52,
+   "end": 102.88,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.18,
+   "bars": [
+    31,
+    37
+   ]
+  },
+  {
+   "start": 102.88,
+   "end": 124.69,
+   "group": "B",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.4,
+   "bars": [
+    37,
+    45
+   ]
+  },
+  {
+   "start": 124.69,
+   "end": 149.99,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.8,
+   "bars": [
+    45,
+    47
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 42.9,
+  "end": 59.25
+ },
+ "verse2": {
+  "start": 59.25,
+  "end": 102.88
+ },
+ "chorus2": {
+  "start": 102.88,
+  "end": 124.69
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 47,
+ "barS": 2.73,
+ "thr": 0.392,
+ "ssmMedian": 0.046,
+ "ssmMad": 0.173,
+ "stripes": [
+  {
+   "bars": [
+    7,
+    23
+   ],
+   "lagBars": 24,
+   "startS": 21.09,
+   "endS": 64.71,
+   "repeatAtS": 86.52,
+   "score": 0.765
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   5,
+   0.33,
+   2
+  ],
+  [
+   1,
+   5,
+   0.67,
+   4
+  ],
+  [
+   1,
+   6,
+   0.33,
+   2
+  ],
+  [
+   2,
+   6,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.61,
+  "B": -37.33
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 16.0,
+ "at": 1790103375,
+ "id": "corymarks__outlawsandoutsiders_smubvfwcq",
+ "title": "Cory Marks - Outlaws and Outsiders",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

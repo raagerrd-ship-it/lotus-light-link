@@ -1,0 +1,135 @@
+{
+ "segments": [
+  {
+   "start": 2.8,
+   "end": 37.05,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.84,
+   "bars": [
+    0,
+    13
+   ]
+  },
+  {
+   "start": 37.05,
+   "end": 46.83,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.0,
+   "bars": [
+    13,
+    18
+   ]
+  },
+  {
+   "start": 46.83,
+   "end": 89.23,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.24,
+   "bars": [
+    18,
+    41
+   ]
+  },
+  {
+   "start": 89.23,
+   "end": 97.38,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.88,
+   "bars": [
+    41,
+    46
+   ]
+  },
+  {
+   "start": 97.38,
+   "end": 148.75,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.37,
+   "bars": [
+    46,
+    65
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 37.05,
+  "end": 46.83
+ },
+ "verse2": {
+  "start": 46.83,
+  "end": 89.23
+ },
+ "chorus2": {
+  "start": 89.23,
+  "end": 97.38
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 65,
+ "barS": 1.631,
+ "thr": 0.388,
+ "ssmMedian": 0.058,
+ "ssmMad": 0.165,
+ "stripes": [
+  {
+   "bars": [
+    13,
+    18
+   ],
+   "lagBars": 28,
+   "startS": 37.05,
+   "endS": 46.83,
+   "repeatAtS": 89.23,
+   "score": 0.508
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   5
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.94
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 15.9,
+ "at": 1790103493,
+ "id": "garrettbiggs__cheerstothebeers_smuc2wvj5",
+ "title": "Garrett Biggs - Cheers to the Beers",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,382 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 17.81,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -39.4,
+   "bars": [
+    0,
+    10
+   ]
+  },
+  {
+   "start": 17.81,
+   "end": 29.98,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.01,
+   "bars": [
+    10,
+    17
+   ]
+  },
+  {
+   "start": 29.98,
+   "end": 36.74,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.1,
+   "bars": [
+    17,
+    21
+   ]
+  },
+  {
+   "start": 36.74,
+   "end": 45.3,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.1,
+   "bars": [
+    21,
+    26
+   ]
+  },
+  {
+   "start": 45.3,
+   "end": 57.47,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.64,
+   "bars": [
+    26,
+    33
+   ]
+  },
+  {
+   "start": 57.47,
+   "end": 64.68,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.38,
+   "bars": [
+    33,
+    37
+   ]
+  },
+  {
+   "start": 64.68,
+   "end": 73.24,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.08,
+   "bars": [
+    37,
+    42
+   ]
+  },
+  {
+   "start": 73.24,
+   "end": 83.61,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.17,
+   "bars": [
+    42,
+    48
+   ]
+  },
+  {
+   "start": 83.61,
+   "end": 99.38,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.29,
+   "bars": [
+    48,
+    57
+   ]
+  },
+  {
+   "start": 99.38,
+   "end": 111.55,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.66,
+   "bars": [
+    57,
+    64
+   ]
+  },
+  {
+   "start": 111.55,
+   "end": 128.23,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.08,
+   "bars": [
+    64,
+    74
+   ]
+  },
+  {
+   "start": 128.23,
+   "end": 150.0,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -39.1,
+   "bars": [
+    74,
+    81
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 57.47,
+  "end": 83.61
+ },
+ "verse2": {
+  "start": 83.61,
+  "end": 111.55
+ },
+ "chorus2": {
+  "start": 111.55,
+  "end": 128.23
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 81,
+ "barS": 1.803,
+ "thr": 0.563,
+ "ssmMedian": 0.081,
+ "ssmMad": 0.241,
+ "stripes": [
+  {
+   "bars": [
+    36,
+    41
+   ],
+   "lagBars": 8,
+   "startS": 62.88,
+   "endS": 71.44,
+   "repeatAtS": 76.85,
+   "score": 0.591
+  },
+  {
+   "bars": [
+    21,
+    25
+   ],
+   "lagBars": 16,
+   "startS": 36.74,
+   "endS": 43.95,
+   "repeatAtS": 64.68,
+   "score": 0.612
+  },
+  {
+   "bars": [
+    10,
+    25
+   ],
+   "lagBars": 24,
+   "startS": 17.81,
+   "endS": 43.95,
+   "repeatAtS": 59.27,
+   "score": 0.651
+  },
+  {
+   "bars": [
+    40,
+    49
+   ],
+   "lagBars": 24,
+   "startS": 69.64,
+   "endS": 85.41,
+   "repeatAtS": 111.55,
+   "score": 0.692
+  },
+  {
+   "bars": [
+    34,
+    39
+   ],
+   "lagBars": 28,
+   "startS": 59.27,
+   "endS": 68.29,
+   "repeatAtS": 107.95,
+   "score": 0.668
+  },
+  {
+   "bars": [
+    15,
+    25
+   ],
+   "lagBars": 48,
+   "startS": 26.37,
+   "endS": 43.95,
+   "repeatAtS": 109.75,
+   "score": 0.755
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   5,
+   0.75,
+   3
+  ],
+  [
+   1,
+   6,
+   0.8,
+   4
+  ],
+  [
+   1,
+   9,
+   0.14,
+   1
+  ],
+  [
+   1,
+   10,
+   0.14,
+   1
+  ],
+  [
+   2,
+   6,
+   0.25,
+   1
+  ],
+  [
+   2,
+   7,
+   0.75,
+   3
+  ],
+  [
+   2,
+   10,
+   1.0,
+   4
+  ],
+  [
+   3,
+   6,
+   0.8,
+   4
+  ],
+  [
+   3,
+   7,
+   0.6,
+   3
+  ],
+  [
+   3,
+   8,
+   0.2,
+   1
+  ],
+  [
+   3,
+   10,
+   0.8,
+   4
+  ],
+  [
+   5,
+   7,
+   0.25,
+   1
+  ],
+  [
+   5,
+   9,
+   0.5,
+   2
+  ],
+  [
+   5,
+   10,
+   0.25,
+   1
+  ],
+  [
+   6,
+   7,
+   0.6,
+   3
+  ],
+  [
+   6,
+   8,
+   0.2,
+   1
+  ],
+  [
+   6,
+   10,
+   0.8,
+   4
+  ],
+  [
+   7,
+   10,
+   1.0,
+   6
+  ],
+  [
+   8,
+   10,
+   0.11,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.13
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.0,
+ "at": 1790103733,
+ "id": "nathanevans__flowersinthewater_smuc0p8jh",
+ "title": "Nathan Evans - Flowers In The Water",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

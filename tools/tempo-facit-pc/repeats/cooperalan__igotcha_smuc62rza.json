@@ -1,0 +1,57 @@
+{
+ "segments": [
+  {
+   "start": 0.23,
+   "end": 144.48,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.87,
+   "bars": [
+    0,
+    49
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 49,
+ "barS": 3.188,
+ "thr": 0.429,
+ "ssmMedian": 0.031,
+ "ssmMad": 0.199,
+ "stripes": [],
+ "pairs": [],
+ "groupEnergy": {},
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 10.6,
+ "at": 1790103181,
+ "id": "cooperalan__igotcha_smuc62rza",
+ "title": "Cooper Alan - I Gotcha",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

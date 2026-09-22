@@ -1,0 +1,236 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 15.25,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.8,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 15.25,
+   "end": 24.25,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -35.63,
+   "bars": [
+    5,
+    8
+   ]
+  },
+  {
+   "start": 24.25,
+   "end": 54.24,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.19,
+   "bars": [
+    8,
+    18
+   ]
+  },
+  {
+   "start": 54.24,
+   "end": 66.23,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.56,
+   "bars": [
+    18,
+    22
+   ]
+  },
+  {
+   "start": 66.23,
+   "end": 81.23,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -34.98,
+   "bars": [
+    22,
+    27
+   ]
+  },
+  {
+   "start": 81.23,
+   "end": 99.22,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.84,
+   "bars": [
+    27,
+    33
+   ]
+  },
+  {
+   "start": 99.22,
+   "end": 111.22,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.98,
+   "bars": [
+    33,
+    37
+   ]
+  },
+  {
+   "start": 111.22,
+   "end": 132.21,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.16,
+   "bars": [
+    37,
+    44
+   ]
+  },
+  {
+   "start": 132.21,
+   "end": 150.0,
+   "group": "B",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -36.88,
+   "bars": [
+    44,
+    49
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.0,
+  "end": 15.25
+ },
+ "verse2": {
+  "start": 15.25,
+  "end": 66.23
+ },
+ "chorus2": {
+  "start": 66.23,
+  "end": 81.23
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 49,
+ "barS": 2.999,
+ "thr": 0.502,
+ "ssmMedian": 0.084,
+ "ssmMad": 0.209,
+ "stripes": [
+  {
+   "bars": [
+    29,
+    33
+   ],
+   "lagBars": 16,
+   "startS": 87.22,
+   "endS": 99.22,
+   "repeatAtS": 135.21,
+   "score": 0.556
+  },
+  {
+   "bars": [
+    2,
+    6
+   ],
+   "lagBars": 20,
+   "startS": 6.25,
+   "endS": 18.25,
+   "repeatAtS": 66.23,
+   "score": 0.601
+  },
+  {
+   "bars": [
+    7,
+    17
+   ],
+   "lagBars": 20,
+   "startS": 21.25,
+   "endS": 51.24,
+   "repeatAtS": 81.23,
+   "score": 0.678
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   4,
+   0.6,
+   3
+  ],
+  [
+   1,
+   4,
+   0.33,
+   1
+  ],
+  [
+   1,
+   5,
+   0.33,
+   1
+  ],
+  [
+   2,
+   5,
+   0.83,
+   5
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   0.8,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -35.39,
+  "B": -36.97
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 6.0,
+ "at": 1790103935,
+ "id": "toddcameron__waitingonyou_smuc09koy",
+ "title": "Todd Cameron - Waiting on You",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

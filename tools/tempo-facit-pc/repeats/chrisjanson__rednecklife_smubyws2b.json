@@ -1,0 +1,165 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 10.71,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.13,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 10.71,
+   "end": 21.99,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.36,
+   "bars": [
+    6,
+    10
+   ]
+  },
+  {
+   "start": 21.99,
+   "end": 37.5,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.58,
+   "bars": [
+    10,
+    20
+   ]
+  },
+  {
+   "start": 37.5,
+   "end": 53.01,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.07,
+   "bars": [
+    20,
+    31
+   ]
+  },
+  {
+   "start": 53.01,
+   "end": 78.39,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.49,
+   "bars": [
+    31,
+    42
+   ]
+  },
+  {
+   "start": 78.39,
+   "end": 89.67,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.14,
+   "bars": [
+    42,
+    46
+   ]
+  },
+  {
+   "start": 89.67,
+   "end": 108.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.18,
+   "bars": [
+    46,
+    56
+   ]
+  },
+  {
+   "start": 108.0,
+   "end": 116.46,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.71,
+   "bars": [
+    56,
+    59
+   ]
+  },
+  {
+   "start": 116.46,
+   "end": 126.33,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.74,
+   "bars": [
+    59,
+    63
+   ]
+  },
+  {
+   "start": 126.33,
+   "end": 150.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.12,
+   "bars": [
+    63,
+    70
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "beatthis-grid",
+ "nBars": 70,
+ "barS": 1.41,
+ "thr": 0.454,
+ "ssmMedian": 0.075,
+ "ssmMad": 0.19,
+ "stripes": [],
+ "pairs": [],
+ "groupEnergy": {},
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.8,
+ "at": 1790103086,
+ "id": "chrisjanson__rednecklife_smubyws2b",
+ "title": "Chris Janson - Redneck Life",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,242 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 31.82,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -38.24,
+   "bars": [
+    0,
+    11
+   ]
+  },
+  {
+   "start": 31.82,
+   "end": 52.46,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -35.27,
+   "bars": [
+    11,
+    19
+   ]
+  },
+  {
+   "start": 52.46,
+   "end": 75.69,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.64,
+   "bars": [
+    19,
+    28
+   ]
+  },
+  {
+   "start": 75.69,
+   "end": 86.01,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -34.54,
+   "bars": [
+    28,
+    32
+   ]
+  },
+  {
+   "start": 86.01,
+   "end": 96.32,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -34.5,
+   "bars": [
+    32,
+    36
+   ]
+  },
+  {
+   "start": 96.32,
+   "end": 114.38,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -34.27,
+   "bars": [
+    36,
+    43
+   ]
+  },
+  {
+   "start": 114.38,
+   "end": 127.29,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.52,
+   "bars": [
+    43,
+    48
+   ]
+  },
+  {
+   "start": 127.29,
+   "end": 137.58,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -34.82,
+   "bars": [
+    48,
+    52
+   ]
+  },
+  {
+   "start": 137.58,
+   "end": 149.99,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -34.4,
+   "bars": [
+    52,
+    56
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 96.32,
+  "end": 114.38
+ },
+ "verse2": {
+  "start": 114.38,
+  "end": 137.58
+ },
+ "chorus2": {
+  "start": 137.58,
+  "end": 149.99
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 56,
+ "barS": 2.58,
+ "thr": 0.545,
+ "ssmMedian": 0.033,
+ "ssmMad": 0.256,
+ "stripes": [
+  {
+   "bars": [
+    32,
+    40
+   ],
+   "lagBars": 16,
+   "startS": 86.01,
+   "endS": 106.64,
+   "repeatAtS": 127.29,
+   "score": 0.735
+  },
+  {
+   "bars": [
+    12,
+    21
+   ],
+   "lagBars": 17,
+   "startS": 34.4,
+   "endS": 57.62,
+   "repeatAtS": 78.26,
+   "score": 0.64
+  },
+  {
+   "bars": [
+    16,
+    21
+   ],
+   "lagBars": 33,
+   "startS": 44.71,
+   "endS": 57.62,
+   "repeatAtS": 129.87,
+   "score": 0.614
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   0.75,
+   3
+  ],
+  [
+   1,
+   4,
+   1.0,
+   4
+  ],
+  [
+   1,
+   7,
+   0.75,
+   3
+  ],
+  [
+   2,
+   5,
+   0.29,
+   2
+  ],
+  [
+   2,
+   8,
+   0.5,
+   2
+  ],
+  [
+   4,
+   7,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -34.34,
+  "A": -34.78
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 5.1,
+ "at": 1790103940,
+ "id": "tylerbraden__devilyouknow_smubtm41o",
+ "title": "Tyler Braden - DEVIL YOU KNOW",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

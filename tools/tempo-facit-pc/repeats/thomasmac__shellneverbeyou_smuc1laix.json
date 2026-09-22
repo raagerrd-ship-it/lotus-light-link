@@ -1,0 +1,153 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 14.23,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.27,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 14.23,
+   "end": 36.91,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.27,
+   "bars": [
+    6,
+    17
+   ]
+  },
+  {
+   "start": 36.91,
+   "end": 55.9,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.9,
+   "bars": [
+    17,
+    26
+   ]
+  },
+  {
+   "start": 55.9,
+   "end": 72.77,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.28,
+   "bars": [
+    26,
+    34
+   ]
+  },
+  {
+   "start": 72.77,
+   "end": 100.2,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.99,
+   "bars": [
+    34,
+    47
+   ]
+  },
+  {
+   "start": 100.2,
+   "end": 108.64,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.62,
+   "bars": [
+    47,
+    51
+   ]
+  },
+  {
+   "start": 108.64,
+   "end": 117.08,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.87,
+   "bars": [
+    51,
+    55
+   ]
+  },
+  {
+   "start": 117.08,
+   "end": 133.96,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.3,
+   "bars": [
+    55,
+    63
+   ]
+  },
+  {
+   "start": 133.96,
+   "end": 150.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.25,
+   "bars": [
+    63,
+    70
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "beatthis-grid",
+ "nBars": 70,
+ "barS": 2.11,
+ "thr": 0.384,
+ "ssmMedian": 0.059,
+ "ssmMad": 0.162,
+ "stripes": [],
+ "pairs": [],
+ "groupEnergy": {},
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 4.5,
+ "at": 1790103923,
+ "id": "thomasmac__shellneverbeyou_smuc1laix",
+ "title": "Thomas Mac - She'll Never Be You",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

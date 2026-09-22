@@ -1,0 +1,69 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 119.05,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.98,
+   "bars": [
+    0,
+    12
+   ]
+  },
+  {
+   "start": 119.05,
+   "end": 149.99,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -39.79,
+   "bars": [
+    12,
+    16
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 16,
+ "barS": 3.12,
+ "thr": 0.3,
+ "ssmMedian": -0.027,
+ "ssmMad": 0.156,
+ "stripes": [],
+ "pairs": [],
+ "groupEnergy": {},
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.4,
+ "at": 1790103214,
+ "id": "cooperalan__nevernotrememberyou_smubsqv0i",
+ "title": "Cooper Alan - Never Not Remember You",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

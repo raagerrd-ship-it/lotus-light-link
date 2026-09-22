@@ -1,0 +1,282 @@
+{
+ "segments": [
+  {
+   "start": 0.11,
+   "end": 16.98,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.99,
+   "bars": [
+    0,
+    2
+   ]
+  },
+  {
+   "start": 16.98,
+   "end": 27.41,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.1,
+   "bars": [
+    2,
+    6
+   ]
+  },
+  {
+   "start": 27.41,
+   "end": 37.84,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.38,
+   "bars": [
+    6,
+    10
+   ]
+  },
+  {
+   "start": 37.84,
+   "end": 58.7,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.57,
+   "bars": [
+    10,
+    18
+   ]
+  },
+  {
+   "start": 58.7,
+   "end": 71.67,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.85,
+   "bars": [
+    18,
+    23
+   ]
+  },
+  {
+   "start": 71.67,
+   "end": 89.92,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.25,
+   "bars": [
+    23,
+    30
+   ]
+  },
+  {
+   "start": 89.92,
+   "end": 108.18,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.52,
+   "bars": [
+    30,
+    37
+   ]
+  },
+  {
+   "start": 108.18,
+   "end": 121.22,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.51,
+   "bars": [
+    37,
+    42
+   ]
+  },
+  {
+   "start": 121.22,
+   "end": 134.25,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.15,
+   "bars": [
+    42,
+    47
+   ]
+  },
+  {
+   "start": 134.25,
+   "end": 149.99,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.02,
+   "bars": [
+    47,
+    52
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 16.98,
+  "end": 27.41
+ },
+ "verse2": {
+  "start": 27.41,
+  "end": 58.7
+ },
+ "chorus2": {
+  "start": 58.7,
+  "end": 71.67
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 52,
+ "barS": 2.61,
+ "thr": 0.386,
+ "ssmMedian": 0.03,
+ "ssmMad": 0.178,
+ "stripes": [
+  {
+   "bars": [
+    3,
+    10
+   ],
+   "lagBars": 16,
+   "startS": 19.58,
+   "endS": 37.84,
+   "repeatAtS": 61.23,
+   "score": 0.609
+  },
+  {
+   "bars": [
+    28,
+    32
+   ],
+   "lagBars": 16,
+   "startS": 84.7,
+   "endS": 95.14,
+   "repeatAtS": 126.44,
+   "score": 0.49
+  },
+  {
+   "bars": [
+    23,
+    32
+   ],
+   "lagBars": 20,
+   "startS": 71.67,
+   "endS": 95.14,
+   "repeatAtS": 123.83,
+   "score": 0.561
+  },
+  {
+   "bars": [
+    24,
+    28
+   ],
+   "lagBars": 24,
+   "startS": 74.27,
+   "endS": 84.7,
+   "repeatAtS": 136.86,
+   "score": 0.428
+  },
+  {
+   "bars": [
+    6,
+    10
+   ],
+   "lagBars": 36,
+   "startS": 27.41,
+   "endS": 37.84,
+   "repeatAtS": 121.22,
+   "score": 0.457
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   0.75,
+   3
+  ],
+  [
+   2,
+   4,
+   0.25,
+   1
+  ],
+  [
+   2,
+   5,
+   0.75,
+   3
+  ],
+  [
+   2,
+   8,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   1.0,
+   5
+  ],
+  [
+   5,
+   9,
+   1.0,
+   5
+  ],
+  [
+   6,
+   8,
+   0.2,
+   1
+  ],
+  [
+   6,
+   9,
+   0.6,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.98,
+  "B": -37.26
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 14.0,
+ "at": 1790103607,
+ "id": "jamesjohnston__smalltowngirl_smubugufg",
+ "title": "James Johnston - SMALL TOWN GIRL",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,262 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 12.7,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -39.33,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 12.7,
+   "end": 24.7,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.97,
+   "bars": [
+    4,
+    8
+   ]
+  },
+  {
+   "start": 24.7,
+   "end": 36.69,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.79,
+   "bars": [
+    8,
+    12
+   ]
+  },
+  {
+   "start": 36.69,
+   "end": 48.69,
+   "group": "B",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.51,
+   "bars": [
+    12,
+    16
+   ]
+  },
+  {
+   "start": 48.69,
+   "end": 57.69,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -39.01,
+   "bars": [
+    16,
+    19
+   ]
+  },
+  {
+   "start": 57.69,
+   "end": 66.69,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.16,
+   "bars": [
+    19,
+    24
+   ]
+  },
+  {
+   "start": 66.69,
+   "end": 78.68,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.89,
+   "bars": [
+    24,
+    28
+   ]
+  },
+  {
+   "start": 78.68,
+   "end": 90.68,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.38,
+   "bars": [
+    28,
+    32
+   ]
+  },
+  {
+   "start": 90.68,
+   "end": 102.67,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.18,
+   "bars": [
+    32,
+    36
+   ]
+  },
+  {
+   "start": 102.67,
+   "end": 114.67,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.63,
+   "bars": [
+    36,
+    41
+   ]
+  },
+  {
+   "start": 114.67,
+   "end": 123.67,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.17,
+   "bars": [
+    41,
+    45
+   ]
+  },
+  {
+   "start": 123.67,
+   "end": 138.66,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.09,
+   "bars": [
+    45,
+    50
+   ]
+  },
+  {
+   "start": 138.66,
+   "end": 150.0,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.28,
+   "bars": [
+    50,
+    53
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 90.68,
+  "end": 102.67
+ },
+ "verse2": {
+  "start": 102.67,
+  "end": 138.66
+ },
+ "chorus2": {
+  "start": 138.66,
+  "end": 150.0
+ },
+ "chorusGroup": "C",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 53,
+ "barS": 2.999,
+ "thr": 0.403,
+ "ssmMedian": 0.043,
+ "ssmMad": 0.18,
+ "stripes": [
+  {
+   "bars": [
+    8,
+    16
+   ],
+   "lagBars": 16,
+   "startS": 24.7,
+   "endS": 48.69,
+   "repeatAtS": 66.69,
+   "score": 0.669
+  },
+  {
+   "bars": [
+    28,
+    35
+   ],
+   "lagBars": 18,
+   "startS": 78.68,
+   "endS": 99.67,
+   "repeatAtS": 126.67,
+   "score": 0.581
+  }
+ ],
+ "pairs": [
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   3,
+   7,
+   1.0,
+   4
+  ],
+  [
+   7,
+   11,
+   1.0,
+   4
+  ],
+  [
+   8,
+   12,
+   1.0,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "C": -37.23,
+  "B": -37.33,
+  "A": -37.84
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.0,
+ "at": 1790103711,
+ "id": "natesmith__bulletproof_smubz4qpr",
+ "title": "Nate Smith - Bulletproof",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

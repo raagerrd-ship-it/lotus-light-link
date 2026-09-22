@@ -1,0 +1,177 @@
+{
+ "segments": [
+  {
+   "start": 0.08,
+   "end": 17.28,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.7,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 17.28,
+   "end": 40.75,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.33,
+   "bars": [
+    6,
+    15
+   ]
+  },
+  {
+   "start": 40.75,
+   "end": 66.83,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.71,
+   "bars": [
+    15,
+    25
+   ]
+  },
+  {
+   "start": 66.83,
+   "end": 82.48,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.02,
+   "bars": [
+    25,
+    31
+   ]
+  },
+  {
+   "start": 82.48,
+   "end": 113.76,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.35,
+   "bars": [
+    31,
+    43
+   ]
+  },
+  {
+   "start": 113.76,
+   "end": 126.8,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.41,
+   "bars": [
+    43,
+    48
+   ]
+  },
+  {
+   "start": 126.8,
+   "end": 149.99,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.73,
+   "bars": [
+    48,
+    56
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.08,
+  "end": 40.75
+ },
+ "verse2": {
+  "start": 40.75,
+  "end": 82.48
+ },
+ "chorus2": {
+  "start": 82.48,
+  "end": 113.76
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 56,
+ "barS": 2.61,
+ "thr": 0.429,
+ "ssmMedian": 0.04,
+ "ssmMad": 0.195,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    14
+   ],
+   "lagBars": 30,
+   "startS": 1.69,
+   "endS": 38.14,
+   "repeatAtS": 79.87,
+   "score": 0.804
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   0.17,
+   1
+  ],
+  [
+   0,
+   4,
+   0.83,
+   5
+  ],
+  [
+   1,
+   4,
+   0.78,
+   7
+  ],
+  [
+   1,
+   5,
+   0.2,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.79
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.3,
+ "at": 1790103129,
+ "id": "cooperalan__colt45countryremix_smubs9so9",
+ "title": "Cooper Alan - Colt 45 (Country Remix)",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

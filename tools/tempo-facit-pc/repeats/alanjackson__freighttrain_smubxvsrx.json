@@ -1,0 +1,349 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 10.78,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.54,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 10.78,
+   "end": 26.65,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.45,
+   "bars": [
+    5,
+    13
+   ]
+  },
+  {
+   "start": 26.65,
+   "end": 38.55,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.18,
+   "bars": [
+    13,
+    19
+   ]
+  },
+  {
+   "start": 38.55,
+   "end": 52.43,
+   "group": "C",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.33,
+   "bars": [
+    19,
+    26
+   ]
+  },
+  {
+   "start": 52.43,
+   "end": 60.36,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.13,
+   "bars": [
+    26,
+    30
+   ]
+  },
+  {
+   "start": 60.36,
+   "end": 74.25,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.24,
+   "bars": [
+    30,
+    37
+   ]
+  },
+  {
+   "start": 74.25,
+   "end": 86.15,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.52,
+   "bars": [
+    37,
+    46
+   ]
+  },
+  {
+   "start": 86.15,
+   "end": 96.06,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.46,
+   "bars": [
+    46,
+    53
+   ]
+  },
+  {
+   "start": 96.06,
+   "end": 105.98,
+   "group": "C",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.37,
+   "bars": [
+    53,
+    58
+   ]
+  },
+  {
+   "start": 105.98,
+   "end": 117.88,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.36,
+   "bars": [
+    58,
+    64
+   ]
+  },
+  {
+   "start": 117.88,
+   "end": 125.81,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.22,
+   "bars": [
+    64,
+    68
+   ]
+  },
+  {
+   "start": 125.81,
+   "end": 137.71,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.22,
+   "bars": [
+    68,
+    74
+   ]
+  },
+  {
+   "start": 137.71,
+   "end": 150.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.58,
+   "bars": [
+    74,
+    80
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 26.65,
+  "end": 38.55
+ },
+ "verse2": {
+  "start": 38.55,
+  "end": 125.81
+ },
+ "chorus2": {
+  "start": 125.81,
+  "end": 137.71
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 80,
+ "barS": 1.983,
+ "thr": 0.355,
+ "ssmMedian": 0.082,
+ "ssmMad": 0.137,
+ "stripes": [
+  {
+   "bars": [
+    6,
+    17
+   ],
+   "lagBars": 21,
+   "startS": 12.77,
+   "endS": 34.58,
+   "repeatAtS": 54.41,
+   "score": 0.554
+  },
+  {
+   "bars": [
+    19,
+    24
+   ],
+   "lagBars": 34,
+   "startS": 38.55,
+   "endS": 48.47,
+   "repeatAtS": 96.06,
+   "score": 0.403
+  },
+  {
+   "bars": [
+    27,
+    39
+   ],
+   "lagBars": 34,
+   "startS": 54.41,
+   "endS": 78.21,
+   "repeatAtS": 111.93,
+   "score": 0.555
+  },
+  {
+   "bars": [
+    26,
+    30
+   ],
+   "lagBars": 38,
+   "startS": 52.43,
+   "endS": 60.36,
+   "repeatAtS": 117.88,
+   "score": 0.414
+  },
+  {
+   "bars": [
+    6,
+    18
+   ],
+   "lagBars": 55,
+   "startS": 12.77,
+   "endS": 36.57,
+   "repeatAtS": 111.93,
+   "score": 0.537
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   0.75,
+   3
+  ],
+  [
+   1,
+   5,
+   0.57,
+   4
+  ],
+  [
+   1,
+   9,
+   0.5,
+   3
+  ],
+  [
+   1,
+   10,
+   1.0,
+   4
+  ],
+  [
+   2,
+   5,
+   0.5,
+   3
+  ],
+  [
+   2,
+   6,
+   0.17,
+   1
+  ],
+  [
+   2,
+   11,
+   0.83,
+   5
+  ],
+  [
+   3,
+   8,
+   1.0,
+   5
+  ],
+  [
+   4,
+   9,
+   0.75,
+   3
+  ],
+  [
+   4,
+   10,
+   1.0,
+   4
+  ],
+  [
+   5,
+   10,
+   1.0,
+   4
+  ],
+  [
+   5,
+   11,
+   0.5,
+   3
+  ],
+  [
+   6,
+   11,
+   0.33,
+   2
+  ]
+ ],
+ "groupEnergy": {
+  "B": -38.2,
+  "A": -38.28,
+  "C": -38.35
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 24.5,
+ "at": 1790102981,
+ "id": "alanjackson__freighttrain_smubxvsrx",
+ "title": "Alan Jackson - Freight Train",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

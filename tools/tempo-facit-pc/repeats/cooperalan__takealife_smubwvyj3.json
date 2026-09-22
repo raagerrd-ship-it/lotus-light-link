@@ -1,0 +1,195 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 10.29,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.22,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 10.29,
+   "end": 23.47,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.5,
+   "bars": [
+    7,
+    13
+   ]
+  },
+  {
+   "start": 23.47,
+   "end": 41.91,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.28,
+   "bars": [
+    13,
+    22
+   ]
+  },
+  {
+   "start": 41.91,
+   "end": 64.31,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.08,
+   "bars": [
+    22,
+    32
+   ]
+  },
+  {
+   "start": 64.31,
+   "end": 80.12,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.01,
+   "bars": [
+    32,
+    38
+   ]
+  },
+  {
+   "start": 80.12,
+   "end": 90.66,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.59,
+   "bars": [
+    38,
+    43
+   ]
+  },
+  {
+   "start": 90.66,
+   "end": 113.05,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.47,
+   "bars": [
+    43,
+    51
+   ]
+  },
+  {
+   "start": 113.05,
+   "end": 122.28,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -36.07,
+   "bars": [
+    51,
+    56
+   ]
+  },
+  {
+   "start": 122.28,
+   "end": 136.77,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.36,
+   "bars": [
+    56,
+    63
+   ]
+  },
+  {
+   "start": 136.77,
+   "end": 150.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.05,
+   "bars": [
+    63,
+    70
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 41.91,
+  "end": 64.31
+ },
+ "verse2": {
+  "start": 64.31,
+  "end": 90.66
+ },
+ "chorus2": {
+  "start": 90.66,
+  "end": 113.05
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 70,
+ "barS": 2.634,
+ "thr": 0.438,
+ "ssmMedian": 0.037,
+ "ssmMad": 0.2,
+ "stripes": [
+  {
+   "bars": [
+    23,
+    30
+   ],
+   "lagBars": 20,
+   "startS": 44.55,
+   "endS": 61.67,
+   "repeatAtS": 90.66,
+   "score": 0.615
+  }
+ ],
+ "pairs": [
+  [
+   3,
+   6,
+   0.88,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "A": -35.77
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.1,
+ "at": 1790103288,
+ "id": "cooperalan__takealife_smubwvyj3",
+ "title": "Cooper Alan - Take A Life",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

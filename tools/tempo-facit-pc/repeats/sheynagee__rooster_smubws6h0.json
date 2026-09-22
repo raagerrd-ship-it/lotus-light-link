@@ -1,0 +1,222 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 10.96,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.43,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 10.96,
+   "end": 19.99,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.5,
+   "bars": [
+    4,
+    9
+   ]
+  },
+  {
+   "start": 19.99,
+   "end": 34.16,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -36.74,
+   "bars": [
+    9,
+    15
+   ]
+  },
+  {
+   "start": 34.16,
+   "end": 43.7,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.13,
+   "bars": [
+    15,
+    20
+   ]
+  },
+  {
+   "start": 43.7,
+   "end": 61.74,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.6,
+   "bars": [
+    20,
+    32
+   ]
+  },
+  {
+   "start": 61.74,
+   "end": 75.44,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -36.95,
+   "bars": [
+    32,
+    38
+   ]
+  },
+  {
+   "start": 75.44,
+   "end": 87.07,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.55,
+   "bars": [
+    38,
+    44
+   ]
+  },
+  {
+   "start": 87.07,
+   "end": 98.68,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.81,
+   "bars": [
+    44,
+    51
+   ]
+  },
+  {
+   "start": 98.68,
+   "end": 111.6,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.0,
+   "bars": [
+    51,
+    56
+   ]
+  },
+  {
+   "start": 111.6,
+   "end": 121.88,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.8,
+   "bars": [
+    56,
+    60
+   ]
+  },
+  {
+   "start": 121.88,
+   "end": 131.59,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.88,
+   "bars": [
+    60,
+    65
+   ]
+  },
+  {
+   "start": 131.59,
+   "end": 150.0,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.18,
+   "bars": [
+    65,
+    73
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "librosa",
+ "nBars": 73,
+ "barS": 1.95,
+ "thr": 0.355,
+ "ssmMedian": 0.043,
+ "ssmMad": 0.156,
+ "stripes": [
+  {
+   "bars": [
+    15,
+    22
+   ],
+   "lagBars": 23,
+   "startS": 34.16,
+   "endS": 47.51,
+   "repeatAtS": 75.44,
+   "score": 0.51
+  }
+ ],
+ "pairs": [
+  [
+   3,
+   6,
+   1.0,
+   5
+  ],
+  [
+   4,
+   6,
+   0.17,
+   1
+  ],
+  [
+   4,
+   7,
+   0.14,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.34
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.0,
+ "at": 1790103832,
+ "id": "sheynagee__rooster_smubws6h0",
+ "title": "Sheyna Gee - Rooster",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

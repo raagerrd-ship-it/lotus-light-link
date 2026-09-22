@@ -1,0 +1,212 @@
+{
+ "segments": [
+  {
+   "start": 1.35,
+   "end": 14.09,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.61,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 14.09,
+   "end": 34.49,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.07,
+   "bars": [
+    5,
+    13
+   ]
+  },
+  {
+   "start": 34.49,
+   "end": 44.69,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.35,
+   "bars": [
+    13,
+    17
+   ]
+  },
+  {
+   "start": 44.69,
+   "end": 65.08,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.91,
+   "bars": [
+    17,
+    25
+   ]
+  },
+  {
+   "start": 65.08,
+   "end": 85.47,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.22,
+   "bars": [
+    25,
+    33
+   ]
+  },
+  {
+   "start": 85.47,
+   "end": 95.03,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -35.8,
+   "bars": [
+    33,
+    37
+   ]
+  },
+  {
+   "start": 95.03,
+   "end": 128.18,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.11,
+   "bars": [
+    37,
+    50
+   ]
+  },
+  {
+   "start": 128.18,
+   "end": 148.57,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.0,
+   "bars": [
+    50,
+    58
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 34.49,
+  "end": 44.69
+ },
+ "verse2": {
+  "start": 44.69,
+  "end": 85.47
+ },
+ "chorus2": {
+  "start": 85.47,
+  "end": 95.03
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 58,
+ "barS": 2.549,
+ "thr": 0.375,
+ "ssmMedian": 0.052,
+ "ssmMad": 0.162,
+ "stripes": [
+  {
+   "bars": [
+    5,
+    17
+   ],
+   "lagBars": 20,
+   "startS": 14.09,
+   "endS": 44.69,
+   "repeatAtS": 65.08,
+   "score": 0.719
+  },
+  {
+   "bars": [
+    25,
+    33
+   ],
+   "lagBars": 25,
+   "startS": 65.08,
+   "endS": 85.47,
+   "repeatAtS": 128.18,
+   "score": 0.811
+  },
+  {
+   "bars": [
+    5,
+    13
+   ],
+   "lagBars": 45,
+   "startS": 14.09,
+   "endS": 34.49,
+   "repeatAtS": 128.18,
+   "score": 0.778
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   1.0,
+   8
+  ],
+  [
+   1,
+   7,
+   1.0,
+   8
+  ],
+  [
+   2,
+   5,
+   1.0,
+   4
+  ],
+  [
+   4,
+   7,
+   1.0,
+   8
+  ]
+ ],
+ "groupEnergy": {
+  "B": -36.08,
+  "A": -36.1
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 16.6,
+ "at": 1790103359,
+ "id": "cooperalan__work_smuc57f0j",
+ "title": "Cooper Alan - Work",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,218 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 25.98,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -36.89,
+   "bars": [
+    0,
+    8
+   ]
+  },
+  {
+   "start": 25.98,
+   "end": 37.9,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.11,
+   "bars": [
+    8,
+    16
+   ]
+  },
+  {
+   "start": 37.9,
+   "end": 43.86,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.19,
+   "bars": [
+    16,
+    20
+   ]
+  },
+  {
+   "start": 43.86,
+   "end": 49.83,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.04,
+   "bars": [
+    20,
+    24
+   ]
+  },
+  {
+   "start": 49.83,
+   "end": 63.24,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.41,
+   "bars": [
+    24,
+    33
+   ]
+  },
+  {
+   "start": 63.24,
+   "end": 93.04,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.67,
+   "bars": [
+    33,
+    53
+   ]
+  },
+  {
+   "start": 93.04,
+   "end": 101.99,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -35.92,
+   "bars": [
+    53,
+    59
+   ]
+  },
+  {
+   "start": 101.99,
+   "end": 109.44,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -36.68,
+   "bars": [
+    59,
+    64
+   ]
+  },
+  {
+   "start": 109.44,
+   "end": 135.0,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.8,
+   "bars": [
+    64,
+    74
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 25.98,
+  "end": 49.83
+ },
+ "verse2": {
+  "start": 49.83,
+  "end": 63.24
+ },
+ "chorus2": {
+  "start": 63.24,
+  "end": 93.04
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 74,
+ "barS": 1.49,
+ "thr": 0.356,
+ "ssmMedian": 0.064,
+ "ssmMad": 0.146,
+ "stripes": [
+  {
+   "bars": [
+    7,
+    24
+   ],
+   "lagBars": 29,
+   "startS": 24.48,
+   "endS": 49.83,
+   "repeatAtS": 67.71,
+   "score": 0.549
+  },
+  {
+   "bars": [
+    16,
+    20
+   ],
+   "lagBars": 43,
+   "startS": 37.9,
+   "endS": 43.86,
+   "repeatAtS": 101.99,
+   "score": 0.414
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   5,
+   0.12,
+   1
+  ],
+  [
+   1,
+   5,
+   1.0,
+   8
+  ],
+  [
+   2,
+   5,
+   1.0,
+   4
+  ],
+  [
+   2,
+   7,
+   1.0,
+   4
+  ],
+  [
+   3,
+   5,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.54
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 14.4,
+ "at": 1790103452,
+ "id": "drakemilligan__soundslikesomethingiddo_smubs29gt",
+ "title": "Drake Milligan - Sounds Like Something I’d Do",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

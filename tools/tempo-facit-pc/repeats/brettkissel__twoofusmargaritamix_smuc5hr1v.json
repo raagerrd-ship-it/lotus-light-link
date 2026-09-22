@@ -1,0 +1,285 @@
+{
+ "segments": [
+  {
+   "start": 1.43,
+   "end": 9.57,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.32,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 9.57,
+   "end": 17.7,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.45,
+   "bars": [
+    4,
+    8
+   ]
+  },
+  {
+   "start": 17.7,
+   "end": 25.83,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.73,
+   "bars": [
+    8,
+    12
+   ]
+  },
+  {
+   "start": 25.83,
+   "end": 33.97,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.79,
+   "bars": [
+    12,
+    16
+   ]
+  },
+  {
+   "start": 33.97,
+   "end": 52.26,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.56,
+   "bars": [
+    16,
+    25
+   ]
+  },
+  {
+   "start": 52.26,
+   "end": 66.5,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.86,
+   "bars": [
+    25,
+    32
+   ]
+  },
+  {
+   "start": 66.5,
+   "end": 80.73,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.3,
+   "bars": [
+    32,
+    39
+   ]
+  },
+  {
+   "start": 80.73,
+   "end": 88.86,
+   "group": "C",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.02,
+   "bars": [
+    39,
+    43
+   ]
+  },
+  {
+   "start": 88.86,
+   "end": 96.99,
+   "group": "D",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.1,
+   "bars": [
+    43,
+    47
+   ]
+  },
+  {
+   "start": 96.99,
+   "end": 105.13,
+   "group": "C",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.53,
+   "bars": [
+    47,
+    51
+   ]
+  },
+  {
+   "start": 105.13,
+   "end": 135.62,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    51,
+    66
+   ]
+  },
+  {
+   "start": 135.62,
+   "end": 149.86,
+   "group": "D",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.29,
+   "bars": [
+    66,
+    73
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 80.73,
+  "end": 88.86
+ },
+ "verse2": {
+  "start": 88.86,
+  "end": 96.99
+ },
+ "chorus2": {
+  "start": 96.99,
+  "end": 105.13
+ },
+ "chorusGroup": "C",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 73,
+ "barS": 2.033,
+ "thr": 0.397,
+ "ssmMedian": 0.048,
+ "ssmMad": 0.175,
+ "stripes": [
+  {
+   "bars": [
+    4,
+    8
+   ],
+   "lagBars": 8,
+   "startS": 9.57,
+   "endS": 17.7,
+   "repeatAtS": 25.83,
+   "score": 0.477
+  },
+  {
+   "bars": [
+    39,
+    43
+   ],
+   "lagBars": 8,
+   "startS": 80.73,
+   "endS": 88.86,
+   "repeatAtS": 96.99,
+   "score": 0.47
+  },
+  {
+   "bars": [
+    16,
+    25
+   ],
+   "lagBars": 16,
+   "startS": 33.97,
+   "endS": 52.26,
+   "repeatAtS": 66.5,
+   "score": 0.58
+  },
+  {
+   "bars": [
+    42,
+    46
+   ],
+   "lagBars": 24,
+   "startS": 86.83,
+   "endS": 94.96,
+   "repeatAtS": 135.62,
+   "score": 0.465
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   4
+  ],
+  [
+   4,
+   6,
+   1.0,
+   7
+  ],
+  [
+   4,
+   7,
+   0.5,
+   2
+  ],
+  [
+   7,
+   9,
+   1.0,
+   4
+  ],
+  [
+   7,
+   11,
+   0.25,
+   1
+  ],
+  [
+   8,
+   11,
+   0.75,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "C": -36.78,
+  "D": -37.2,
+  "B": -37.43,
+  "A": -38.62
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 7.4,
+ "at": 1790103055,
+ "id": "brettkissel__twoofusmargaritamix_smuc5hr1v",
+ "title": "Brett Kissel - Two Of Us - Margarita Mix",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

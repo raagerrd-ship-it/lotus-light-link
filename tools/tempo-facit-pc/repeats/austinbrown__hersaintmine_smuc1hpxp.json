@@ -1,0 +1,213 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 16.1,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.62,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 16.1,
+   "end": 34.94,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.25,
+   "bars": [
+    7,
+    16
+   ]
+  },
+  {
+   "start": 34.94,
+   "end": 51.67,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.3,
+   "bars": [
+    16,
+    24
+   ]
+  },
+  {
+   "start": 51.67,
+   "end": 72.6,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.78,
+   "bars": [
+    24,
+    34
+   ]
+  },
+  {
+   "start": 72.6,
+   "end": 85.16,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.5,
+   "bars": [
+    34,
+    40
+   ]
+  },
+  {
+   "start": 85.16,
+   "end": 101.9,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.87,
+   "bars": [
+    40,
+    48
+   ]
+  },
+  {
+   "start": 101.9,
+   "end": 112.36,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.14,
+   "bars": [
+    48,
+    53
+   ]
+  },
+  {
+   "start": 112.36,
+   "end": 126.49,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.23,
+   "bars": [
+    53,
+    60
+   ]
+  },
+  {
+   "start": 126.49,
+   "end": 141.13,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.06,
+   "bars": [
+    60,
+    67
+   ]
+  },
+  {
+   "start": 141.13,
+   "end": 150.0,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.36,
+   "bars": [
+    67,
+    71
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 71,
+ "barS": 2.093,
+ "thr": 0.422,
+ "ssmMedian": 0.062,
+ "ssmMad": 0.18,
+ "stripes": [
+  {
+   "bars": [
+    13,
+    18
+   ],
+   "lagBars": 22,
+   "startS": 28.66,
+   "endS": 39.12,
+   "repeatAtS": 74.69,
+   "score": 0.537
+  },
+  {
+   "bars": [
+    18,
+    23
+   ],
+   "lagBars": 46,
+   "startS": 39.12,
+   "endS": 49.58,
+   "repeatAtS": 134.86,
+   "score": 0.496
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   0.5,
+   3
+  ],
+  [
+   2,
+   4,
+   0.33,
+   2
+  ],
+  [
+   2,
+   8,
+   0.43,
+   3
+  ],
+  [
+   2,
+   9,
+   0.5,
+   2
+  ]
+ ],
+ "groupEnergy": {},
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.0,
+ "at": 1790103006,
+ "id": "austinbrown__hersaintmine_smuc1hpxp",
+ "title": "Austin Brown - Hers Ain't Mine",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

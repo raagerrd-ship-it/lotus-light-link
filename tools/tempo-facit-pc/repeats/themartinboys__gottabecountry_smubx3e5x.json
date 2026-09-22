@@ -1,0 +1,195 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 21.93,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.35,
+   "bars": [
+    0,
+    9
+   ]
+  },
+  {
+   "start": 21.93,
+   "end": 33.19,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    9,
+    14
+   ]
+  },
+  {
+   "start": 33.19,
+   "end": 40.7,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.59,
+   "bars": [
+    14,
+    19
+   ]
+  },
+  {
+   "start": 40.7,
+   "end": 54.21,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.81,
+   "bars": [
+    19,
+    27
+   ]
+  },
+  {
+   "start": 54.21,
+   "end": 77.48,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.75,
+   "bars": [
+    27,
+    42
+   ]
+  },
+  {
+   "start": 77.48,
+   "end": 87.99,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.96,
+   "bars": [
+    42,
+    49
+   ]
+  },
+  {
+   "start": 87.99,
+   "end": 100.75,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.51,
+   "bars": [
+    49,
+    53
+   ]
+  },
+  {
+   "start": 100.75,
+   "end": 114.27,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.54,
+   "bars": [
+    53,
+    59
+   ]
+  },
+  {
+   "start": 114.27,
+   "end": 133.03,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.49,
+   "bars": [
+    59,
+    66
+   ]
+  },
+  {
+   "start": 133.03,
+   "end": 150.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.55,
+   "bars": [
+    66,
+    71
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 33.19,
+  "end": 40.7
+ },
+ "verse2": {
+  "start": 40.7,
+  "end": 77.48
+ },
+ "chorus2": {
+  "start": 77.48,
+  "end": 87.99
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 71,
+ "barS": 1.502,
+ "thr": 0.393,
+ "ssmMedian": 0.088,
+ "ssmMad": 0.152,
+ "stripes": [
+  {
+   "bars": [
+    14,
+    18
+   ],
+   "lagBars": 30,
+   "startS": 33.19,
+   "endS": 39.19,
+   "repeatAtS": 80.48,
+   "score": 0.503
+  }
+ ],
+ "pairs": [
+  [
+   2,
+   5,
+   0.8,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.78
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.2,
+ "at": 1790103879,
+ "id": "themartinboys__gottabecountry_smubx3e5x",
+ "title": "The Martin Boys - Gotta Be Country",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

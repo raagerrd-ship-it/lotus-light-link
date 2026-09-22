@@ -1,0 +1,653 @@
+{
+ "segments": [
+  {
+   "start": 0.16,
+   "end": 5.48,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 5.48,
+   "end": 10.94,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.33,
+   "bars": [
+    4,
+    8
+   ]
+  },
+  {
+   "start": 10.94,
+   "end": 17.76,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    8,
+    13
+   ]
+  },
+  {
+   "start": 17.76,
+   "end": 23.22,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.98,
+   "bars": [
+    13,
+    17
+   ]
+  },
+  {
+   "start": 23.22,
+   "end": 28.68,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.49,
+   "bars": [
+    17,
+    21
+   ]
+  },
+  {
+   "start": 28.68,
+   "end": 35.48,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    21,
+    26
+   ]
+  },
+  {
+   "start": 35.48,
+   "end": 40.94,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.24,
+   "bars": [
+    26,
+    30
+   ]
+  },
+  {
+   "start": 40.94,
+   "end": 46.39,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.4,
+   "bars": [
+    30,
+    34
+   ]
+  },
+  {
+   "start": 46.39,
+   "end": 51.85,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.98,
+   "bars": [
+    34,
+    38
+   ]
+  },
+  {
+   "start": 51.85,
+   "end": 60.02,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.77,
+   "bars": [
+    38,
+    44
+   ]
+  },
+  {
+   "start": 60.02,
+   "end": 70.75,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    44,
+    49
+   ]
+  },
+  {
+   "start": 70.75,
+   "end": 82.18,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.11,
+   "bars": [
+    49,
+    57
+   ]
+  },
+  {
+   "start": 82.18,
+   "end": 97.52,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.02,
+   "bars": [
+    57,
+    67
+   ]
+  },
+  {
+   "start": 97.52,
+   "end": 149.65,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.82,
+   "bars": [
+    67,
+    99
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.16,
+  "end": 17.76
+ },
+ "verse2": {
+  "start": 17.76,
+  "end": 23.22
+ },
+ "chorus2": {
+  "start": 23.22,
+  "end": 70.75
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "librosa",
+ "nBars": 99,
+ "barS": 1.37,
+ "thr": 0.393,
+ "ssmMedian": 0.06,
+ "ssmMad": 0.167,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    5
+   ],
+   "lagBars": 8,
+   "startS": 0.16,
+   "endS": 6.85,
+   "repeatAtS": 10.94,
+   "score": 0.491
+  },
+  {
+   "bars": [
+    16,
+    32
+   ],
+   "lagBars": 8,
+   "startS": 21.85,
+   "endS": 43.68,
+   "repeatAtS": 32.76,
+   "score": 0.536
+  },
+  {
+   "bars": [
+    33,
+    37
+   ],
+   "lagBars": 8,
+   "startS": 45.02,
+   "endS": 50.48,
+   "repeatAtS": 55.94,
+   "score": 0.449
+  },
+  {
+   "bars": [
+    49,
+    59
+   ],
+   "lagBars": 8,
+   "startS": 70.75,
+   "endS": 84.92,
+   "repeatAtS": 82.18,
+   "score": 0.595
+  },
+  {
+   "bars": [
+    17,
+    26
+   ],
+   "lagBars": 12,
+   "startS": 23.22,
+   "endS": 35.48,
+   "repeatAtS": 39.59,
+   "score": 0.468
+  },
+  {
+   "bars": [
+    27,
+    32
+   ],
+   "lagBars": 12,
+   "startS": 36.85,
+   "endS": 43.68,
+   "repeatAtS": 53.22,
+   "score": 0.536
+  },
+  {
+   "bars": [
+    0,
+    14
+   ],
+   "lagBars": 16,
+   "startS": 0.16,
+   "endS": 19.11,
+   "repeatAtS": 21.85,
+   "score": 0.493
+  },
+  {
+   "bars": [
+    17,
+    30
+   ],
+   "lagBars": 16,
+   "startS": 23.22,
+   "endS": 40.94,
+   "repeatAtS": 45.02,
+   "score": 0.51
+  },
+  {
+   "bars": [
+    0,
+    8
+   ],
+   "lagBars": 20,
+   "startS": 0.16,
+   "endS": 10.94,
+   "repeatAtS": 27.31,
+   "score": 0.471
+  },
+  {
+   "bars": [
+    21,
+    26
+   ],
+   "lagBars": 20,
+   "startS": 28.68,
+   "endS": 35.48,
+   "repeatAtS": 55.94,
+   "score": 0.5
+  },
+  {
+   "bars": [
+    0,
+    8
+   ],
+   "lagBars": 24,
+   "startS": 0.16,
+   "endS": 10.94,
+   "repeatAtS": 32.76,
+   "score": 0.539
+  },
+  {
+   "bars": [
+    17,
+    21
+   ],
+   "lagBars": 24,
+   "startS": 23.22,
+   "endS": 28.68,
+   "repeatAtS": 55.94,
+   "score": 0.523
+  },
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 28,
+   "startS": 0.16,
+   "endS": 8.22,
+   "repeatAtS": 38.22,
+   "score": 0.481
+  },
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 32,
+   "startS": 0.16,
+   "endS": 5.48,
+   "repeatAtS": 43.68,
+   "score": 0.486
+  },
+  {
+   "bars": [
+    9,
+    14
+   ],
+   "lagBars": 32,
+   "startS": 12.31,
+   "endS": 19.11,
+   "repeatAtS": 55.94,
+   "score": 0.533
+  },
+  {
+   "bars": [
+    0,
+    10
+   ],
+   "lagBars": 36,
+   "startS": 0.16,
+   "endS": 13.68,
+   "repeatAtS": 49.11,
+   "score": 0.456
+  },
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 40,
+   "startS": 0.16,
+   "endS": 8.22,
+   "repeatAtS": 54.57,
+   "score": 0.528
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   2,
+   1.0,
+   4
+  ],
+  [
+   0,
+   3,
+   0.25,
+   1
+  ],
+  [
+   0,
+   4,
+   1.0,
+   4
+  ],
+  [
+   0,
+   5,
+   1.0,
+   4
+  ],
+  [
+   0,
+   6,
+   1.0,
+   4
+  ],
+  [
+   0,
+   7,
+   1.0,
+   4
+  ],
+  [
+   0,
+   8,
+   1.0,
+   4
+  ],
+  [
+   0,
+   9,
+   1.0,
+   4
+  ],
+  [
+   1,
+   2,
+   0.25,
+   1
+  ],
+  [
+   1,
+   4,
+   0.25,
+   1
+  ],
+  [
+   1,
+   5,
+   1.0,
+   4
+  ],
+  [
+   1,
+   6,
+   1.0,
+   4
+  ],
+  [
+   1,
+   7,
+   1.0,
+   4
+  ],
+  [
+   1,
+   9,
+   1.0,
+   4
+  ],
+  [
+   1,
+   10,
+   0.5,
+   2
+  ],
+  [
+   2,
+   5,
+   0.4,
+   2
+  ],
+  [
+   2,
+   6,
+   0.75,
+   3
+  ],
+  [
+   2,
+   9,
+   0.6,
+   3
+  ],
+  [
+   2,
+   10,
+   0.6,
+   3
+  ],
+  [
+   3,
+   5,
+   0.25,
+   1
+  ],
+  [
+   3,
+   6,
+   0.25,
+   1
+  ],
+  [
+   3,
+   10,
+   0.25,
+   1
+  ],
+  [
+   4,
+   5,
+   0.25,
+   1
+  ],
+  [
+   4,
+   6,
+   1.0,
+   4
+  ],
+  [
+   4,
+   7,
+   1.0,
+   4
+  ],
+  [
+   4,
+   8,
+   0.75,
+   3
+  ],
+  [
+   4,
+   9,
+   0.75,
+   3
+  ],
+  [
+   4,
+   10,
+   0.25,
+   1
+  ],
+  [
+   5,
+   6,
+   0.25,
+   1
+  ],
+  [
+   5,
+   7,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   1.0,
+   4
+  ],
+  [
+   5,
+   9,
+   1.0,
+   5
+  ],
+  [
+   5,
+   10,
+   0.4,
+   2
+  ],
+  [
+   6,
+   8,
+   1.0,
+   4
+  ],
+  [
+   6,
+   9,
+   1.0,
+   4
+  ],
+  [
+   6,
+   10,
+   0.5,
+   2
+  ],
+  [
+   7,
+   9,
+   1.0,
+   4
+  ],
+  [
+   8,
+   9,
+   0.5,
+   2
+  ],
+  [
+   8,
+   10,
+   0.25,
+   1
+  ],
+  [
+   11,
+   12,
+   1.0,
+   8
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.65
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 9.1,
+ "at": 1790103040,
+ "id": "austinwilliams__90srapmashup_smuc3cwqi",
+ "title": "Austin Williams - 90s Rap Mashup",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

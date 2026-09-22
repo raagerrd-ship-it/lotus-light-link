@@ -1,0 +1,212 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 34.79,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.72,
+   "bars": [
+    0,
+    27
+   ]
+  },
+  {
+   "start": 34.79,
+   "end": 40.37,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.75,
+   "bars": [
+    27,
+    31
+   ]
+  },
+  {
+   "start": 40.37,
+   "end": 52.38,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.52,
+   "bars": [
+    31,
+    38
+   ]
+  },
+  {
+   "start": 52.38,
+   "end": 60.96,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.91,
+   "bars": [
+    38,
+    43
+   ]
+  },
+  {
+   "start": 60.96,
+   "end": 73.83,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.97,
+   "bars": [
+    43,
+    52
+   ]
+  },
+  {
+   "start": 73.83,
+   "end": 87.13,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.64,
+   "bars": [
+    52,
+    60
+   ]
+  },
+  {
+   "start": 87.13,
+   "end": 97.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -42.58,
+   "bars": [
+    60,
+    65
+   ]
+  },
+  {
+   "start": 97.0,
+   "end": 123.16,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.46,
+   "bars": [
+    65,
+    81
+   ]
+  },
+  {
+   "start": 123.16,
+   "end": 133.46,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.21,
+   "bars": [
+    81,
+    88
+   ]
+  },
+  {
+   "start": 133.46,
+   "end": 150.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.54,
+   "bars": [
+    88,
+    98
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 40.37,
+  "end": 52.38
+ },
+ "verse2": {
+  "start": 52.38,
+  "end": 73.83
+ },
+ "chorus2": {
+  "start": 73.83,
+  "end": 87.13
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 98,
+ "barS": 1.716,
+ "thr": 0.427,
+ "ssmMedian": 0.086,
+ "ssmMad": 0.17,
+ "stripes": [
+  {
+   "bars": [
+    83,
+    87
+   ],
+   "lagBars": 8,
+   "startS": 125.74,
+   "endS": 131.74,
+   "repeatAtS": 138.18,
+   "score": 0.555
+  },
+  {
+   "bars": [
+    31,
+    38
+   ],
+   "lagBars": 21,
+   "startS": 40.37,
+   "endS": 52.38,
+   "repeatAtS": 73.83,
+   "score": 0.575
+  }
+ ],
+ "pairs": [
+  [
+   2,
+   5,
+   1.0,
+   7
+  ],
+  [
+   8,
+   9,
+   0.57,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.58
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.8,
+ "at": 1790103148,
+ "id": "cooperalan__drunkdrink_smuc1p9wc",
+ "title": "Cooper Alan - Drunk Drink",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,135 @@
+{
+ "segments": [
+  {
+   "start": 0.79,
+   "end": 73.26,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.09,
+   "bars": [
+    0,
+    29
+   ]
+  },
+  {
+   "start": 73.26,
+   "end": 95.75,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.01,
+   "bars": [
+    29,
+    38
+   ]
+  },
+  {
+   "start": 95.75,
+   "end": 113.24,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.82,
+   "bars": [
+    38,
+    45
+   ]
+  },
+  {
+   "start": 113.24,
+   "end": 135.73,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.23,
+   "bars": [
+    45,
+    54
+   ]
+  },
+  {
+   "start": 135.73,
+   "end": 145.73,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.83,
+   "bars": [
+    54,
+    58
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 73.26,
+  "end": 95.75
+ },
+ "verse2": {
+  "start": 95.75,
+  "end": 113.24
+ },
+ "chorus2": {
+  "start": 113.24,
+  "end": 135.73
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 58,
+ "barS": 2.499,
+ "thr": 0.373,
+ "ssmMedian": 0.02,
+ "ssmMad": 0.177,
+ "stripes": [
+  {
+   "bars": [
+    29,
+    38
+   ],
+   "lagBars": 16,
+   "startS": 73.26,
+   "endS": 95.75,
+   "repeatAtS": 113.24,
+   "score": 0.586
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   9
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.62
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 11.5,
+ "at": 1790103780,
+ "id": "ryanlangdon__crushincansbluegrassyversion_smuc2let8",
+ "title": "Ryan Langdon - Crushin' Cans - Bluegrassy Version",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

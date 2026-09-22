@@ -1,0 +1,304 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 20.9,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -38.3,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 20.9,
+   "end": 33.53,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.35,
+   "bars": [
+    6,
+    10
+   ]
+  },
+  {
+   "start": 33.53,
+   "end": 52.32,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -36.37,
+   "bars": [
+    10,
+    16
+   ]
+  },
+  {
+   "start": 52.32,
+   "end": 64.94,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.22,
+   "bars": [
+    16,
+    20
+   ]
+  },
+  {
+   "start": 64.94,
+   "end": 77.57,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -35.89,
+   "bars": [
+    20,
+    24
+   ]
+  },
+  {
+   "start": 77.57,
+   "end": 90.19,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.09,
+   "bars": [
+    24,
+    28
+   ]
+  },
+  {
+   "start": 90.19,
+   "end": 115.45,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.06,
+   "bars": [
+    28,
+    36
+   ]
+  },
+  {
+   "start": 115.45,
+   "end": 137.54,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -36.52,
+   "bars": [
+    36,
+    43
+   ]
+  },
+  {
+   "start": 137.54,
+   "end": 149.99,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.62,
+   "bars": [
+    43,
+    46
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 64.94,
+  "end": 90.19
+ },
+ "verse2": {
+  "start": 90.19,
+  "end": 115.45
+ },
+ "chorus2": {
+  "start": 115.45,
+  "end": 149.99
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 46,
+ "barS": 3.16,
+ "thr": 0.41,
+ "ssmMedian": 0.04,
+ "ssmMad": 0.185,
+ "stripes": [
+  {
+   "bars": [
+    9,
+    16
+   ],
+   "lagBars": 12,
+   "startS": 30.37,
+   "endS": 52.32,
+   "repeatAtS": 68.1,
+   "score": 0.592
+  },
+  {
+   "bars": [
+    26,
+    30
+   ],
+   "lagBars": 12,
+   "startS": 83.87,
+   "endS": 96.5,
+   "repeatAtS": 121.76,
+   "score": 0.478
+  },
+  {
+   "bars": [
+    20,
+    29
+   ],
+   "lagBars": 16,
+   "startS": 64.94,
+   "endS": 93.35,
+   "repeatAtS": 115.45,
+   "score": 0.579
+  },
+  {
+   "bars": [
+    22,
+    26
+   ],
+   "lagBars": 20,
+   "startS": 71.25,
+   "endS": 83.87,
+   "repeatAtS": 134.38,
+   "score": 0.53
+  },
+  {
+   "bars": [
+    9,
+    16
+   ],
+   "lagBars": 28,
+   "startS": 30.37,
+   "endS": 52.32,
+   "repeatAtS": 118.6,
+   "score": 0.549
+  },
+  {
+   "bars": [
+    10,
+    14
+   ],
+   "lagBars": 32,
+   "startS": 33.53,
+   "endS": 46.0,
+   "repeatAtS": 134.38,
+   "score": 0.465
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   0.25,
+   1
+  ],
+  [
+   1,
+   7,
+   0.25,
+   1
+  ],
+  [
+   2,
+   4,
+   0.5,
+   2
+  ],
+  [
+   2,
+   5,
+   1.0,
+   4
+  ],
+  [
+   2,
+   7,
+   0.83,
+   5
+  ],
+  [
+   2,
+   8,
+   1.0,
+   3
+  ],
+  [
+   4,
+   7,
+   1.0,
+   4
+  ],
+  [
+   4,
+   8,
+   0.33,
+   1
+  ],
+  [
+   5,
+   7,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   1.0,
+   3
+  ],
+  [
+   6,
+   7,
+   0.29,
+   2
+  ],
+  [
+   6,
+   8,
+   0.33,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.3
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 11.5,
+ "at": 1790103160,
+ "id": "cooperalan__feellikehelltoday_smubud2im",
+ "title": "Cooper Alan - Feel Like Hell Today",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

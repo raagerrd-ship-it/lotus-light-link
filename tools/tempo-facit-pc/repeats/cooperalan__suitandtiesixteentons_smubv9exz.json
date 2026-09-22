@@ -1,0 +1,383 @@
+{
+ "segments": [
+  {
+   "start": 0.1,
+   "end": 19.31,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.83,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 19.31,
+   "end": 25.48,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.3,
+   "bars": [
+    7,
+    11
+   ]
+  },
+  {
+   "start": 25.48,
+   "end": 31.66,
+   "group": "B",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.49,
+   "bars": [
+    11,
+    15
+   ]
+  },
+  {
+   "start": 31.66,
+   "end": 47.1,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.65,
+   "bars": [
+    15,
+    25
+   ]
+  },
+  {
+   "start": 47.1,
+   "end": 59.45,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.42,
+   "bars": [
+    25,
+    33
+   ]
+  },
+  {
+   "start": 59.45,
+   "end": 65.63,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.22,
+   "bars": [
+    33,
+    37
+   ]
+  },
+  {
+   "start": 65.63,
+   "end": 71.8,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.45,
+   "bars": [
+    37,
+    41
+   ]
+  },
+  {
+   "start": 71.8,
+   "end": 84.16,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.49,
+   "bars": [
+    41,
+    49
+   ]
+  },
+  {
+   "start": 84.16,
+   "end": 96.52,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.2,
+   "bars": [
+    49,
+    57
+   ]
+  },
+  {
+   "start": 96.52,
+   "end": 115.79,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.06,
+   "bars": [
+    57,
+    61
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 61,
+ "barS": 1.55,
+ "thr": 0.42,
+ "ssmMedian": 0.044,
+ "ssmMad": 0.188,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    5
+   ],
+   "lagBars": 8,
+   "startS": 8.52,
+   "endS": 16.22,
+   "repeatAtS": 20.87,
+   "score": 0.497
+  },
+  {
+   "bars": [
+    26,
+    31
+   ],
+   "lagBars": 8,
+   "startS": 48.67,
+   "endS": 56.36,
+   "repeatAtS": 61.01,
+   "score": 0.531
+  },
+  {
+   "bars": [
+    34,
+    39
+   ],
+   "lagBars": 16,
+   "startS": 61.01,
+   "endS": 68.74,
+   "repeatAtS": 85.73,
+   "score": 0.562
+  },
+  {
+   "bars": [
+    8,
+    13
+   ],
+   "lagBars": 18,
+   "startS": 20.87,
+   "endS": 28.59,
+   "repeatAtS": 48.67,
+   "score": 0.519
+  },
+  {
+   "bars": [
+    25,
+    37
+   ],
+   "lagBars": 24,
+   "startS": 47.1,
+   "endS": 65.63,
+   "repeatAtS": 84.16,
+   "score": 0.736
+  },
+  {
+   "bars": [
+    0,
+    15
+   ],
+   "lagBars": 26,
+   "startS": 8.52,
+   "endS": 31.66,
+   "repeatAtS": 48.67,
+   "score": 0.868
+  },
+  {
+   "bars": [
+    0,
+    5
+   ],
+   "lagBars": 34,
+   "startS": 8.52,
+   "endS": 16.22,
+   "repeatAtS": 61.01,
+   "score": 0.531
+  },
+  {
+   "bars": [
+    8,
+    13
+   ],
+   "lagBars": 42,
+   "startS": 20.87,
+   "endS": 28.59,
+   "repeatAtS": 85.73,
+   "score": 0.505
+  },
+  {
+   "bars": [
+    0,
+    11
+   ],
+   "lagBars": 50,
+   "startS": 8.52,
+   "endS": 25.48,
+   "repeatAtS": 85.73,
+   "score": 0.766
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   1,
+   0.75,
+   3
+  ],
+  [
+   0,
+   2,
+   0.5,
+   2
+  ],
+  [
+   0,
+   4,
+   1.0,
+   7
+  ],
+  [
+   0,
+   5,
+   0.75,
+   3
+  ],
+  [
+   0,
+   6,
+   0.5,
+   2
+  ],
+  [
+   0,
+   8,
+   1.0,
+   7
+  ],
+  [
+   1,
+   4,
+   0.75,
+   3
+  ],
+  [
+   1,
+   5,
+   1.0,
+   4
+  ],
+  [
+   1,
+   8,
+   0.75,
+   3
+  ],
+  [
+   1,
+   9,
+   1.0,
+   4
+  ],
+  [
+   2,
+   4,
+   0.5,
+   2
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   2,
+   8,
+   0.5,
+   2
+  ],
+  [
+   4,
+   5,
+   0.75,
+   3
+  ],
+  [
+   4,
+   6,
+   0.5,
+   2
+  ],
+  [
+   4,
+   8,
+   1.0,
+   8
+  ],
+  [
+   5,
+   8,
+   0.75,
+   3
+  ],
+  [
+   5,
+   9,
+   1.0,
+   4
+  ],
+  [
+   6,
+   8,
+   0.5,
+   2
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.34,
+  "B": -37.47
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.7,
+ "at": 1790103276,
+ "id": "cooperalan__suitandtiesixteentons_smubv9exz",
+ "title": "Cooper Alan - Suit and Tie (Sixteen Tons)",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

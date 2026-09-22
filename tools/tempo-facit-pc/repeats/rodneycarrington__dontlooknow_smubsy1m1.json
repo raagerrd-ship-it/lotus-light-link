@@ -1,0 +1,160 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 20.34,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.68,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 20.34,
+   "end": 33.97,
+   "group": "B",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.23,
+   "bars": [
+    5,
+    10
+   ]
+  },
+  {
+   "start": 33.97,
+   "end": 52.38,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.18,
+   "bars": [
+    10,
+    17
+   ]
+  },
+  {
+   "start": 52.38,
+   "end": 66.02,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.69,
+   "bars": [
+    17,
+    22
+   ]
+  },
+  {
+   "start": 66.02,
+   "end": 79.71,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.28,
+   "bars": [
+    22,
+    27
+   ]
+  },
+  {
+   "start": 79.71,
+   "end": 95.15,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.14,
+   "bars": [
+    27,
+    30
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 20.34,
+  "end": 33.97
+ },
+ "verse2": {
+  "start": 33.97,
+  "end": 66.02
+ },
+ "chorus2": {
+  "start": 66.02,
+  "end": 79.71
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 30,
+ "barS": 2.73,
+ "thr": 0.349,
+ "ssmMedian": 0.048,
+ "ssmMad": 0.151,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    12
+   ],
+   "lagBars": 17,
+   "startS": 6.65,
+   "endS": 39.45,
+   "repeatAtS": 52.38,
+   "score": 0.433
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   1.0,
+   5
+  ],
+  [
+   1,
+   4,
+   1.0,
+   5
+  ],
+  [
+   2,
+   5,
+   0.67,
+   2
+  ]
+ ],
+ "groupEnergy": {
+  "B": -38.25,
+  "A": -38.69
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 11.0,
+ "at": 1790103744,
+ "id": "rodneycarrington__dontlooknow_smubsy1m1",
+ "title": "Rodney Carrington - Don't Look Now",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

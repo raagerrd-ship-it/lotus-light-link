@@ -1,0 +1,212 @@
+{
+ "segments": [
+  {
+   "start": 0.1,
+   "end": 20.63,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.73,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 20.63,
+   "end": 29.52,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.85,
+   "bars": [
+    7,
+    11
+   ]
+  },
+  {
+   "start": 29.52,
+   "end": 40.63,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.76,
+   "bars": [
+    11,
+    16
+   ]
+  },
+  {
+   "start": 40.63,
+   "end": 49.52,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.81,
+   "bars": [
+    16,
+    20
+   ]
+  },
+  {
+   "start": 49.52,
+   "end": 62.84,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.97,
+   "bars": [
+    20,
+    26
+   ]
+  },
+  {
+   "start": 62.84,
+   "end": 85.07,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.61,
+   "bars": [
+    26,
+    36
+   ]
+  },
+  {
+   "start": 85.07,
+   "end": 114.81,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.2,
+   "bars": [
+    36,
+    45
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.1,
+  "end": 20.63
+ },
+ "verse2": {
+  "start": 20.63,
+  "end": 40.63
+ },
+ "chorus2": {
+  "start": 40.63,
+  "end": 49.52
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 45,
+ "barS": 2.22,
+ "thr": 0.396,
+ "ssmMedian": 0.047,
+ "ssmMad": 0.174,
+ "stripes": [
+  {
+   "bars": [
+    3,
+    11
+   ],
+   "lagBars": 14,
+   "startS": 11.74,
+   "endS": 29.52,
+   "repeatAtS": 42.85,
+   "score": 0.603
+  },
+  {
+   "bars": [
+    20,
+    26
+   ],
+   "lagBars": 18,
+   "startS": 49.52,
+   "endS": 62.84,
+   "repeatAtS": 89.51,
+   "score": 0.622
+  },
+  {
+   "bars": [
+    7,
+    13
+   ],
+   "lagBars": 32,
+   "startS": 20.63,
+   "endS": 33.96,
+   "repeatAtS": 91.72,
+   "score": 0.591
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   0.75,
+   3
+  ],
+  [
+   0,
+   4,
+   0.17,
+   1
+  ],
+  [
+   1,
+   4,
+   1.0,
+   4
+  ],
+  [
+   1,
+   6,
+   1.0,
+   4
+  ],
+  [
+   2,
+   6,
+   0.4,
+   2
+  ],
+  [
+   4,
+   6,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.77,
+  "B": -37.01
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.7,
+ "at": 1790102998,
+ "id": "austinbrown__doboth_smubvu2lp",
+ "title": "Austin Brown - Do Both",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

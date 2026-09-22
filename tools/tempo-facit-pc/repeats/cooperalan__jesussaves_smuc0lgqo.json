@@ -1,0 +1,153 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 14.9,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.07,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 14.9,
+   "end": 43.98,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -34.48,
+   "bars": [
+    7,
+    22
+   ]
+  },
+  {
+   "start": 43.98,
+   "end": 60.24,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.13,
+   "bars": [
+    22,
+    30
+   ]
+  },
+  {
+   "start": 60.24,
+   "end": 72.06,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.74,
+   "bars": [
+    30,
+    36
+   ]
+  },
+  {
+   "start": 72.06,
+   "end": 85.86,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -34.48,
+   "bars": [
+    36,
+    43
+   ]
+  },
+  {
+   "start": 85.86,
+   "end": 96.21,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -34.47,
+   "bars": [
+    43,
+    48
+   ]
+  },
+  {
+   "start": 96.21,
+   "end": 113.95,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -34.92,
+   "bars": [
+    48,
+    57
+   ]
+  },
+  {
+   "start": 113.95,
+   "end": 124.3,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.91,
+   "bars": [
+    57,
+    62
+   ]
+  },
+  {
+   "start": 124.3,
+   "end": 150.0,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -34.99,
+   "bars": [
+    62,
+    74
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "beatthis-grid",
+ "nBars": 74,
+ "barS": 1.971,
+ "thr": 0.406,
+ "ssmMedian": 0.069,
+ "ssmMad": 0.169,
+ "stripes": [],
+ "pairs": [],
+ "groupEnergy": {},
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.7,
+ "at": 1790103201,
+ "id": "cooperalan__jesussaves_smuc0lgqo",
+ "title": "Cooper Alan - Jesus Saves",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

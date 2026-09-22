@@ -1,0 +1,176 @@
+{
+ "segments": [
+  {
+   "start": 1.66,
+   "end": 28.21,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.81,
+   "bars": [
+    0,
+    12
+   ]
+  },
+  {
+   "start": 28.21,
+   "end": 49.88,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.27,
+   "bars": [
+    12,
+    22
+   ]
+  },
+  {
+   "start": 49.88,
+   "end": 80.76,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.78,
+   "bars": [
+    22,
+    36
+   ]
+  },
+  {
+   "start": 80.76,
+   "end": 102.97,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.16,
+   "bars": [
+    36,
+    46
+   ]
+  },
+  {
+   "start": 102.97,
+   "end": 122.48,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.77,
+   "bars": [
+    46,
+    55
+   ]
+  },
+  {
+   "start": 122.48,
+   "end": 138.19,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.13,
+   "bars": [
+    55,
+    62
+   ]
+  },
+  {
+   "start": 138.19,
+   "end": 149.03,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.65,
+   "bars": [
+    62,
+    67
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 28.21,
+  "end": 49.88
+ },
+ "verse2": {
+  "start": 49.88,
+  "end": 80.76
+ },
+ "chorus2": {
+  "start": 80.76,
+  "end": 102.97
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 67,
+ "barS": 2.167,
+ "thr": 0.376,
+ "ssmMedian": 0.06,
+ "ssmMad": 0.158,
+ "stripes": [
+  {
+   "bars": [
+    39,
+    46
+   ],
+   "lagBars": 16,
+   "startS": 87.26,
+   "endS": 102.97,
+   "repeatAtS": 122.48,
+   "score": 0.58
+  },
+  {
+   "bars": [
+    12,
+    22
+   ],
+   "lagBars": 24,
+   "startS": 28.21,
+   "endS": 49.88,
+   "repeatAtS": 80.76,
+   "score": 0.465
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   10
+  ],
+  [
+   3,
+   5,
+   1.0,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.19
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 12.4,
+ "at": 1790103265,
+ "id": "cooperalan__sir_smuc442dl",
+ "title": "Cooper Alan - Sir",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

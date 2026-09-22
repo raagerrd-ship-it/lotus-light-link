@@ -1,0 +1,171 @@
+{
+ "segments": [
+  {
+   "start": 0.31,
+   "end": 18.63,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.79,
+   "bars": [
+    0,
+    9
+   ]
+  },
+  {
+   "start": 18.63,
+   "end": 36.07,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.23,
+   "bars": [
+    9,
+    18
+   ]
+  },
+  {
+   "start": 36.07,
+   "end": 53.46,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.0,
+   "bars": [
+    18,
+    27
+   ]
+  },
+  {
+   "start": 53.46,
+   "end": 70.87,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.13,
+   "bars": [
+    27,
+    36
+   ]
+  },
+  {
+   "start": 70.87,
+   "end": 88.28,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.79,
+   "bars": [
+    36,
+    45
+   ]
+  },
+  {
+   "start": 88.28,
+   "end": 103.77,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.96,
+   "bars": [
+    45,
+    53
+   ]
+  },
+  {
+   "start": 103.77,
+   "end": 123.05,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.9,
+   "bars": [
+    53,
+    63
+   ]
+  },
+  {
+   "start": 123.05,
+   "end": 134.27,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.66,
+   "bars": [
+    63,
+    66
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 18.63,
+  "end": 36.07
+ },
+ "verse2": {
+  "start": 36.07,
+  "end": 53.46
+ },
+ "chorus2": {
+  "start": 53.46,
+  "end": 70.87
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 66,
+ "barS": 1.93,
+ "thr": 0.392,
+ "ssmMedian": 0.048,
+ "ssmMad": 0.172,
+ "stripes": [
+  {
+   "bars": [
+    9,
+    16
+   ],
+   "lagBars": 19,
+   "startS": 18.63,
+   "endS": 32.18,
+   "repeatAtS": 55.39,
+   "score": 0.507
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   0.78,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.18
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.9,
+ "at": 1790103888,
+ "id": "themartinboys__miraclecuredemoversion_smubuwkyp",
+ "title": "The Martin Boys - Miracle Cure - Demo Version",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

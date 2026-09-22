@@ -1,0 +1,226 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 15.78,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.03,
+   "bars": [
+    0,
+    10
+   ]
+  },
+  {
+   "start": 15.78,
+   "end": 39.75,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.06,
+   "bars": [
+    10,
+    19
+   ]
+  },
+  {
+   "start": 39.75,
+   "end": 50.4,
+   "group": "B",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.46,
+   "bars": [
+    19,
+    23
+   ]
+  },
+  {
+   "start": 50.4,
+   "end": 71.71,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.38,
+   "bars": [
+    23,
+    31
+   ]
+  },
+  {
+   "start": 71.71,
+   "end": 95.68,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.02,
+   "bars": [
+    31,
+    40
+   ]
+  },
+  {
+   "start": 95.68,
+   "end": 106.33,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.53,
+   "bars": [
+    40,
+    44
+   ]
+  },
+  {
+   "start": 106.33,
+   "end": 116.99,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.33,
+   "bars": [
+    44,
+    48
+   ]
+  },
+  {
+   "start": 116.99,
+   "end": 127.64,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.47,
+   "bars": [
+    48,
+    52
+   ]
+  },
+  {
+   "start": 127.64,
+   "end": 140.96,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.64,
+   "bars": [
+    52,
+    57
+   ]
+  },
+  {
+   "start": 140.96,
+   "end": 150.0,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.98,
+   "bars": [
+    57,
+    60
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 15.78,
+  "end": 39.75
+ },
+ "verse2": {
+  "start": 39.75,
+  "end": 71.71
+ },
+ "chorus2": {
+  "start": 71.71,
+  "end": 95.68
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "beatthis-grid",
+ "nBars": 60,
+ "barS": 2.663,
+ "thr": 0.346,
+ "ssmMedian": 0.026,
+ "ssmMad": 0.16,
+ "stripes": [
+  {
+   "bars": [
+    10,
+    25
+   ],
+   "lagBars": 20,
+   "startS": 15.78,
+   "endS": 55.73,
+   "repeatAtS": 69.05,
+   "score": 0.637
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   0.12,
+   1
+  ],
+  [
+   1,
+   4,
+   0.89,
+   8
+  ],
+  [
+   2,
+   4,
+   0.25,
+   1
+  ],
+  [
+   2,
+   5,
+   0.75,
+   3
+  ],
+  [
+   3,
+   5,
+   0.25,
+   1
+  ],
+  [
+   3,
+   6,
+   0.25,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "B": -38.0,
+  "A": -38.04
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 11.5,
+ "at": 1790103643,
+ "id": "jonpardi__dirtonmyboots_smuc0yyh5",
+ "title": "Jon Pardi - Dirt On My Boots",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

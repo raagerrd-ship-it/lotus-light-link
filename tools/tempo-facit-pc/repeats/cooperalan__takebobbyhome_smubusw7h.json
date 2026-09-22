@@ -1,0 +1,470 @@
+{
+ "segments": [
+  {
+   "start": 0.31,
+   "end": 26.96,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.79,
+   "bars": [
+    0,
+    16
+   ]
+  },
+  {
+   "start": 26.96,
+   "end": 34.7,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.65,
+   "bars": [
+    16,
+    21
+   ]
+  },
+  {
+   "start": 34.7,
+   "end": 40.9,
+   "group": "B",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.62,
+   "bars": [
+    21,
+    25
+   ]
+  },
+  {
+   "start": 40.9,
+   "end": 50.18,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.49,
+   "bars": [
+    25,
+    31
+   ]
+  },
+  {
+   "start": 50.18,
+   "end": 68.76,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.43,
+   "bars": [
+    31,
+    43
+   ]
+  },
+  {
+   "start": 68.76,
+   "end": 74.96,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.37,
+   "bars": [
+    43,
+    47
+   ]
+  },
+  {
+   "start": 74.96,
+   "end": 81.15,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.37,
+   "bars": [
+    47,
+    51
+   ]
+  },
+  {
+   "start": 81.15,
+   "end": 91.99,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.5,
+   "bars": [
+    51,
+    58
+   ]
+  },
+  {
+   "start": 91.99,
+   "end": 98.18,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.26,
+   "bars": [
+    58,
+    62
+   ]
+  },
+  {
+   "start": 98.18,
+   "end": 104.38,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.74,
+   "bars": [
+    62,
+    66
+   ]
+  },
+  {
+   "start": 104.38,
+   "end": 130.7,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.28,
+   "bars": [
+    66,
+    83
+   ]
+  },
+  {
+   "start": 130.7,
+   "end": 138.45,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.38,
+   "bars": [
+    83,
+    88
+   ]
+  },
+  {
+   "start": 138.45,
+   "end": 149.66,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.25,
+   "bars": [
+    88,
+    95
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 40.9,
+  "end": 74.96
+ },
+ "verse2": {
+  "start": 74.96,
+  "end": 81.15
+ },
+ "chorus2": {
+  "start": 81.15,
+  "end": 98.18
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 95,
+ "barS": 1.55,
+ "thr": 0.411,
+ "ssmMedian": 0.051,
+ "ssmMad": 0.18,
+ "stripes": [
+  {
+   "bars": [
+    43,
+    48
+   ],
+   "lagBars": 8,
+   "startS": 68.76,
+   "endS": 76.51,
+   "repeatAtS": 81.15,
+   "score": 0.508
+  },
+  {
+   "bars": [
+    44,
+    48
+   ],
+   "lagBars": 15,
+   "startS": 70.31,
+   "endS": 76.51,
+   "repeatAtS": 93.54,
+   "score": 0.507
+  },
+  {
+   "bars": [
+    25,
+    29
+   ],
+   "lagBars": 19,
+   "startS": 40.9,
+   "endS": 47.09,
+   "repeatAtS": 70.31,
+   "score": 0.481
+  },
+  {
+   "bars": [
+    14,
+    34
+   ],
+   "lagBars": 27,
+   "startS": 23.86,
+   "endS": 54.83,
+   "repeatAtS": 65.67,
+   "score": 0.763
+  },
+  {
+   "bars": [
+    50,
+    62
+   ],
+   "lagBars": 33,
+   "startS": 79.6,
+   "endS": 98.18,
+   "repeatAtS": 130.7,
+   "score": 0.731
+  },
+  {
+   "bars": [
+    16,
+    21
+   ],
+   "lagBars": 35,
+   "startS": 26.96,
+   "endS": 34.7,
+   "repeatAtS": 81.15,
+   "score": 0.501
+  },
+  {
+   "bars": [
+    43,
+    47
+   ],
+   "lagBars": 41,
+   "startS": 68.76,
+   "endS": 74.96,
+   "repeatAtS": 132.25,
+   "score": 0.539
+  },
+  {
+   "bars": [
+    17,
+    22
+   ],
+   "lagBars": 42,
+   "startS": 28.51,
+   "endS": 36.25,
+   "repeatAtS": 93.54,
+   "score": 0.497
+  },
+  {
+   "bars": [
+    23,
+    33
+   ],
+   "lagBars": 60,
+   "startS": 37.8,
+   "endS": 53.28,
+   "repeatAtS": 130.7,
+   "score": 0.677
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   4,
+   0.17,
+   2
+  ],
+  [
+   1,
+   5,
+   1.0,
+   4
+  ],
+  [
+   1,
+   6,
+   0.25,
+   1
+  ],
+  [
+   1,
+   7,
+   1.0,
+   5
+  ],
+  [
+   1,
+   8,
+   0.75,
+   3
+  ],
+  [
+   1,
+   9,
+   0.25,
+   1
+  ],
+  [
+   2,
+   6,
+   0.75,
+   3
+  ],
+  [
+   2,
+   7,
+   0.25,
+   1
+  ],
+  [
+   2,
+   9,
+   0.25,
+   1
+  ],
+  [
+   2,
+   11,
+   0.5,
+   2
+  ],
+  [
+   3,
+   5,
+   0.75,
+   3
+  ],
+  [
+   3,
+   6,
+   0.25,
+   1
+  ],
+  [
+   3,
+   7,
+   1.0,
+   6
+  ],
+  [
+   3,
+   11,
+   0.6,
+   3
+  ],
+  [
+   3,
+   12,
+   0.5,
+   3
+  ],
+  [
+   4,
+   8,
+   0.75,
+   3
+  ],
+  [
+   4,
+   12,
+   0.29,
+   2
+  ],
+  [
+   5,
+   7,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   0.75,
+   3
+  ],
+  [
+   5,
+   11,
+   1.0,
+   4
+  ],
+  [
+   6,
+   7,
+   0.25,
+   1
+  ],
+  [
+   6,
+   9,
+   0.25,
+   1
+  ],
+  [
+   6,
+   11,
+   0.25,
+   1
+  ],
+  [
+   7,
+   11,
+   0.8,
+   4
+  ],
+  [
+   7,
+   12,
+   0.43,
+   3
+  ],
+  [
+   8,
+   12,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.42,
+  "B": -37.49
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 13.9,
+ "at": 1790103302,
+ "id": "cooperalan__takebobbyhome_smubusw7h",
+ "title": "Cooper Alan - Take Bobby Home",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,231 @@
+{
+ "segments": [
+  {
+   "start": 0.12,
+   "end": 10.57,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.31,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 10.57,
+   "end": 21.11,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.83,
+   "bars": [
+    4,
+    8
+   ]
+  },
+  {
+   "start": 21.11,
+   "end": 39.58,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.18,
+   "bars": [
+    8,
+    15
+   ]
+  },
+  {
+   "start": 39.58,
+   "end": 58.04,
+   "group": "C",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.9,
+   "bars": [
+    15,
+    22
+   ]
+  },
+  {
+   "start": 58.04,
+   "end": 73.86,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.96,
+   "bars": [
+    22,
+    28
+   ]
+  },
+  {
+   "start": 73.86,
+   "end": 92.32,
+   "group": "B",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.22,
+   "bars": [
+    28,
+    35
+   ]
+  },
+  {
+   "start": 92.32,
+   "end": 108.13,
+   "group": "C",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.09,
+   "bars": [
+    35,
+    41
+   ]
+  },
+  {
+   "start": 108.13,
+   "end": 131.86,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.38,
+   "bars": [
+    41,
+    50
+   ]
+  },
+  {
+   "start": 131.86,
+   "end": 148.43,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.78,
+   "bars": [
+    50,
+    55
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 10.57,
+  "end": 21.11
+ },
+ "verse2": {
+  "start": 21.11,
+  "end": 58.04
+ },
+ "chorus2": {
+  "start": 58.04,
+  "end": 73.86
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 55,
+ "barS": 2.64,
+ "thr": 0.418,
+ "ssmMedian": 0.048,
+ "ssmMad": 0.185,
+ "stripes": [
+  {
+   "bars": [
+    4,
+    20
+   ],
+   "lagBars": 20,
+   "startS": 10.57,
+   "endS": 52.76,
+   "repeatAtS": 63.31,
+   "score": 0.729
+  },
+  {
+   "bars": [
+    30,
+    35
+   ],
+   "lagBars": 20,
+   "startS": 79.14,
+   "endS": 92.32,
+   "repeatAtS": 131.86,
+   "score": 0.526
+  },
+  {
+   "bars": [
+    11,
+    15
+   ],
+   "lagBars": 40,
+   "startS": 29.02,
+   "endS": 39.58,
+   "repeatAtS": 134.5,
+   "score": 0.526
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   4,
+   1.0,
+   4
+  ],
+  [
+   2,
+   5,
+   1.0,
+   7
+  ],
+  [
+   2,
+   8,
+   0.8,
+   4
+  ],
+  [
+   3,
+   6,
+   0.83,
+   5
+  ],
+  [
+   5,
+   8,
+   1.0,
+   5
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.89,
+  "C": -38.0,
+  "B": -38.06
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.5,
+ "at": 1790103122,
+ "id": "cooperalan__cantdance_smubty5xi",
+ "title": "Cooper Alan - Can't Dance",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

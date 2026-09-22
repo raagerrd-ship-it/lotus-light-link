@@ -1,0 +1,224 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 14.63,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -36.84,
+   "bars": [
+    0,
+    8
+   ]
+  },
+  {
+   "start": 14.63,
+   "end": 27.32,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.23,
+   "bars": [
+    8,
+    16
+   ]
+  },
+  {
+   "start": 27.32,
+   "end": 45.32,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.04,
+   "bars": [
+    16,
+    27
+   ]
+  },
+  {
+   "start": 45.32,
+   "end": 60.05,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.03,
+   "bars": [
+    27,
+    36
+   ]
+  },
+  {
+   "start": 60.05,
+   "end": 72.74,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.6,
+   "bars": [
+    36,
+    44
+   ]
+  },
+  {
+   "start": 72.74,
+   "end": 85.83,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -35.93,
+   "bars": [
+    44,
+    52
+   ]
+  },
+  {
+   "start": 85.83,
+   "end": 102.2,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -35.8,
+   "bars": [
+    52,
+    62
+   ]
+  },
+  {
+   "start": 102.2,
+   "end": 114.88,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -36.13,
+   "bars": [
+    62,
+    70
+   ]
+  },
+  {
+   "start": 114.88,
+   "end": 124.7,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.35,
+   "bars": [
+    70,
+    80
+   ]
+  },
+  {
+   "start": 124.7,
+   "end": 128.8,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -35.76,
+   "bars": [
+    80,
+    85
+   ]
+  },
+  {
+   "start": 128.8,
+   "end": 150.0,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -39.02,
+   "bars": [
+    85,
+    98
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 14.63,
+  "end": 27.32
+ },
+ "verse2": {
+  "start": 27.32,
+  "end": 45.32
+ },
+ "chorus2": {
+  "start": 45.32,
+  "end": 60.05
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 98,
+ "barS": 1.637,
+ "thr": 0.395,
+ "ssmMedian": 0.084,
+ "ssmMad": 0.155,
+ "stripes": [
+  {
+   "bars": [
+    72,
+    77
+   ],
+   "lagBars": 8,
+   "startS": 118.16,
+   "endS": 122.25,
+   "repeatAtS": 124.7,
+   "score": 0.635
+  },
+  {
+   "bars": [
+    8,
+    16
+   ],
+   "lagBars": 20,
+   "startS": 14.63,
+   "endS": 27.32,
+   "repeatAtS": 46.96,
+   "score": 0.614
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   8
+  ],
+  [
+   8,
+   9,
+   1.0,
+   5
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.13
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.5,
+ "at": 1790103048,
+ "id": "blackjackbilly__drinkingallweekend_smubx00uw",
+ "title": "Blackjack Billy - Drinking All Weekend",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

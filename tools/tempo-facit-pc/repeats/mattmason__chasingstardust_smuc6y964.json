@@ -1,0 +1,235 @@
+{
+ "segments": [
+  {
+   "start": 0.2,
+   "end": 10.26,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.96,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 10.26,
+   "end": 18.31,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.89,
+   "bars": [
+    5,
+    9
+   ]
+  },
+  {
+   "start": 18.31,
+   "end": 26.35,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -39.29,
+   "bars": [
+    9,
+    13
+   ]
+  },
+  {
+   "start": 26.35,
+   "end": 46.97,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.0,
+   "bars": [
+    13,
+    23
+   ]
+  },
+  {
+   "start": 46.97,
+   "end": 73.63,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.73,
+   "bars": [
+    23,
+    36
+   ]
+  },
+  {
+   "start": 73.63,
+   "end": 88.21,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.91,
+   "bars": [
+    36,
+    43
+   ]
+  },
+  {
+   "start": 88.21,
+   "end": 124.92,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.54,
+   "bars": [
+    43,
+    61
+   ]
+  },
+  {
+   "start": 124.92,
+   "end": 139.51,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    61,
+    68
+   ]
+  },
+  {
+   "start": 139.51,
+   "end": 149.56,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -42.34,
+   "bars": [
+    68,
+    73
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 26.35,
+  "end": 46.97
+ },
+ "verse2": {
+  "start": 46.97,
+  "end": 73.63
+ },
+ "chorus2": {
+  "start": 73.63,
+  "end": 88.21
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 73,
+ "barS": 2.012,
+ "thr": 0.447,
+ "ssmMedian": 0.07,
+ "ssmMad": 0.188,
+ "stripes": [
+  {
+   "bars": [
+    1,
+    5
+   ],
+   "lagBars": 8,
+   "startS": 2.21,
+   "endS": 10.26,
+   "repeatAtS": 18.31,
+   "score": 0.599
+  },
+  {
+   "bars": [
+    16,
+    23
+   ],
+   "lagBars": 20,
+   "startS": 32.89,
+   "endS": 46.97,
+   "repeatAtS": 73.63,
+   "score": 0.534
+  },
+  {
+   "bars": [
+    36,
+    43
+   ],
+   "lagBars": 25,
+   "startS": 73.63,
+   "endS": 88.21,
+   "repeatAtS": 124.92,
+   "score": 0.716
+  },
+  {
+   "bars": [
+    16,
+    23
+   ],
+   "lagBars": 45,
+   "startS": 32.89,
+   "endS": 46.97,
+   "repeatAtS": 124.92,
+   "score": 0.608
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   2,
+   1.0,
+   4
+  ],
+  [
+   3,
+   5,
+   1.0,
+   7
+  ],
+  [
+   3,
+   7,
+   1.0,
+   7
+  ],
+  [
+   5,
+   7,
+   1.0,
+   7
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.95,
+  "A": -39.12
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 10.6,
+ "at": 1790103690,
+ "id": "mattmason__chasingstardust_smuc6y964",
+ "title": "Matt Mason - Chasing Stardust",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

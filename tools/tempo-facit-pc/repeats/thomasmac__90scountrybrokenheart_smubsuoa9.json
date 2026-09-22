@@ -1,0 +1,150 @@
+{
+ "segments": [
+  {
+   "start": 0.13,
+   "end": 28.19,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.76,
+   "bars": [
+    0,
+    15
+   ]
+  },
+  {
+   "start": 28.19,
+   "end": 40.92,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.76,
+   "bars": [
+    15,
+    22
+   ]
+  },
+  {
+   "start": 40.92,
+   "end": 62.73,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.8,
+   "bars": [
+    22,
+    34
+   ]
+  },
+  {
+   "start": 62.73,
+   "end": 98.17,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.63,
+   "bars": [
+    34,
+    53
+   ]
+  },
+  {
+   "start": 98.17,
+   "end": 134.43,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.91,
+   "bars": [
+    53,
+    73
+   ]
+  },
+  {
+   "start": 134.43,
+   "end": 145.71,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.6,
+   "bars": [
+    73,
+    74
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 74,
+ "barS": 1.82,
+ "thr": 0.315,
+ "ssmMedian": 0.044,
+ "ssmMad": 0.136,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    18
+   ],
+   "lagBars": 19,
+   "startS": 1.01,
+   "endS": 33.65,
+   "repeatAtS": 35.46,
+   "score": 0.595
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   1,
+   0.43,
+   3
+  ],
+  [
+   0,
+   2,
+   1.0,
+   12
+  ],
+  [
+   1,
+   3,
+   0.43,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.78
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.7,
+ "at": 1790103897,
+ "id": "thomasmac__90scountrybrokenheart_smubsuoa9",
+ "title": "Thomas Mac - 90s Country Broken Heart",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

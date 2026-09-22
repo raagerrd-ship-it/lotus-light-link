@@ -1,0 +1,142 @@
+{
+ "segments": [
+  {
+   "start": 0.23,
+   "end": 36.44,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.63,
+   "bars": [
+    0,
+    14
+   ]
+  },
+  {
+   "start": 36.44,
+   "end": 50.84,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.66,
+   "bars": [
+    14,
+    20
+   ]
+  },
+  {
+   "start": 50.84,
+   "end": 60.36,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.91,
+   "bars": [
+    20,
+    24
+   ]
+  },
+  {
+   "start": 60.36,
+   "end": 93.95,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.51,
+   "bars": [
+    24,
+    38
+   ]
+  },
+  {
+   "start": 93.95,
+   "end": 114.58,
+   "group": "B",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.58,
+   "bars": [
+    38,
+    44
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.23,
+  "end": 36.44
+ },
+ "verse2": {
+  "start": 36.44,
+  "end": 60.36
+ },
+ "chorus2": {
+  "start": 60.36,
+  "end": 93.95
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 44,
+ "barS": 2.4,
+ "thr": 0.391,
+ "ssmMedian": 0.048,
+ "ssmMad": 0.172,
+ "stripes": [
+  {
+   "bars": [
+    1,
+    20
+   ],
+   "lagBars": 24,
+   "startS": 5.27,
+   "endS": 50.84,
+   "repeatAtS": 62.77,
+   "score": 0.802
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   0.93,
+   13
+  ],
+  [
+   1,
+   4,
+   1.0,
+   6
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.57,
+  "B": -37.62
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.6,
+ "at": 1790103517,
+ "id": "jakebanfield__lasso_smubvkcz9",
+ "title": "Jake Banfield - Lasso",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

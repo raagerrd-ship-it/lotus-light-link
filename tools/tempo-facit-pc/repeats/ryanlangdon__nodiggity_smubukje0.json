@@ -1,0 +1,165 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 13.31,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.27,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 13.31,
+   "end": 34.41,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.07,
+   "bars": [
+    4,
+    12
+   ]
+  },
+  {
+   "start": 34.41,
+   "end": 55.5,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.76,
+   "bars": [
+    12,
+    20
+   ]
+  },
+  {
+   "start": 55.5,
+   "end": 84.45,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.28,
+   "bars": [
+    20,
+    31
+   ]
+  },
+  {
+   "start": 84.45,
+   "end": 105.54,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.7,
+   "bars": [
+    31,
+    39
+   ]
+  },
+  {
+   "start": 105.54,
+   "end": 131.67,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.0,
+   "bars": [
+    39,
+    47
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 34.41,
+  "end": 55.5
+ },
+ "verse2": {
+  "start": 55.5,
+  "end": 84.45
+ },
+ "chorus2": {
+  "start": 84.45,
+  "end": 105.54
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "allin1",
+ "nBars": 47,
+ "barS": 2.64,
+ "thr": 0.383,
+ "ssmMedian": 0.058,
+ "ssmMad": 0.162,
+ "stripes": [
+  {
+   "bars": [
+    11,
+    21
+   ],
+   "lagBars": 18,
+   "startS": 31.79,
+   "endS": 58.16,
+   "repeatAtS": 79.17,
+   "score": 0.602
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   0.12,
+   1
+  ],
+  [
+   2,
+   3,
+   0.12,
+   1
+  ],
+  [
+   2,
+   4,
+   0.88,
+   7
+  ],
+  [
+   3,
+   4,
+   0.12,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.73
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.2,
+ "at": 1790103801,
+ "id": "ryanlangdon__nodiggity_smubukje0",
+ "title": "Ryan Langdon - No Diggity",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

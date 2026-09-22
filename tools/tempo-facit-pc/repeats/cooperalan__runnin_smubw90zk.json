@@ -1,0 +1,189 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 45.65,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -38.09,
+   "bars": [
+    0,
+    7
+   ]
+  },
+  {
+   "start": 45.65,
+   "end": 58.69,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.16,
+   "bars": [
+    7,
+    12
+   ]
+  },
+  {
+   "start": 58.69,
+   "end": 74.34,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.81,
+   "bars": [
+    12,
+    18
+   ]
+  },
+  {
+   "start": 74.34,
+   "end": 89.99,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.12,
+   "bars": [
+    18,
+    24
+   ]
+  },
+  {
+   "start": 89.99,
+   "end": 115.98,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -39.34,
+   "bars": [
+    24,
+    34
+   ]
+  },
+  {
+   "start": 115.98,
+   "end": 129.02,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.47,
+   "bars": [
+    34,
+    39
+   ]
+  },
+  {
+   "start": 129.02,
+   "end": 149.99,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.07,
+   "bars": [
+    39,
+    44
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 89.99,
+  "end": 115.98
+ },
+ "verse2": {
+  "start": 115.98,
+  "end": 129.02
+ },
+ "chorus2": {
+  "start": 129.02,
+  "end": 149.99
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 44,
+ "barS": 2.61,
+ "thr": 0.395,
+ "ssmMedian": 0.061,
+ "ssmMad": 0.167,
+ "stripes": [
+  {
+   "bars": [
+    20,
+    27
+   ],
+   "lagBars": 17,
+   "startS": 79.56,
+   "endS": 97.81,
+   "repeatAtS": 123.8,
+   "score": 0.495
+  },
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 18,
+   "startS": 27.4,
+   "endS": 43.04,
+   "repeatAtS": 74.34,
+   "score": 0.546
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   1.0,
+   6
+  ],
+  [
+   3,
+   5,
+   0.4,
+   2
+  ],
+  [
+   3,
+   6,
+   0.4,
+   2
+  ],
+  [
+   4,
+   6,
+   0.6,
+   3
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.11,
+  "B": -38.7
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 16.1,
+ "at": 1790103252,
+ "id": "cooperalan__runnin_smubw90zk",
+ "title": "Cooper Alan - Runnin'",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

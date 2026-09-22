@@ -1,0 +1,236 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 23.35,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.4,
+   "bars": [
+    0,
+    10
+   ]
+  },
+  {
+   "start": 23.35,
+   "end": 40.67,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.39,
+   "bars": [
+    10,
+    18
+   ]
+  },
+  {
+   "start": 40.67,
+   "end": 49.33,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -36.76,
+   "bars": [
+    18,
+    22
+   ]
+  },
+  {
+   "start": 49.33,
+   "end": 60.15,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.86,
+   "bars": [
+    22,
+    27
+   ]
+  },
+  {
+   "start": 60.15,
+   "end": 75.3,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.42,
+   "bars": [
+    27,
+    33
+   ]
+  },
+  {
+   "start": 75.3,
+   "end": 92.62,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.53,
+   "bars": [
+    33,
+    41
+   ]
+  },
+  {
+   "start": 92.62,
+   "end": 101.28,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.29,
+   "bars": [
+    41,
+    45
+   ]
+  },
+  {
+   "start": 101.28,
+   "end": 118.6,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.28,
+   "bars": [
+    45,
+    53
+   ]
+  },
+  {
+   "start": 118.6,
+   "end": 135.91,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -39.15,
+   "bars": [
+    53,
+    61
+   ]
+  },
+  {
+   "start": 135.91,
+   "end": 150.0,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.24,
+   "bars": [
+    61,
+    67
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 23.35,
+  "end": 40.67
+ },
+ "verse2": {
+  "start": 40.67,
+  "end": 75.3
+ },
+ "chorus2": {
+  "start": 75.3,
+  "end": 92.62
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived",
+ "beatsSource": "beatthis-grid",
+ "nBars": 67,
+ "barS": 2.165,
+ "thr": 0.453,
+ "ssmMedian": 0.03,
+ "ssmMad": 0.211,
+ "stripes": [
+  {
+   "bars": [
+    11,
+    22
+   ],
+   "lagBars": 23,
+   "startS": 25.52,
+   "endS": 49.33,
+   "repeatAtS": 77.47,
+   "score": 0.666
+  },
+  {
+   "bars": [
+    35,
+    39
+   ],
+   "lagBars": 28,
+   "startS": 79.63,
+   "endS": 88.29,
+   "repeatAtS": 140.24,
+   "score": 0.589
+  },
+  {
+   "bars": [
+    12,
+    16
+   ],
+   "lagBars": 51,
+   "startS": 27.68,
+   "endS": 36.34,
+   "repeatAtS": 140.24,
+   "score": 0.566
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   5,
+   0.88,
+   7
+  ],
+  [
+   1,
+   9,
+   0.67,
+   4
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   5,
+   9,
+   0.67,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.02,
+  "A": -37.39
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 13.7,
+ "at": 1790103566,
+ "id": "jamesjohnston__oldcountrybarn_smubx7k3s",
+ "title": "James Johnston - OLD COUNTRY BARN",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

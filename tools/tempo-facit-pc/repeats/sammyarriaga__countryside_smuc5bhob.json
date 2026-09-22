@@ -1,0 +1,465 @@
+{
+ "segments": [
+  {
+   "start": 1.05,
+   "end": 10.48,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -39.49,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 10.48,
+   "end": 19.91,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.76,
+   "bars": [
+    4,
+    8
+   ]
+  },
+  {
+   "start": 19.91,
+   "end": 31.7,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.94,
+   "bars": [
+    8,
+    13
+   ]
+  },
+  {
+   "start": 31.7,
+   "end": 45.84,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -39.17,
+   "bars": [
+    13,
+    19
+   ]
+  },
+  {
+   "start": 45.84,
+   "end": 55.27,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -39.21,
+   "bars": [
+    19,
+    23
+   ]
+  },
+  {
+   "start": 55.27,
+   "end": 64.7,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.43,
+   "bars": [
+    23,
+    27
+   ]
+  },
+  {
+   "start": 64.7,
+   "end": 76.48,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    27,
+    32
+   ]
+  },
+  {
+   "start": 76.48,
+   "end": 85.91,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.78,
+   "bars": [
+    32,
+    36
+   ]
+  },
+  {
+   "start": 85.91,
+   "end": 98.29,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.87,
+   "bars": [
+    36,
+    41
+   ]
+  },
+  {
+   "start": 98.29,
+   "end": 110.08,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.93,
+   "bars": [
+    41,
+    46
+   ]
+  },
+  {
+   "start": 110.08,
+   "end": 121.86,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.12,
+   "bars": [
+    46,
+    51
+   ]
+  },
+  {
+   "start": 121.86,
+   "end": 148.38,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -40.03,
+   "bars": [
+    51,
+    63
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 1.05,
+  "end": 10.48
+ },
+ "verse2": {
+  "start": 10.48,
+  "end": 19.91
+ },
+ "chorus2": {
+  "start": 19.91,
+  "end": 45.84
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 63,
+ "barS": 2.357,
+ "thr": 0.338,
+ "ssmMedian": 0.017,
+ "ssmMad": 0.16,
+ "stripes": [
+  {
+   "bars": [
+    24,
+    28
+   ],
+   "lagBars": 8,
+   "startS": 57.63,
+   "endS": 67.06,
+   "repeatAtS": 76.48,
+   "score": 0.414
+  },
+  {
+   "bars": [
+    38,
+    43
+   ],
+   "lagBars": 8,
+   "startS": 91.22,
+   "endS": 103.0,
+   "repeatAtS": 110.08,
+   "score": 0.487
+  },
+  {
+   "bars": [
+    1,
+    5
+   ],
+   "lagBars": 14,
+   "startS": 3.41,
+   "endS": 12.84,
+   "repeatAtS": 36.41,
+   "score": 0.527
+  },
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 15,
+   "startS": 1.05,
+   "endS": 10.48,
+   "repeatAtS": 36.41,
+   "score": 0.399
+  },
+  {
+   "bars": [
+    0,
+    5
+   ],
+   "lagBars": 16,
+   "startS": 1.05,
+   "endS": 12.84,
+   "repeatAtS": 38.77,
+   "score": 0.665
+  },
+  {
+   "bars": [
+    23,
+    28
+   ],
+   "lagBars": 20,
+   "startS": 55.27,
+   "endS": 67.06,
+   "repeatAtS": 103.0,
+   "score": 0.381
+  },
+  {
+   "bars": [
+    23,
+    27
+   ],
+   "lagBars": 24,
+   "startS": 55.27,
+   "endS": 64.7,
+   "repeatAtS": 112.43,
+   "score": 0.458
+  },
+  {
+   "bars": [
+    10,
+    16
+   ],
+   "lagBars": 28,
+   "startS": 24.63,
+   "endS": 38.77,
+   "repeatAtS": 91.22,
+   "score": 0.522
+  },
+  {
+   "bars": [
+    8,
+    13
+   ],
+   "lagBars": 30,
+   "startS": 19.91,
+   "endS": 31.7,
+   "repeatAtS": 91.22,
+   "score": 0.483
+  },
+  {
+   "bars": [
+    6,
+    16
+   ],
+   "lagBars": 32,
+   "startS": 15.2,
+   "endS": 38.77,
+   "repeatAtS": 91.22,
+   "score": 0.591
+  },
+  {
+   "bars": [
+    7,
+    13
+   ],
+   "lagBars": 34,
+   "startS": 17.55,
+   "endS": 31.7,
+   "repeatAtS": 98.29,
+   "score": 0.433
+  },
+  {
+   "bars": [
+    7,
+    16
+   ],
+   "lagBars": 36,
+   "startS": 17.55,
+   "endS": 38.77,
+   "repeatAtS": 103.0,
+   "score": 0.573
+  },
+  {
+   "bars": [
+    7,
+    11
+   ],
+   "lagBars": 40,
+   "startS": 17.55,
+   "endS": 26.98,
+   "repeatAtS": 112.43,
+   "score": 0.452
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   1.0,
+   4
+  ],
+  [
+   0,
+   4,
+   0.25,
+   1
+  ],
+  [
+   1,
+   3,
+   0.25,
+   1
+  ],
+  [
+   1,
+   4,
+   0.25,
+   1
+  ],
+  [
+   1,
+   8,
+   0.5,
+   2
+  ],
+  [
+   1,
+   9,
+   0.5,
+   2
+  ],
+  [
+   1,
+   10,
+   0.25,
+   1
+  ],
+  [
+   2,
+   8,
+   1.0,
+   5
+  ],
+  [
+   2,
+   9,
+   1.0,
+   5
+  ],
+  [
+   2,
+   10,
+   1.0,
+   5
+  ],
+  [
+   3,
+   9,
+   0.8,
+   4
+  ],
+  [
+   3,
+   10,
+   0.8,
+   4
+  ],
+  [
+   3,
+   11,
+   0.17,
+   1
+  ],
+  [
+   5,
+   7,
+   0.75,
+   3
+  ],
+  [
+   5,
+   9,
+   0.75,
+   3
+  ],
+  [
+   5,
+   10,
+   1.0,
+   4
+  ],
+  [
+   6,
+   7,
+   0.25,
+   1
+  ],
+  [
+   6,
+   10,
+   0.2,
+   1
+  ],
+  [
+   8,
+   10,
+   0.6,
+   3
+  ],
+  [
+   9,
+   10,
+   0.4,
+   2
+  ]
+ ],
+ "groupEnergy": {
+  "A": -38.34
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 10.0,
+ "at": 1790103820,
+ "id": "sammyarriaga__countryside_smuc5bhob",
+ "title": "Sammy Arriaga - COUNTRY SIDE",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

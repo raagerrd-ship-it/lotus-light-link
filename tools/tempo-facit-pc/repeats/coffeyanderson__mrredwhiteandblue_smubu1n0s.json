@@ -1,0 +1,348 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 43.55,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -39.23,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 43.55,
+   "end": 65.02,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.99,
+   "bars": [
+    5,
+    12
+   ]
+  },
+  {
+   "start": 65.02,
+   "end": 71.23,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.47,
+   "bars": [
+    12,
+    16
+   ]
+  },
+  {
+   "start": 71.23,
+   "end": 80.48,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.29,
+   "bars": [
+    16,
+    22
+   ]
+  },
+  {
+   "start": 80.48,
+   "end": 86.62,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.63,
+   "bars": [
+    22,
+    26
+   ]
+  },
+  {
+   "start": 86.62,
+   "end": 92.77,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.75,
+   "bars": [
+    26,
+    30
+   ]
+  },
+  {
+   "start": 92.77,
+   "end": 105.08,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.07,
+   "bars": [
+    30,
+    38
+   ]
+  },
+  {
+   "start": 105.08,
+   "end": 114.23,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.64,
+   "bars": [
+    38,
+    44
+   ]
+  },
+  {
+   "start": 114.23,
+   "end": 120.37,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.57,
+   "bars": [
+    44,
+    48
+   ]
+  },
+  {
+   "start": 120.37,
+   "end": 126.51,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.53,
+   "bars": [
+    48,
+    52
+   ]
+  },
+  {
+   "start": 126.51,
+   "end": 135.75,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.65,
+   "bars": [
+    52,
+    58
+   ]
+  },
+  {
+   "start": 135.75,
+   "end": 141.89,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.01,
+   "bars": [
+    58,
+    62
+   ]
+  },
+  {
+   "start": 141.89,
+   "end": 149.99,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.81,
+   "bars": [
+    62,
+    66
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 65.02,
+  "end": 105.08
+ },
+ "verse2": {
+  "start": 105.08,
+  "end": 126.51
+ },
+ "chorus2": {
+  "start": 126.51,
+  "end": 149.99
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 66,
+ "barS": 1.54,
+ "thr": 0.382,
+ "ssmMedian": 0.088,
+ "ssmMad": 0.147,
+ "stripes": [
+  {
+   "bars": [
+    16,
+    29
+   ],
+   "lagBars": 8,
+   "startS": 71.23,
+   "endS": 91.21,
+   "repeatAtS": 83.54,
+   "score": 0.472
+  },
+  {
+   "bars": [
+    39,
+    44
+   ],
+   "lagBars": 8,
+   "startS": 106.6,
+   "endS": 114.23,
+   "repeatAtS": 118.83,
+   "score": 0.503
+  },
+  {
+   "bars": [
+    54,
+    58
+   ],
+   "lagBars": 8,
+   "startS": 129.6,
+   "endS": 135.75,
+   "repeatAtS": 141.89,
+   "score": 0.411
+  },
+  {
+   "bars": [
+    23,
+    29
+   ],
+   "lagBars": 32,
+   "startS": 82.0,
+   "endS": 91.21,
+   "repeatAtS": 131.14,
+   "score": 0.477
+  },
+  {
+   "bars": [
+    13,
+    26
+   ],
+   "lagBars": 40,
+   "startS": 66.61,
+   "endS": 86.62,
+   "repeatAtS": 128.05,
+   "score": 0.536
+  }
+ ],
+ "pairs": [
+  [
+   2,
+   10,
+   0.75,
+   3
+  ],
+  [
+   3,
+   4,
+   0.5,
+   2
+  ],
+  [
+   3,
+   5,
+   1.0,
+   4
+  ],
+  [
+   3,
+   10,
+   0.33,
+   2
+  ],
+  [
+   3,
+   11,
+   1.0,
+   4
+  ],
+  [
+   4,
+   6,
+   1.0,
+   4
+  ],
+  [
+   4,
+   10,
+   0.75,
+   3
+  ],
+  [
+   4,
+   12,
+   1.0,
+   4
+  ],
+  [
+   5,
+   6,
+   0.75,
+   3
+  ],
+  [
+   5,
+   11,
+   0.75,
+   3
+  ],
+  [
+   7,
+   8,
+   0.25,
+   1
+  ],
+  [
+   7,
+   9,
+   1.0,
+   4
+  ],
+  [
+   10,
+   12,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.59,
+  "A": -37.83
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.4,
+ "at": 1790103113,
+ "id": "coffeyanderson__mrredwhiteandblue_smubu1n0s",
+ "title": "Coffey Anderson - Mr Red White and Blue",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

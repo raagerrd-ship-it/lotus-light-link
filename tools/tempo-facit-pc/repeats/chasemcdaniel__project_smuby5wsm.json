@@ -1,0 +1,371 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 11.39,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.2,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 11.39,
+   "end": 26.62,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.27,
+   "bars": [
+    5,
+    13
+   ]
+  },
+  {
+   "start": 26.62,
+   "end": 39.95,
+   "group": "B",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.11,
+   "bars": [
+    13,
+    20
+   ]
+  },
+  {
+   "start": 39.95,
+   "end": 49.47,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.95,
+   "bars": [
+    20,
+    25
+   ]
+  },
+  {
+   "start": 49.47,
+   "end": 62.8,
+   "group": "C",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.29,
+   "bars": [
+    25,
+    32
+   ]
+  },
+  {
+   "start": 62.8,
+   "end": 70.41,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.16,
+   "bars": [
+    32,
+    36
+   ]
+  },
+  {
+   "start": 70.41,
+   "end": 79.93,
+   "group": "A",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.28,
+   "bars": [
+    36,
+    41
+   ]
+  },
+  {
+   "start": 79.93,
+   "end": 95.17,
+   "group": "B",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -37.62,
+   "bars": [
+    41,
+    49
+   ]
+  },
+  {
+   "start": 95.17,
+   "end": 110.4,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.28,
+   "bars": [
+    49,
+    57
+   ]
+  },
+  {
+   "start": 110.4,
+   "end": 125.63,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.48,
+   "bars": [
+    57,
+    65
+   ]
+  },
+  {
+   "start": 125.63,
+   "end": 133.25,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.44,
+   "bars": [
+    65,
+    69
+   ]
+  },
+  {
+   "start": 133.25,
+   "end": 150.0,
+   "group": "B",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.58,
+   "bars": [
+    69,
+    77
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 49.47,
+  "end": 62.8
+ },
+ "verse2": {
+  "start": 62.8,
+  "end": 125.63
+ },
+ "chorus2": {
+  "start": 125.63,
+  "end": 133.25
+ },
+ "chorusGroup": "C",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 77,
+ "barS": 1.904,
+ "thr": 0.34,
+ "ssmMedian": 0.03,
+ "ssmMad": 0.155,
+ "stripes": [
+  {
+   "bars": [
+    49,
+    57
+   ],
+   "lagBars": 20,
+   "startS": 95.17,
+   "endS": 110.4,
+   "repeatAtS": 133.25,
+   "score": 0.708
+  },
+  {
+   "bars": [
+    18,
+    22
+   ],
+   "lagBars": 24,
+   "startS": 36.14,
+   "endS": 43.76,
+   "repeatAtS": 81.84,
+   "score": 0.506
+  },
+  {
+   "bars": [
+    2,
+    10
+   ],
+   "lagBars": 28,
+   "startS": 5.67,
+   "endS": 20.91,
+   "repeatAtS": 58.99,
+   "score": 0.41
+  },
+  {
+   "bars": [
+    12,
+    31
+   ],
+   "lagBars": 28,
+   "startS": 24.72,
+   "endS": 60.89,
+   "repeatAtS": 78.03,
+   "score": 0.653
+  },
+  {
+   "bars": [
+    4,
+    8
+   ],
+   "lagBars": 32,
+   "startS": 9.48,
+   "endS": 17.1,
+   "repeatAtS": 70.41,
+   "score": 0.376
+  },
+  {
+   "bars": [
+    23,
+    28
+   ],
+   "lagBars": 40,
+   "startS": 45.66,
+   "endS": 55.18,
+   "repeatAtS": 121.82,
+   "score": 0.425
+  },
+  {
+   "bars": [
+    21,
+    29
+   ],
+   "lagBars": 48,
+   "startS": 41.85,
+   "endS": 57.09,
+   "repeatAtS": 133.25,
+   "score": 0.726
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   4,
+   0.4,
+   2
+  ],
+  [
+   0,
+   5,
+   0.25,
+   1
+  ],
+  [
+   0,
+   6,
+   0.2,
+   1
+  ],
+  [
+   1,
+   5,
+   0.75,
+   3
+  ],
+  [
+   1,
+   6,
+   1.0,
+   5
+  ],
+  [
+   2,
+   7,
+   1.0,
+   7
+  ],
+  [
+   3,
+   7,
+   0.6,
+   3
+  ],
+  [
+   3,
+   8,
+   0.8,
+   4
+  ],
+  [
+   3,
+   9,
+   0.4,
+   2
+  ],
+  [
+   3,
+   11,
+   0.8,
+   4
+  ],
+  [
+   4,
+   8,
+   0.57,
+   4
+  ],
+  [
+   4,
+   9,
+   0.29,
+   2
+  ],
+  [
+   4,
+   10,
+   0.75,
+   3
+  ],
+  [
+   4,
+   11,
+   0.57,
+   4
+  ],
+  [
+   8,
+   11,
+   1.0,
+   8
+  ]
+ ],
+ "groupEnergy": {
+  "C": -37.36,
+  "B": -37.71,
+  "A": -38.24
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.4,
+ "at": 1790103071,
+ "id": "chasemcdaniel__project_smuby5wsm",
+ "title": "Chase McDaniel - Project",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

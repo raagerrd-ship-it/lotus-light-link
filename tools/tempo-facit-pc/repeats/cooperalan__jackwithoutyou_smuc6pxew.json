@@ -1,0 +1,57 @@
+{
+ "segments": [
+  {
+   "start": 3.18,
+   "end": 147.9,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.28,
+   "bars": [
+    0,
+    43
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 43,
+ "barS": 3.366,
+ "thr": 0.354,
+ "ssmMedian": 0.063,
+ "ssmMad": 0.146,
+ "stripes": [],
+ "pairs": [],
+ "groupEnergy": {},
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 9.4,
+ "at": 1790103191,
+ "id": "cooperalan__jackwithoutyou_smuc6pxew",
+ "title": "Cooper Alan - Jack Without You",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

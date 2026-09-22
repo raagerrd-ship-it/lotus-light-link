@@ -1,0 +1,306 @@
+{
+ "segments": [
+  {
+   "start": 0.11,
+   "end": 7.79,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.25,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 7.79,
+   "end": 16.01,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.74,
+   "bars": [
+    4,
+    9
+   ]
+  },
+  {
+   "start": 16.01,
+   "end": 35.72,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.52,
+   "bars": [
+    9,
+    21
+   ]
+  },
+  {
+   "start": 35.72,
+   "end": 45.58,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.67,
+   "bars": [
+    21,
+    27
+   ]
+  },
+  {
+   "start": 45.58,
+   "end": 62.02,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.65,
+   "bars": [
+    27,
+    37
+   ]
+  },
+  {
+   "start": 62.02,
+   "end": 73.52,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.71,
+   "bars": [
+    37,
+    44
+   ]
+  },
+  {
+   "start": 73.52,
+   "end": 81.74,
+   "group": "A",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.75,
+   "bars": [
+    44,
+    49
+   ]
+  },
+  {
+   "start": 81.74,
+   "end": 88.32,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.87,
+   "bars": [
+    49,
+    53
+   ]
+  },
+  {
+   "start": 88.32,
+   "end": 98.17,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.67,
+   "bars": [
+    53,
+    59
+   ]
+  },
+  {
+   "start": 98.17,
+   "end": 121.2,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.46,
+   "bars": [
+    59,
+    73
+   ]
+  },
+  {
+   "start": 121.2,
+   "end": 141.66,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.52,
+   "bars": [
+    73,
+    85
+   ]
+  },
+  {
+   "start": 141.66,
+   "end": 149.88,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.28,
+   "bars": [
+    85,
+    90
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 16.01,
+  "end": 35.72
+ },
+ "verse2": {
+  "start": 35.72,
+  "end": 62.02
+ },
+ "chorus2": {
+  "start": 62.02,
+  "end": 73.52
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 90,
+ "barS": 1.64,
+ "thr": 0.338,
+ "ssmMedian": 0.07,
+ "ssmMad": 0.134,
+ "stripes": [
+  {
+   "bars": [
+    4,
+    8
+   ],
+   "lagBars": 16,
+   "startS": 7.79,
+   "endS": 14.36,
+   "repeatAtS": 34.08,
+   "score": 0.371
+  },
+  {
+   "bars": [
+    12,
+    20
+   ],
+   "lagBars": 24,
+   "startS": 20.94,
+   "endS": 34.08,
+   "repeatAtS": 60.37,
+   "score": 0.553
+  },
+  {
+   "bars": [
+    4,
+    9
+   ],
+   "lagBars": 40,
+   "startS": 7.79,
+   "endS": 16.01,
+   "repeatAtS": 73.52,
+   "score": 0.4
+  },
+  {
+   "bars": [
+    6,
+    11
+   ],
+   "lagBars": 48,
+   "startS": 11.08,
+   "endS": 19.3,
+   "repeatAtS": 89.96,
+   "score": 0.384
+  },
+  {
+   "bars": [
+    22,
+    27
+   ],
+   "lagBars": 63,
+   "startS": 37.37,
+   "endS": 45.58,
+   "repeatAtS": 141.66,
+   "score": 0.454
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   2,
+   0.2,
+   1
+  ],
+  [
+   1,
+   3,
+   0.6,
+   3
+  ],
+  [
+   1,
+   6,
+   1.0,
+   5
+  ],
+  [
+   1,
+   8,
+   0.6,
+   3
+  ],
+  [
+   2,
+   4,
+   0.1,
+   1
+  ],
+  [
+   2,
+   5,
+   1.0,
+   7
+  ],
+  [
+   2,
+   8,
+   0.33,
+   2
+  ],
+  [
+   3,
+   11,
+   1.0,
+   5
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.62,
+  "A": -37.62
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 12.7,
+ "at": 1790103656,
+ "id": "joshturner__goodolboysthemefromthedukesofhazzard_smubu9cuu",
+ "title": "Josh Turner - Good Ol' Boys - Theme From The Dukes Of Hazzard",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

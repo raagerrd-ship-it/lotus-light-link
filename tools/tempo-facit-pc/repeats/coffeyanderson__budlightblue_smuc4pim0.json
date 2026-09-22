@@ -1,0 +1,352 @@
+{
+ "segments": [
+  {
+   "start": 1.4,
+   "end": 11.39,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.28,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 11.39,
+   "end": 19.39,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.25,
+   "bars": [
+    5,
+    9
+   ]
+  },
+  {
+   "start": 19.39,
+   "end": 35.38,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.3,
+   "bars": [
+    9,
+    17
+   ]
+  },
+  {
+   "start": 35.38,
+   "end": 43.38,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.49,
+   "bars": [
+    17,
+    21
+   ]
+  },
+  {
+   "start": 43.38,
+   "end": 55.38,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.15,
+   "bars": [
+    21,
+    27
+   ]
+  },
+  {
+   "start": 55.38,
+   "end": 71.37,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.54,
+   "bars": [
+    27,
+    35
+   ]
+  },
+  {
+   "start": 71.37,
+   "end": 79.37,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.78,
+   "bars": [
+    35,
+    39
+   ]
+  },
+  {
+   "start": 79.37,
+   "end": 87.37,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.5,
+   "bars": [
+    39,
+    43
+   ]
+  },
+  {
+   "start": 87.37,
+   "end": 129.35,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.63,
+   "bars": [
+    43,
+    64
+   ]
+  },
+  {
+   "start": 129.35,
+   "end": 137.35,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.5,
+   "bars": [
+    64,
+    68
+   ]
+  },
+  {
+   "start": 137.35,
+   "end": 149.35,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.03,
+   "bars": [
+    68,
+    74
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 71.37,
+  "end": 87.37
+ },
+ "verse2": {
+  "start": 87.37,
+  "end": 129.35
+ },
+ "chorus2": {
+  "start": 129.35,
+  "end": 149.35
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 74,
+ "barS": 1.999,
+ "thr": 0.372,
+ "ssmMedian": 0.058,
+ "ssmMad": 0.157,
+ "stripes": [
+  {
+   "bars": [
+    5,
+    9
+   ],
+   "lagBars": 18,
+   "startS": 11.39,
+   "endS": 19.39,
+   "repeatAtS": 47.38,
+   "score": 0.534
+  },
+  {
+   "bars": [
+    0,
+    20
+   ],
+   "lagBars": 20,
+   "startS": 1.4,
+   "endS": 41.38,
+   "repeatAtS": 41.38,
+   "score": 0.497
+  },
+  {
+   "bars": [
+    2,
+    7
+   ],
+   "lagBars": 22,
+   "startS": 5.39,
+   "endS": 15.39,
+   "repeatAtS": 49.38,
+   "score": 0.477
+  },
+  {
+   "bars": [
+    39,
+    43
+   ],
+   "lagBars": 25,
+   "startS": 79.37,
+   "endS": 87.37,
+   "repeatAtS": 129.35,
+   "score": 0.421
+  },
+  {
+   "bars": [
+    35,
+    41
+   ],
+   "lagBars": 29,
+   "startS": 71.37,
+   "endS": 83.37,
+   "repeatAtS": 129.35,
+   "score": 0.552
+  },
+  {
+   "bars": [
+    37,
+    41
+   ],
+   "lagBars": 33,
+   "startS": 75.37,
+   "endS": 83.37,
+   "repeatAtS": 141.35,
+   "score": 0.445
+  },
+  {
+   "bars": [
+    17,
+    21
+   ],
+   "lagBars": 49,
+   "startS": 35.38,
+   "endS": 43.38,
+   "repeatAtS": 133.35,
+   "score": 0.433
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   0.25,
+   1
+  ],
+  [
+   0,
+   4,
+   1.0,
+   5
+  ],
+  [
+   1,
+   4,
+   1.0,
+   4
+  ],
+  [
+   1,
+   5,
+   1.0,
+   4
+  ],
+  [
+   2,
+   5,
+   0.75,
+   6
+  ],
+  [
+   2,
+   6,
+   0.5,
+   2
+  ],
+  [
+   3,
+   6,
+   0.5,
+   2
+  ],
+  [
+   3,
+   7,
+   0.25,
+   1
+  ],
+  [
+   3,
+   9,
+   0.5,
+   2
+  ],
+  [
+   3,
+   10,
+   0.5,
+   2
+  ],
+  [
+   6,
+   9,
+   1.0,
+   4
+  ],
+  [
+   6,
+   10,
+   0.5,
+   2
+  ],
+  [
+   7,
+   9,
+   1.0,
+   4
+  ],
+  [
+   7,
+   10,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.45,
+  "A": -37.7
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 8.3,
+ "at": 1790103103,
+ "id": "coffeyanderson__budlightblue_smuc4pim0",
+ "title": "Coffey Anderson - Bud Light Blue",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

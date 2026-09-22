@@ -1,0 +1,617 @@
+{
+ "segments": [
+  {
+   "start": 0.1,
+   "end": 18.42,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.62,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 18.42,
+   "end": 31.4,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -37.51,
+   "bars": [
+    5,
+    14
+   ]
+  },
+  {
+   "start": 31.4,
+   "end": 41.22,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.01,
+   "bars": [
+    14,
+    21
+   ]
+  },
+  {
+   "start": 41.22,
+   "end": 46.83,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.06,
+   "bars": [
+    21,
+    25
+   ]
+  },
+  {
+   "start": 46.83,
+   "end": 55.25,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.58,
+   "bars": [
+    25,
+    31
+   ]
+  },
+  {
+   "start": 55.25,
+   "end": 70.69,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.65,
+   "bars": [
+    31,
+    42
+   ]
+  },
+  {
+   "start": 70.69,
+   "end": 79.11,
+   "group": "C",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.94,
+   "bars": [
+    42,
+    48
+   ]
+  },
+  {
+   "start": 79.11,
+   "end": 84.72,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.35,
+   "bars": [
+    48,
+    52
+   ]
+  },
+  {
+   "start": 84.72,
+   "end": 90.34,
+   "group": "C",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.75,
+   "bars": [
+    52,
+    56
+   ]
+  },
+  {
+   "start": 90.34,
+   "end": 100.15,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.86,
+   "bars": [
+    56,
+    63
+   ]
+  },
+  {
+   "start": 100.15,
+   "end": 109.89,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.18,
+   "bars": [
+    63,
+    70
+   ]
+  },
+  {
+   "start": 109.89,
+   "end": 123.91,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.04,
+   "bars": [
+    70,
+    80
+   ]
+  },
+  {
+   "start": 123.91,
+   "end": 133.74,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.52,
+   "bars": [
+    80,
+    87
+   ]
+  },
+  {
+   "start": 133.74,
+   "end": 142.16,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.24,
+   "bars": [
+    87,
+    93
+   ]
+  },
+  {
+   "start": 142.16,
+   "end": 149.99,
+   "group": "B",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.14,
+   "bars": [
+    93,
+    98
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 31.4,
+  "end": 70.69
+ },
+ "verse2": {
+  "start": 70.69,
+  "end": 90.34
+ },
+ "chorus2": {
+  "start": 90.34,
+  "end": 109.89
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 98,
+ "barS": 1.4,
+ "thr": 0.472,
+ "ssmMedian": 0.06,
+ "ssmMad": 0.206,
+ "stripes": [
+  {
+   "bars": [
+    17,
+    24
+   ],
+   "lagBars": 8,
+   "startS": 35.61,
+   "endS": 45.43,
+   "repeatAtS": 46.83,
+   "score": 0.592
+  },
+  {
+   "bars": [
+    44,
+    48
+   ],
+   "lagBars": 8,
+   "startS": 73.5,
+   "endS": 79.11,
+   "repeatAtS": 84.72,
+   "score": 0.501
+  },
+  {
+   "bars": [
+    56,
+    63
+   ],
+   "lagBars": 8,
+   "startS": 90.34,
+   "endS": 100.15,
+   "repeatAtS": 101.55,
+   "score": 0.63
+  },
+  {
+   "bars": [
+    79,
+    88
+   ],
+   "lagBars": 8,
+   "startS": 122.51,
+   "endS": 135.14,
+   "repeatAtS": 133.74,
+   "score": 0.602
+  },
+  {
+   "bars": [
+    64,
+    71
+   ],
+   "lagBars": 16,
+   "startS": 101.55,
+   "endS": 111.29,
+   "repeatAtS": 123.91,
+   "score": 0.635
+  },
+  {
+   "bars": [
+    56,
+    71
+   ],
+   "lagBars": 24,
+   "startS": 90.34,
+   "endS": 111.29,
+   "repeatAtS": 123.91,
+   "score": 0.768
+  },
+  {
+   "bars": [
+    25,
+    31
+   ],
+   "lagBars": 32,
+   "startS": 46.83,
+   "endS": 55.25,
+   "repeatAtS": 91.73,
+   "score": 0.65
+  },
+  {
+   "bars": [
+    57,
+    65
+   ],
+   "lagBars": 32,
+   "startS": 91.73,
+   "endS": 102.88,
+   "repeatAtS": 136.54,
+   "score": 0.641
+  },
+  {
+   "bars": [
+    5,
+    32
+   ],
+   "lagBars": 40,
+   "startS": 18.42,
+   "endS": 56.66,
+   "repeatAtS": 74.89,
+   "score": 0.77
+  },
+  {
+   "bars": [
+    16,
+    24
+   ],
+   "lagBars": 48,
+   "startS": 34.21,
+   "endS": 45.43,
+   "repeatAtS": 101.55,
+   "score": 0.589
+  },
+  {
+   "bars": [
+    24,
+    31
+   ],
+   "lagBars": 56,
+   "startS": 45.43,
+   "endS": 55.25,
+   "repeatAtS": 123.91,
+   "score": 0.649
+  },
+  {
+   "bars": [
+    16,
+    34
+   ],
+   "lagBars": 64,
+   "startS": 34.21,
+   "endS": 59.46,
+   "repeatAtS": 123.91,
+   "score": 0.714
+  },
+  {
+   "bars": [
+    17,
+    21
+   ],
+   "lagBars": 72,
+   "startS": 35.61,
+   "endS": 41.22,
+   "repeatAtS": 136.54,
+   "score": 0.622
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   6,
+   0.5,
+   3
+  ],
+  [
+   1,
+   7,
+   1.0,
+   4
+  ],
+  [
+   1,
+   8,
+   0.5,
+   2
+  ],
+  [
+   2,
+   4,
+   0.67,
+   4
+  ],
+  [
+   2,
+   8,
+   0.5,
+   2
+  ],
+  [
+   2,
+   9,
+   0.71,
+   5
+  ],
+  [
+   2,
+   10,
+   0.71,
+   5
+  ],
+  [
+   2,
+   12,
+   0.71,
+   5
+  ],
+  [
+   2,
+   13,
+   0.67,
+   4
+  ],
+  [
+   3,
+   4,
+   0.5,
+   2
+  ],
+  [
+   3,
+   5,
+   0.25,
+   1
+  ],
+  [
+   3,
+   9,
+   0.5,
+   2
+  ],
+  [
+   3,
+   10,
+   0.75,
+   3
+  ],
+  [
+   3,
+   11,
+   0.5,
+   2
+  ],
+  [
+   3,
+   12,
+   0.75,
+   3
+  ],
+  [
+   3,
+   13,
+   0.5,
+   2
+  ],
+  [
+   4,
+   9,
+   1.0,
+   6
+  ],
+  [
+   4,
+   10,
+   0.83,
+   5
+  ],
+  [
+   4,
+   11,
+   0.17,
+   1
+  ],
+  [
+   4,
+   12,
+   1.0,
+   6
+  ],
+  [
+   4,
+   13,
+   0.67,
+   4
+  ],
+  [
+   4,
+   14,
+   0.4,
+   2
+  ],
+  [
+   5,
+   11,
+   0.1,
+   1
+  ],
+  [
+   5,
+   14,
+   0.6,
+   3
+  ],
+  [
+   6,
+   8,
+   1.0,
+   4
+  ],
+  [
+   9,
+   10,
+   0.86,
+   6
+  ],
+  [
+   9,
+   11,
+   0.14,
+   1
+  ],
+  [
+   9,
+   12,
+   1.0,
+   7
+  ],
+  [
+   9,
+   13,
+   0.67,
+   4
+  ],
+  [
+   9,
+   14,
+   0.4,
+   2
+  ],
+  [
+   10,
+   12,
+   0.86,
+   6
+  ],
+  [
+   10,
+   13,
+   1.0,
+   6
+  ],
+  [
+   10,
+   14,
+   0.6,
+   3
+  ],
+  [
+   11,
+   12,
+   0.14,
+   1
+  ],
+  [
+   11,
+   13,
+   0.17,
+   1
+  ],
+  [
+   11,
+   14,
+   0.2,
+   1
+  ],
+  [
+   12,
+   13,
+   0.83,
+   5
+  ],
+  [
+   12,
+   14,
+   0.4,
+   2
+  ],
+  [
+   13,
+   14,
+   0.2,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "B": -36.47,
+  "A": -37.43,
+  "C": -37.84
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.8,
+ "at": 1790103841,
+ "id": "tebey__blindinglightscountryversion_smubw51iy",
+ "title": "Tebey - Blinding Lights - Country Version",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

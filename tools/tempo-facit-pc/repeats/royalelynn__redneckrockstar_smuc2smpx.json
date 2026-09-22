@@ -1,0 +1,301 @@
+{
+ "segments": [
+  {
+   "start": 1.77,
+   "end": 9.13,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -39.14,
+   "bars": [
+    0,
+    4
+   ]
+  },
+  {
+   "start": 9.13,
+   "end": 23.85,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.96,
+   "bars": [
+    4,
+    12
+   ]
+  },
+  {
+   "start": 23.85,
+   "end": 38.57,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.52,
+   "bars": [
+    12,
+    20
+   ]
+  },
+  {
+   "start": 38.57,
+   "end": 62.49,
+   "group": "C",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.67,
+   "bars": [
+    20,
+    33
+   ]
+  },
+  {
+   "start": 62.49,
+   "end": 75.37,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -35.75,
+   "bars": [
+    33,
+    40
+   ]
+  },
+  {
+   "start": 75.37,
+   "end": 82.73,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.31,
+   "bars": [
+    40,
+    44
+   ]
+  },
+  {
+   "start": 82.73,
+   "end": 90.08,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.54,
+   "bars": [
+    44,
+    48
+   ]
+  },
+  {
+   "start": 90.08,
+   "end": 114.0,
+   "group": "C",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.74,
+   "bars": [
+    48,
+    61
+   ]
+  },
+  {
+   "start": 114.0,
+   "end": 121.82,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -35.79,
+   "bars": [
+    61,
+    65
+   ]
+  },
+  {
+   "start": 121.82,
+   "end": 129.18,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.63,
+   "bars": [
+    65,
+    69
+   ]
+  },
+  {
+   "start": 129.18,
+   "end": 140.22,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.23,
+   "bars": [
+    69,
+    75
+   ]
+  },
+  {
+   "start": 140.22,
+   "end": 149.42,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.52,
+   "bars": [
+    75,
+    80
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 23.85,
+  "end": 38.57
+ },
+ "verse2": {
+  "start": 38.57,
+  "end": 75.37
+ },
+ "chorus2": {
+  "start": 75.37,
+  "end": 90.08
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 80,
+ "barS": 1.84,
+ "thr": 0.41,
+ "ssmMedian": 0.074,
+ "ssmMad": 0.168,
+ "stripes": [
+  {
+   "bars": [
+    12,
+    33
+   ],
+   "lagBars": 28,
+   "startS": 23.85,
+   "endS": 62.49,
+   "repeatAtS": 75.37,
+   "score": 0.743
+  },
+  {
+   "bars": [
+    44,
+    48
+   ],
+   "lagBars": 32,
+   "startS": 82.73,
+   "endS": 90.08,
+   "repeatAtS": 142.06,
+   "score": 0.536
+  },
+  {
+   "bars": [
+    15,
+    20
+   ],
+   "lagBars": 60,
+   "startS": 29.37,
+   "endS": 38.57,
+   "repeatAtS": 140.22,
+   "score": 0.724
+  },
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 65,
+   "startS": 1.77,
+   "endS": 9.13,
+   "repeatAtS": 121.82,
+   "score": 0.484
+  },
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 66,
+   "startS": 1.77,
+   "endS": 9.13,
+   "repeatAtS": 123.66,
+   "score": 0.532
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   9,
+   1.0,
+   4
+  ],
+  [
+   0,
+   10,
+   0.25,
+   1
+  ],
+  [
+   2,
+   5,
+   1.0,
+   4
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ],
+  [
+   2,
+   11,
+   1.0,
+   5
+  ],
+  [
+   3,
+   7,
+   1.0,
+   13
+  ],
+  [
+   6,
+   11,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -36.47,
+  "C": -36.7,
+  "A": -38.89
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 11.5,
+ "at": 1790103756,
+ "id": "royalelynn__redneckrockstar_smuc2smpx",
+ "title": "Royale Lynn - Redneck Rockstar",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

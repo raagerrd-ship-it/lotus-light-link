@@ -1,0 +1,229 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 14.17,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.35,
+   "bars": [
+    0,
+    3
+   ]
+  },
+  {
+   "start": 14.17,
+   "end": 32.62,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.23,
+   "bars": [
+    3,
+    8
+   ]
+  },
+  {
+   "start": 32.62,
+   "end": 54.76,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.13,
+   "bars": [
+    8,
+    14
+   ]
+  },
+  {
+   "start": 54.76,
+   "end": 76.9,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.72,
+   "bars": [
+    14,
+    20
+   ]
+  },
+  {
+   "start": 76.9,
+   "end": 91.66,
+   "group": "-",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.16,
+   "bars": [
+    20,
+    25
+   ]
+  },
+  {
+   "start": 91.66,
+   "end": 100.89,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.95,
+   "bars": [
+    25,
+    30
+   ]
+  },
+  {
+   "start": 100.89,
+   "end": 113.81,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.3,
+   "bars": [
+    30,
+    34
+   ]
+  },
+  {
+   "start": 113.81,
+   "end": 132.26,
+   "group": "-",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -37.69,
+   "bars": [
+    34,
+    41
+   ]
+  },
+  {
+   "start": 132.26,
+   "end": 150.0,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.32,
+   "bars": [
+    41,
+    46
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 32.62,
+  "end": 54.76
+ },
+ "verse2": {
+  "start": 54.76,
+  "end": 100.89
+ },
+ "chorus2": {
+  "start": 100.89,
+  "end": 113.81
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 46,
+ "barS": 3.69,
+ "thr": 0.349,
+ "ssmMedian": 0.017,
+ "ssmMad": 0.166,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 10,
+   "startS": 3.1,
+   "endS": 17.86,
+   "repeatAtS": 40.0,
+   "score": 0.735
+  },
+  {
+   "bars": [
+    10,
+    14
+   ],
+   "lagBars": 20,
+   "startS": 40.0,
+   "endS": 54.76,
+   "repeatAtS": 100.89,
+   "score": 0.602
+  },
+  {
+   "bars": [
+    0,
+    4
+   ],
+   "lagBars": 30,
+   "startS": 3.1,
+   "endS": 17.86,
+   "repeatAtS": 100.89,
+   "score": 0.605
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   2,
+   1.0,
+   3
+  ],
+  [
+   0,
+   6,
+   1.0,
+   3
+  ],
+  [
+   1,
+   2,
+   0.2,
+   1
+  ],
+  [
+   1,
+   6,
+   0.25,
+   1
+  ],
+  [
+   2,
+   6,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "A": -37.93
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.5,
+ "at": 1790103031,
+ "id": "austinmartin__wolfofbackstreets_smuc0vg1h",
+ "title": "Austin Martin - WOLF OF BACKSTREETS",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

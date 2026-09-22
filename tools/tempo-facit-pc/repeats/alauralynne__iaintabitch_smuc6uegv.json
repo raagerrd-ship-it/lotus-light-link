@@ -1,0 +1,187 @@
+{
+ "segments": [
+  {
+   "start": 1.0,
+   "end": 31.31,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.69,
+   "bars": [
+    0,
+    12
+   ]
+  },
+  {
+   "start": 31.31,
+   "end": 56.57,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.69,
+   "bars": [
+    12,
+    22
+   ]
+  },
+  {
+   "start": 56.57,
+   "end": 76.77,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.56,
+   "bars": [
+    22,
+    30
+   ]
+  },
+  {
+   "start": 76.77,
+   "end": 104.55,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.84,
+   "bars": [
+    30,
+    41
+   ]
+  },
+  {
+   "start": 104.55,
+   "end": 118.44,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -39.53,
+   "bars": [
+    41,
+    47
+   ]
+  },
+  {
+   "start": 118.44,
+   "end": 148.75,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.71,
+   "bars": [
+    47,
+    59
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 31.31,
+  "end": 56.57
+ },
+ "verse2": {
+  "start": 56.57,
+  "end": 76.77
+ },
+ "chorus2": {
+  "start": 76.77,
+  "end": 104.55
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 59,
+ "barS": 2.526,
+ "thr": 0.493,
+ "ssmMedian": 0.055,
+ "ssmMad": 0.219,
+ "stripes": [
+  {
+   "bars": [
+    30,
+    41
+   ],
+   "lagBars": 17,
+   "startS": 76.77,
+   "endS": 104.55,
+   "repeatAtS": 118.44,
+   "score": 0.802
+  },
+  {
+   "bars": [
+    12,
+    23
+   ],
+   "lagBars": 18,
+   "startS": 31.31,
+   "endS": 59.09,
+   "repeatAtS": 76.77,
+   "score": 0.822
+  },
+  {
+   "bars": [
+    12,
+    22
+   ],
+   "lagBars": 35,
+   "startS": 31.31,
+   "endS": 56.57,
+   "repeatAtS": 118.44,
+   "score": 0.797
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   3,
+   1.0,
+   10
+  ],
+  [
+   1,
+   5,
+   1.0,
+   10
+  ],
+  [
+   2,
+   3,
+   0.12,
+   1
+  ],
+  [
+   3,
+   5,
+   1.0,
+   11
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.75
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 9.1,
+ "at": 1790102990,
+ "id": "alauralynne__iaintabitch_smuc6uegv",
+ "title": "Alaura Lynne - I Ain't a Bitch",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

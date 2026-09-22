@@ -1,0 +1,229 @@
+{
+ "segments": [
+  {
+   "start": 0.26,
+   "end": 17.84,
+   "group": "A",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -35.61,
+   "bars": [
+    0,
+    10
+   ]
+  },
+  {
+   "start": 17.84,
+   "end": 27.7,
+   "group": "B",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -36.91,
+   "bars": [
+    10,
+    16
+   ]
+  },
+  {
+   "start": 27.7,
+   "end": 39.2,
+   "group": "C",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -36.91,
+   "bars": [
+    16,
+    23
+   ]
+  },
+  {
+   "start": 39.2,
+   "end": 57.28,
+   "group": "D",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -35.63,
+   "bars": [
+    23,
+    34
+   ]
+  },
+  {
+   "start": 57.28,
+   "end": 80.2,
+   "group": "A",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -35.62,
+   "bars": [
+    34,
+    48
+   ]
+  },
+  {
+   "start": 80.2,
+   "end": 86.77,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -36.73,
+   "bars": [
+    48,
+    52
+   ]
+  },
+  {
+   "start": 86.77,
+   "end": 98.28,
+   "group": "C",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.0,
+   "bars": [
+    52,
+    59
+   ]
+  },
+  {
+   "start": 98.28,
+   "end": 116.35,
+   "group": "D",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -35.69,
+   "bars": [
+    59,
+    70
+   ]
+  },
+  {
+   "start": 116.35,
+   "end": 149.99,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -36.18,
+   "bars": [
+    70,
+    90
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": "D",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 90,
+ "barS": 1.64,
+ "thr": 0.382,
+ "ssmMedian": 0.065,
+ "ssmMad": 0.158,
+ "stripes": [
+  {
+   "bars": [
+    0,
+    9
+   ],
+   "lagBars": 36,
+   "startS": 1.49,
+   "endS": 16.19,
+   "repeatAtS": 60.57,
+   "score": 0.575
+  },
+  {
+   "bars": [
+    11,
+    16
+   ],
+   "lagBars": 36,
+   "startS": 19.48,
+   "endS": 27.7,
+   "repeatAtS": 78.56,
+   "score": 0.507
+  },
+  {
+   "bars": [
+    17,
+    35
+   ],
+   "lagBars": 36,
+   "startS": 29.35,
+   "endS": 58.93,
+   "repeatAtS": 88.42,
+   "score": 0.624
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   4,
+   0.9,
+   9
+  ],
+  [
+   1,
+   4,
+   0.17,
+   1
+  ],
+  [
+   1,
+   5,
+   1.0,
+   4
+  ],
+  [
+   2,
+   6,
+   0.86,
+   6
+  ],
+  [
+   3,
+   7,
+   1.0,
+   11
+  ],
+  [
+   4,
+   8,
+   0.07,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -35.61,
+  "D": -35.66,
+  "B": -36.82,
+  "C": -36.95
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 7.0,
+ "at": 1790103956,
+ "id": "wheelerwalkerjr__fuckthisjob_smubwcszb",
+ "title": "Wheeler Walker Jr. - Fuck This Job",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

@@ -1,0 +1,342 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 10.45,
+   "group": "A",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -38.99,
+   "bars": [
+    0,
+    5
+   ]
+  },
+  {
+   "start": 10.45,
+   "end": 20.89,
+   "group": "B",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.51,
+   "bars": [
+    5,
+    10
+   ]
+  },
+  {
+   "start": 20.89,
+   "end": 31.33,
+   "group": "B",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.74,
+   "bars": [
+    10,
+    15
+   ]
+  },
+  {
+   "start": 31.33,
+   "end": 42.3,
+   "group": "-",
+   "tier": "intro",
+   "label": "seg",
+   "dbBeat": -37.77,
+   "bars": [
+    15,
+    20
+   ]
+  },
+  {
+   "start": 42.3,
+   "end": 61.09,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.4,
+   "bars": [
+    20,
+    29
+   ]
+  },
+  {
+   "start": 61.09,
+   "end": 81.98,
+   "group": "A",
+   "tier": "mid",
+   "label": "seg",
+   "dbBeat": -38.37,
+   "bars": [
+    29,
+    39
+   ]
+  },
+  {
+   "start": 81.98,
+   "end": 90.33,
+   "group": "B",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.62,
+   "bars": [
+    39,
+    43
+   ]
+  },
+  {
+   "start": 90.33,
+   "end": 104.95,
+   "group": "B",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -37.58,
+   "bars": [
+    43,
+    50
+   ]
+  },
+  {
+   "start": 104.95,
+   "end": 115.91,
+   "group": "-",
+   "tier": "low",
+   "label": "seg",
+   "dbBeat": -38.12,
+   "bars": [
+    50,
+    55
+   ]
+  },
+  {
+   "start": 115.91,
+   "end": 124.27,
+   "group": "C",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.09,
+   "bars": [
+    55,
+    59
+   ]
+  },
+  {
+   "start": 124.27,
+   "end": 138.89,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.18,
+   "bars": [
+    59,
+    66
+   ]
+  },
+  {
+   "start": 138.89,
+   "end": 150.0,
+   "group": "A",
+   "tier": "high",
+   "label": "seg",
+   "dbBeat": -38.18,
+   "bars": [
+    66,
+    71
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 42.3,
+  "end": 61.09
+ },
+ "verse2": {
+  "start": 61.09,
+  "end": 115.91
+ },
+ "chorus2": {
+  "start": 115.91,
+  "end": 124.27
+ },
+ "chorusGroup": "C",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 71,
+ "barS": 2.088,
+ "thr": 0.353,
+ "ssmMedian": 0.061,
+ "ssmMad": 0.146,
+ "stripes": [
+  {
+   "bars": [
+    23,
+    28
+   ],
+   "lagBars": 8,
+   "startS": 48.56,
+   "endS": 59.01,
+   "repeatAtS": 65.27,
+   "score": 0.429
+  },
+  {
+   "bars": [
+    59,
+    63
+   ],
+   "lagBars": 8,
+   "startS": 124.27,
+   "endS": 132.62,
+   "repeatAtS": 140.97,
+   "score": 0.428
+  },
+  {
+   "bars": [
+    10,
+    15
+   ],
+   "lagBars": 30,
+   "startS": 20.89,
+   "endS": 31.33,
+   "repeatAtS": 84.07,
+   "score": 0.459
+  },
+  {
+   "bars": [
+    2,
+    10
+   ],
+   "lagBars": 34,
+   "startS": 4.18,
+   "endS": 20.89,
+   "repeatAtS": 75.71,
+   "score": 0.629
+  },
+  {
+   "bars": [
+    20,
+    37
+   ],
+   "lagBars": 34,
+   "startS": 42.3,
+   "endS": 77.8,
+   "repeatAtS": 113.83,
+   "score": 0.64
+  },
+  {
+   "bars": [
+    5,
+    9
+   ],
+   "lagBars": 38,
+   "startS": 10.45,
+   "endS": 18.8,
+   "repeatAtS": 90.33,
+   "score": 0.538
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   5,
+   0.6,
+   3
+  ],
+  [
+   1,
+   6,
+   1.0,
+   4
+  ],
+  [
+   1,
+   7,
+   1.0,
+   5
+  ],
+  [
+   2,
+   6,
+   0.75,
+   3
+  ],
+  [
+   2,
+   7,
+   0.4,
+   2
+  ],
+  [
+   4,
+   5,
+   0.56,
+   5
+  ],
+  [
+   4,
+   8,
+   0.2,
+   1
+  ],
+  [
+   4,
+   9,
+   1.0,
+   4
+  ],
+  [
+   4,
+   10,
+   0.57,
+   4
+  ],
+  [
+   5,
+   10,
+   0.43,
+   3
+  ],
+  [
+   5,
+   11,
+   1.0,
+   5
+  ],
+  [
+   10,
+   11,
+   0.8,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -37.61,
+  "C": -38.25,
+  "A": -38.43
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 10.7,
+ "at": 1790103170,
+ "id": "cooperalan__firstrodeo_smubxbjb5",
+ "title": "Cooper Alan - First Rodeo",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

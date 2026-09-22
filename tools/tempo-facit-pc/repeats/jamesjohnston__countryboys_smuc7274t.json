@@ -1,0 +1,112 @@
+{
+ "segments": [
+  {
+   "start": 2.44,
+   "end": 70.13,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.29,
+   "bars": [
+    0,
+    30
+   ]
+  },
+  {
+   "start": 70.13,
+   "end": 80.16,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.26,
+   "bars": [
+    30,
+    35
+   ]
+  },
+  {
+   "start": 80.16,
+   "end": 96.21,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.1,
+   "bars": [
+    35,
+    43
+   ]
+  },
+  {
+   "start": 96.21,
+   "end": 148.36,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.62,
+   "bars": [
+    43,
+    69
+   ]
+  }
+ ],
+ "chorus1": null,
+ "verse2": null,
+ "chorus2": null,
+ "chorusGroup": null,
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 69,
+ "barS": 2.006,
+ "thr": 0.395,
+ "ssmMedian": 0.042,
+ "ssmMad": 0.177,
+ "stripes": [
+  {
+   "bars": [
+    30,
+    35
+   ],
+   "lagBars": 8,
+   "startS": 70.13,
+   "endS": 80.16,
+   "repeatAtS": 86.18,
+   "score": 0.424
+  }
+ ],
+ "pairs": [
+  [
+   1,
+   2,
+   1.0,
+   5
+  ]
+ ],
+ "groupEnergy": {},
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 10.2,
+ "at": 1790103538,
+ "id": "jamesjohnston__countryboys_smuc7274t",
+ "title": "James Johnston - COUNTRY BOYS",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

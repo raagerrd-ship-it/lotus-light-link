@@ -1,0 +1,333 @@
+{
+ "segments": [
+  {
+   "start": 0.02,
+   "end": 14.13,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.01,
+   "bars": [
+    0,
+    6
+   ]
+  },
+  {
+   "start": 14.13,
+   "end": 47.06,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -38.03,
+   "bars": [
+    6,
+    20
+   ]
+  },
+  {
+   "start": 47.06,
+   "end": 56.47,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.55,
+   "bars": [
+    20,
+    24
+   ]
+  },
+  {
+   "start": 56.47,
+   "end": 72.94,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.51,
+   "bars": [
+    24,
+    31
+   ]
+  },
+  {
+   "start": 72.94,
+   "end": 84.7,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.37,
+   "bars": [
+    31,
+    36
+   ]
+  },
+  {
+   "start": 84.7,
+   "end": 94.11,
+   "group": "B",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.08,
+   "bars": [
+    36,
+    40
+   ]
+  },
+  {
+   "start": 94.11,
+   "end": 108.22,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.32,
+   "bars": [
+    40,
+    46
+   ]
+  },
+  {
+   "start": 108.22,
+   "end": 138.8,
+   "group": "-",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -37.48,
+   "bars": [
+    46,
+    59
+   ]
+  },
+  {
+   "start": 138.8,
+   "end": 148.21,
+   "group": "A",
+   "tier": null,
+   "label": "seg",
+   "dbBeat": -36.07,
+   "bars": [
+    59,
+    63
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 0.02,
+  "end": 14.13
+ },
+ "verse2": {
+  "start": 14.13,
+  "end": 56.47
+ },
+ "chorus2": {
+  "start": 56.47,
+  "end": 72.94
+ },
+ "chorusGroup": "A",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "stripes",
+ "beatsSource": "beatthis-grid",
+ "nBars": 63,
+ "barS": 2.352,
+ "thr": 0.519,
+ "ssmMedian": 0.063,
+ "ssmMad": 0.228,
+ "stripes": [
+  {
+   "bars": [
+    20,
+    31
+   ],
+   "lagBars": 16,
+   "startS": 47.06,
+   "endS": 72.94,
+   "repeatAtS": 84.7,
+   "score": 0.813
+  },
+  {
+   "bars": [
+    43,
+    47
+   ],
+   "lagBars": 16,
+   "startS": 101.16,
+   "endS": 110.57,
+   "repeatAtS": 138.8,
+   "score": 0.696
+  },
+  {
+   "bars": [
+    39,
+    43
+   ],
+   "lagBars": 20,
+   "startS": 91.75,
+   "endS": 101.16,
+   "repeatAtS": 138.8,
+   "score": 0.735
+  },
+  {
+   "bars": [
+    0,
+    7
+   ],
+   "lagBars": 24,
+   "startS": 0.02,
+   "endS": 16.48,
+   "repeatAtS": 56.47,
+   "score": 0.841
+  },
+  {
+   "bars": [
+    27,
+    31
+   ],
+   "lagBars": 32,
+   "startS": 63.53,
+   "endS": 72.94,
+   "repeatAtS": 138.8,
+   "score": 0.666
+  },
+  {
+   "bars": [
+    23,
+    27
+   ],
+   "lagBars": 36,
+   "startS": 54.12,
+   "endS": 63.53,
+   "repeatAtS": 138.8,
+   "score": 0.753
+  },
+  {
+   "bars": [
+    0,
+    6
+   ],
+   "lagBars": 40,
+   "startS": 0.02,
+   "endS": 14.13,
+   "repeatAtS": 94.11,
+   "score": 0.858
+  },
+  {
+   "bars": [
+    3,
+    7
+   ],
+   "lagBars": 56,
+   "startS": 7.07,
+   "endS": 16.48,
+   "repeatAtS": 138.8,
+   "score": 0.689
+  }
+ ],
+ "pairs": [
+  [
+   0,
+   3,
+   1.0,
+   6
+  ],
+  [
+   0,
+   6,
+   1.0,
+   6
+  ],
+  [
+   0,
+   8,
+   0.75,
+   3
+  ],
+  [
+   1,
+   3,
+   0.14,
+   1
+  ],
+  [
+   1,
+   8,
+   0.25,
+   1
+  ],
+  [
+   2,
+   5,
+   1.0,
+   4
+  ],
+  [
+   2,
+   8,
+   0.25,
+   1
+  ],
+  [
+   3,
+   6,
+   1.0,
+   6
+  ],
+  [
+   3,
+   7,
+   0.14,
+   1
+  ],
+  [
+   3,
+   8,
+   1.0,
+   4
+  ],
+  [
+   5,
+   8,
+   0.25,
+   1
+  ],
+  [
+   6,
+   8,
+   1.0,
+   4
+  ],
+  [
+   7,
+   8,
+   0.25,
+   1
+  ]
+ ],
+ "groupEnergy": {
+  "A": -36.23,
+  "B": -37.31
+ },
+ "energyKey": "dbBeat",
+ "durS": 150.0,
+ "secs": 25.7,
+ "at": 1790103478,
+ "id": "dylanburk__mustbethecountry_smuc4052n",
+ "title": "Dylan Burk - Must Be the Country",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}

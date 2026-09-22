@@ -1,0 +1,248 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 14.64,
+   "group": "-",
+   "tier": "intro",
+   "label": "intro",
+   "dbBeat": -38.24,
+   "bars": [
+    0,
+    3
+   ]
+  },
+  {
+   "start": 14.64,
+   "end": 31.91,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.77,
+   "bars": [
+    3,
+    11
+   ]
+  },
+  {
+   "start": 31.91,
+   "end": 51.39,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -38.0,
+   "bars": [
+    11,
+    20
+   ]
+  },
+  {
+   "start": 51.39,
+   "end": 64.36,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.02,
+   "bars": [
+    20,
+    26
+   ]
+  },
+  {
+   "start": 64.36,
+   "end": 83.81,
+   "group": "-",
+   "tier": "high",
+   "label": "intro",
+   "dbBeat": -37.97,
+   "bars": [
+    26,
+    35
+   ]
+  },
+  {
+   "start": 83.81,
+   "end": 92.45,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.72,
+   "bars": [
+    35,
+    39
+   ]
+  },
+  {
+   "start": 92.45,
+   "end": 101.1,
+   "group": "B",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -37.83,
+   "bars": [
+    39,
+    43
+   ]
+  },
+  {
+   "start": 101.1,
+   "end": 109.76,
+   "group": "-",
+   "tier": "mid",
+   "label": "intro",
+   "dbBeat": -38.28,
+   "bars": [
+    43,
+    47
+   ]
+  },
+  {
+   "start": 109.76,
+   "end": 118.4,
+   "group": "-",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -37.94,
+   "bars": [
+    47,
+    51
+   ]
+  },
+  {
+   "start": 118.4,
+   "end": 127.05,
+   "group": "A",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.34,
+   "bars": [
+    51,
+    55
+   ]
+  },
+  {
+   "start": 127.05,
+   "end": 136.77,
+   "group": "B",
+   "tier": "low",
+   "label": "intro",
+   "dbBeat": -38.69,
+   "bars": [
+    55,
+    59
+   ]
+  }
+ ],
+ "chorus1": {
+  "start": 83.81,
+  "end": 101.1
+ },
+ "verse2": {
+  "start": 101.1,
+  "end": 127.05
+ },
+ "chorus2": {
+  "start": 127.05,
+  "end": 136.77
+ },
+ "chorusGroup": "B",
+ "method": "ssm-bar-chroma-mfcc-rms-stripes-unionfind",
+ "params": {
+  "minLagBars": 8,
+  "minRunBars": 4,
+  "minPairBars": 3,
+  "kMad": 2.0,
+  "thrFloor": 0.3,
+  "wChroma": 0.5,
+  "wMfcc": 0.35,
+  "wRms": 0.15,
+  "chromaShifts": [
+   0,
+   1,
+   2
+  ],
+  "smoothBars": 3,
+  "mergeMinBars": 4,
+  "minPairShare": 0.6,
+  "refine": true
+ },
+ "segSource": "derived+stripes",
+ "beatsSource": "allin1",
+ "nBars": 59,
+ "barS": 2.16,
+ "thr": 0.385,
+ "ssmMedian": 0.032,
+ "ssmMad": 0.176,
+ "stripes": [
+  {
+   "bars": [
+    39,
+    43
+   ],
+   "lagBars": 16,
+   "startS": 92.45,
+   "endS": 101.1,
+   "repeatAtS": 127.05,
+   "score": 0.834
+  },
+  {
+   "bars": [
+    35,
+    39
+   ],
+   "lagBars": 20,
+   "startS": 83.81,
+   "endS": 92.45,
+   "repeatAtS": 127.05,
+   "score": 0.683
+  },
+  {
+   "bars": [
+    19,
+    23
+   ],
+   "lagBars": 32,
+   "startS": 49.23,
+   "endS": 57.87,
+   "repeatAtS": 118.4,
+   "score": 0.514
+  }
+ ],
+ "pairs": [
+  [
+   2,
+   9,
+   0.25,
+   1
+  ],
+  [
+   3,
+   9,
+   0.75,
+   3
+  ],
+  [
+   5,
+   10,
+   1.0,
+   4
+  ],
+  [
+   6,
+   10,
+   1.0,
+   4
+  ]
+ ],
+ "groupEnergy": {
+  "B": -38.08,
+  "A": -38.18
+ },
+ "energyKey": "score",
+ "durS": 150.0,
+ "secs": 8.3,
+ "at": 1790103064,
+ "id": "chasematthew__dontleavejoleneremix_smubv2b0h",
+ "title": "Chase Matthew - Don't Leave - Jolene Remix",
+ "pickRule": "group=max energy; occurrence: skip tier intro, or tier low starting < 10 s"
+}
