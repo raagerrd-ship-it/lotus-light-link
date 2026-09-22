@@ -42,6 +42,7 @@ function runOne(y, rate) {
   const HOP = 128;
   const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015, onsetEnhancements: process.env.BENCH_ENH === '1' });   // standard AV = som Pi:n; BENCH_ENH=1 = 09-07-mergens onset-DSP (12/64 mot 30/64)
   an.setGainLock?.(false);
+  const blocks = process.env.BENCH_DUMP_DIR ? [] : null; if (blocks) an.dbgSecBlock = (b) => { delete b.spec; delete b.secLogLast; blocks.push({ ...b, rHiAt: an.repeatHighAtMs, rHiEnd: an.repeatHighEndAtMs, rTier: an.repeatTier, rHiRun: an.repeatHighRun, hiRunMs: an.secHighRunMs }); };   // BENCH_DUMP_DIR (09-22): per-block sektionsdump for offline-simulering
   const buf = new Float32Array(HOP); const bpms = []; const confs = []; const raws = []; const kicks = []; const grids = []; const sections = []; const preds = []; let lastSec = ''; let repeats = 0; let lastPhaseMs = 0; let lastKick = 0; let hopCount = 0; const warm = Math.floor(10 * rate / HOP);
   const dbg = process.env.BENCH_DEBUG && runOne.name && runOne.current && runOne.current.includes(process.env.BENCH_DEBUG);
   for (let i = 0; i + HOP <= y.length; i += HOP) {
@@ -60,6 +61,7 @@ function runOne(y, rate) {
     if (dbg && hopCount % (375 * 5) === 0) console.log(`  t=${(hopCount * HOP / rate).toFixed(0)}s lockad ${f.bpm} ra ${an.rawBpmLast?.toFixed(1)} argmax-lag ${an.dbgBestLag} (${an.dbgBestLag ? (6000 / an.dbgBestLag).toFixed(1) : '-'} BPM, tg ${an.dbgTgAt?.(an.dbgBestLag)?.toFixed(3)}) fonster ${an.dbgLagMin}-${an.dbgLagMax} tg@37 ${an.dbgTgAt?.(37)?.toFixed(3)} tg@38 ${an.dbgTgAt?.(38)?.toFixed(3)} vinnare ${an.evidenceScore?.toFixed(2)} las ${an.evidenceLockScore?.toFixed(2)} roster ${an.evidRelockVotes} omlas ${an.evidenceRelocks} kandidater ${JSON.stringify(an.debugCandidates?.().map((c) => [c.bpm, +c.tg.toFixed(3), +c.score.toFixed(2), +c.half.toFixed(2)]))}`);
   }
   runOne.lastAnalyser = an;
+  runOne.blocks = blocks;
   const s = [...bpms].sort((a, b) => a - b);
   const med = s.length ? s[s.length >> 1] : 0;
   const rs = [...raws].sort((a, b) => a - b); const rawMed = rs.length ? rs[rs.length >> 1] : 0;
@@ -80,6 +82,7 @@ if (existsSync(DIR)) for (const f of _files.filter((_, i) => _keep(i))) {
   if (!facit && !hasSections) continue;                                   // langfangst med sektionsfacit far vara med utan tempofacit (osakert = bpm 0)
   if (facit) { while (facit >= 160) facit /= 2; while (facit < 80) facit *= 2; }     // ANALYSATORNS vikning [80,160) (BPM_MIN/MAX): facit 160-180 halveras - lampan pulserar pa halva takten dar med avsikt (09-20: 7 'dubbla' var bara vikningen)
   const { y, rate } = readWav(wav); runOne.current = f; const r = runOne(y, rate);
+  if (process.env.BENCH_DUMP_DIR) { const { writeFileSync } = await import('node:fs'); writeFileSync(join(process.env.BENCH_DUMP_DIR, f), JSON.stringify({ file: f, lenS: y.length / rate, bpmFacit: facit, derived: meta.result?.analysis?.sections?.derived || [], derivedSource: meta.result?.analysis?.sections?.derivedSource || 'cloud', sections: r.sections, preds: r.preds, blocks: runOne.blocks })); }
   const [cls, ratio] = classify(facit, r.med);
   const pcOn = (meta.result?.analysis?.onset?.timesS) || [];
   if (process.env.BENCH_DEBUG && f.includes(process.env.BENCH_DEBUG) && r.sections.length) console.log(`  sektioner: ${r.sections.map(([t, l]) => `${t}s ${l}`).join(' -> ')} | upprepningar ${r.repeats}`);
@@ -153,6 +156,7 @@ if (existsSync(DIR)) for (const f of _files.filter((_, i) => _keep(i))) {
     if (!repDir) { const hi = segs.map((g, i) => g.tier === 'high' ? i : -1).filter((i) => i >= 0);
       if (hi.length >= 2 && segs.slice(hi[0] + 1, hi[1]).some((g) => g.tier !== 'high')) {
         const c1 = segs[hi[0]], c2 = segs[hi[1]]; refrang2(c1, c2, { start: c1.end, end: c2.start });
+        if (process.env.BENCH_DEBUG === 'ref2') console.log(`  REF2 ${basename(f).slice(0, 30)} bpm ${r.med} c1 ${c1.start.toFixed(0)}-${c1.end.toFixed(0)} c2 ${c2.start.toFixed(0)}-${c2.end.toFixed(0)} ch1 ${ch1Ms?.toFixed(1)} ch2 ${ch2Ms?.toFixed(1)} v2ok ${v2Ok?.toFixed(2)} pred ${ch2Pred} | det ${r.sections.map(([t, l]) => `${t}${l[0]}`).join(' ')} | preds ${[...new Set(r.preds.filter(([tp]) => tp >= c1.end - 5 && tp <= c2.start + 5).map(([tp, at, src]) => `${Math.round(at)}s${src}`))].join(',')}`);
       } }
     // FORUTSAGELSE (09-21): facitets high-starter (tier high efter icke-high, >= 20 s) - traff om nagon forutsagelse gjord 1-12 s
     // fore starten pekade inom +-2 s; lead = tidigast traffande forutsagelse. Falsk = forutsedd tidpunkt > 4 s fran alla high-starter.
