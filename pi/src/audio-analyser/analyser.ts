@@ -230,6 +230,24 @@ export class Analyser {
   private static readonly GRID_PHASE_ON = typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE === '1';
   /** Fasval: 'sum' = bas+helband (standard), 'bass' = basringen forst, helbandet bara nar basen ar tvetydig (kvot < BASS_MIN). Korbank-A/B. */
   private static readonly GRID_PHASE_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_MODE) || 'sum';
+  /** GRIDFASENS SYSTEMATISKA SLAP (2026-09-23, opt-in LOTUS_GRID_PHASE_TRIM=1). PC-facit tre dygn i rad:
+   *  gridets slap mot Beat This!-slagen 5,7 -> 9,9 -> 18,3 ms (median) medan KICKARNAS bias ar 0,0 ms
+   *  (onset bias +0,1 ms, on-beat-recall 0,95). Felet sitter alltsa i fasmatningen, inte i kedjan: fasen mats
+   *  pa envelope-ringen i 10 ms-hinkar (ENV_HZ) med max over +-1 sampel, vilket lagger estimatet en halv hink
+   *  eller mer efter det verkliga anslaget. Kickarna ar sub-hop-forfinade (parabeltopp) och darmed obiaserade.
+   *  TRIM: median av de senaste 8 on-beat-kickarnas offset mot RA gridfas, klampt till +-TRIM_MS, laggs pa
+   *  frame.beatPhaseMs. Ingen aterkoppling: offseten mats alltid mot den ORORDA fasen, sa trimmen ar en
+   *  absolut skattning och kan inte skena. Rors bara i den snabba vagen (worker/odelad ger samma varde).
+   *  MATT 2026-09-23 (korbank, 145 korpuslatar, live-flaggor, foljar-emulering mot Beat This!-slagen):
+   *    av:  offset-median +15 ms, |offset| 22 ms, puls on-beat 0,84, andel |offset| <= 30 ms 0,63
+   *    pa:  offset-median +16 ms, |offset| 23 ms, puls on-beat 0,82, andel 0,60   (tempo 114/145 i bada)
+   *  ALLTSA INGEN VINST - och det motbevisar premissen: hade kickarna legat 15 ms fore gridet hade trimmen
+   *  dragit gridet dit. Att den inte ror sig betyder att kickarna ligger i SAMMA fas som gridet, dvs. hela
+   *  onset-fronten (bade analysatorns kickar och PC-facitets onsets, dar biasen mattes till 0 ms) ligger
+   *  ~15 ms efter ML-slagen. Det ar en KONSTANT i detektorn, inte ett fasfel att folja. Flaggan lamnas
+   *  opt-in och AV som dokumentation av det negativa resultatet; nasta prov ar en konstant, inte en trim. */
+  private static readonly GRID_PHASE_TRIM_ON = typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_TRIM === '1';
+  private static readonly GRID_PHASE_TRIM_MS = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_TRIM_MS)) || 25;
   private static readonly GRID_PHASE_BASS_MIN = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_BASS_MIN)) || 1.2;
   /** KLISTRIG FAS (09-20 15:10, live-spar): estimatet bytte halvslag var ~20 s pa NORTHMAN Remix med kvot 1,5 och foljaren hangde med.
    *  Ny fas > 0,3 slag fran forra tas bara nar dess poang slar forra fasens poang med STICKY_K under STICKY_N raka analyser (1,5 s).
@@ -242,6 +260,16 @@ export class Analyser {
   /** SEKTIONSLAGE: 'rank' (standard, 09-20 15:35) = kausal percentilrang av 4 s-fonstrets energi+anslagstathet mot alla block
    *  hittills i laten (samma matt som facit, section_facit.py, fast i realtid); 'tier' = gamla intensity-tiern (bank: 0,53 = slump). */
   private static readonly SECTION_MODE = (typeof process !== 'undefined' && process.env?.LOTUS_SECTION_MODE) || 'rank';
+  /** SEKTIONEN NOLLAS VID LATBYTE (2026-09-23, opt-in LOTUS_SECTION_ON_HINT=1).
+   *  MATT pa 128 fangster fran kvallens lyssning: vid borjan av en NY lat sager sektionsetiketten 'low' i 77 %,
+   *  'high' i 12 %, 'build' i 9 % - och 'intro' i 2 %. Sektionsindex vid ny lat: median 44, max 174. Sektions-
+   *  maskineriet nollas namligen BARA vid 10 s tystnad eller full resetTempo, sa i en spellista rullar det vidare
+   *  genom hela kvallen: rang-percentilerna jamfor nya laten mot FORRA latens block, `levelVsHighDb` mater mot
+   *  forra latens refrang, och 'intro' (som drop-grinden hanger pa) kan aldrig intraffa efter forsta laten.
+   *  Det ar samma klass av overhang som kommentaren i hintTrackChange redan dokumenterar for tempogrammet -
+   *  och det ar orsaken till agarens "falska drops vid latbyte/intro/outro".
+   *  Tempot ror vi INTE: hinten ar fortfarande mjuk dar, av de skal som star i hintTrackChange. */
+  private static readonly SECTION_ON_HINT = typeof process !== 'undefined' && process.env?.LOTUS_SECTION_ON_HINT === '1';
   /** Forutsagelsens kallor (bitmask): 1 = minne (tidigare sektion med samma etikett), 2 = fras (stigande energi -> 8-taktsgrans). Bank-A/B. */
   private static readonly PREDICT_SRC = typeof process !== 'undefined' && process.env?.LOTUS_PREDICT_SRC !== undefined ? Number(process.env.LOTUS_PREDICT_SRC) : 2;   // standard 2 sedan frasgittret: minnet gav +1,6 falska/min utan traffar (09-21 kvall)
   /** Frasregel: LOS (standard): 2 stigande block ELLER energi, horisont 16 takter; LOTUS_PREDICT_STRICT=1: 3 block OCH energi, 8 takter.
@@ -385,6 +413,7 @@ export class Analyser {
   /** Matchat parti: tier med dagens rankning (-1 = inget), och nar 'high' vantas om det forflutna upprepas (absolut tid, 0 = ingen). */
   repeatTier = -1; repeatHighAtMs = 0; repeatHighEndAtMs = 0; private repeatHighRun = 0; private secHighRunMs = 0;
   beatPhaseMs = 0; beatPhaseConf = 0; private phaseAnti = 0; private phaseLastBeatMs = 0; private phaseScratch = new Float32Array(128);
+  private phaseTrimRing = new Float32Array(8); private phaseTrimN = 0;   // kick-offset mot ra gridfas (ms), ringbuffert for trimmen
   private phaseScratchB = new Float32Array(128); private phaseScratchF = new Float32Array(128);
   /** Korbanks-telemetri for gridfasen: vald fas mot motfas per band. */
   dbgPhase = { conf: 0, bassOn: 0, bassAnti: 0, fullOn: 0, fullAnti: 0, bestPh: 0, nPh: 0, pending: 0 };
@@ -1259,6 +1288,27 @@ export class Analyser {
    *  medelvardena (max over +-1 sampel, onsets ar nagra sampel breda). Utdata: vaggtiden for det senaste slaget i den
    *  fasen + on/half-kvot. Hysteres: en fas >0,3 slag fran forra estimatet kravs i 3 raka analyser (0,75 s) innan
    *  den tas - annars foljs forra fasen. Kostnad: ~nPh x 12 x 2 uppslag = ~2 000 per anrop, 4 Hz. */
+  /** Medianen av de senaste on-beat-kickarnas offset mot ra gridfas, klampt. 0 tills 4 kickar mats. */
+  private phaseTrimMs(): number {
+    const n = Math.min(this.phaseTrimN, 8);
+    if (n < 4) return 0;
+    const a = Array.prototype.slice.call(this.phaseTrimRing, 0, n).sort((x: number, y: number) => x - y);
+    const m = n & 1 ? a[n >> 1] : (a[(n >> 1) - 1] + a[n >> 1]) / 2;
+    const lim = Analyser.GRID_PHASE_TRIM_MS;
+    return m > lim ? lim : (m < -lim ? -lim : m);
+  }
+
+  /** En detekterad kick bokfors som fasfel mot den RA gridfasen (bara on-beat, |fel| <= 1/4 slag). */
+  private phaseTrimSample(kickAtMs: number): void {
+    const bpm = this.localBpmF > 0 ? this.localBpmF : this.localBpm;
+    if (bpm <= 0 || this.beatPhaseMs <= 0 || kickAtMs <= 0) return;
+    const per = 60000 / bpm;
+    let d = ((((kickAtMs - this.beatPhaseMs) % per) + per) % per);
+    if (d > per / 2) d -= per;
+    if (Math.abs(d) > per / 4) return;
+    this.phaseTrimRing[this.phaseTrimN % 8] = d; this.phaseTrimN++;
+  }
+
   private computeGridPhase(): void {
     const bpm = this.localBpmF > 0 ? this.localBpmF : this.localBpm;
     if (bpm <= 0 || this.envFilled < 200 || this.envLastWallMs <= 0) { this.beatPhaseMs = 0; this.beatPhaseConf = 0; return; }
@@ -1427,7 +1477,7 @@ export class Analyser {
     if (flags & F_RESET_BAR) this.resetBar();
     if (flags & F_SIL350) {
       this.localBpmConfidence = 0; this.clearLockVotes();
-      this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0;
+      this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.phaseTrimN = 0;
       this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
       for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
       this.barAcc.fill(0); this.barCount = 0;
@@ -2028,6 +2078,10 @@ export class Analyser {
     this.tempoGram.fill(0);
     this.clearLockVotes();
     this.barAcc.fill(0); this.barCount = 0;
+    // NY LAT = NY STRUKTUR. Tempot bars over (se ovan), men sektionshistoriken tillhor forra laten och maste bort:
+    // annars rangordnas nya laten mot gamla block och 'intro' intraffar aldrig. sectionReset() ar samma nollning
+    // som 10 s tystnad redan gor - enda skillnaden ar att vi nu ocksa litar pa latbytes-signalen.
+    if (Analyser.SECTION_ON_HINT) this.sectionReset();
   }
 
   /** Nollställ lås-/röst-ackumulatorerna — gemensam kärna för resetTempo/hintTrackChange/
@@ -2082,7 +2136,7 @@ export class Analyser {
     this.lastConfMs = 0;
     this.lastSongVoteMs = 0;
     this.reacqUntilMs = 0;
-    this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.sectionReset();
+    this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.phaseTrimN = 0; this.sectionReset();
     this.lastT = 0;
   }
   /** KORBANK (09-20): flytta bara den virtuella klockan, utan att nolla nagra ankare. setVirtualClock() ar ett
@@ -2526,6 +2580,7 @@ export class Analyser {
       this.pendingKickMs = 0;
       // Slaget är färdigmätt → lämna över dess EXAKTA tid till PLL:en.
       kickAtMs = this.beatAnchorMs;
+      if (Analyser.GRID_PHASE_TRIM_ON) this.phaseTrimSample(kickAtMs);
       // TAKTFAS: bokför slagets tyngd på sin plats i fyrtakten. Vikten är slagets
       // EGEN styrka (ABSOLUT flux — kvoten mot troskeln mattade — kvadrerad sa
       // skillnaden mellan ettans
@@ -2966,7 +3021,7 @@ export class Analyser {
     f.centroid = this.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.dropCount = this.dropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
-    f.kickAtMs = kickAtMs; f.barShift = barShift; f.beatPhaseMs = this.beatPhaseMs; f.beatPhaseConf = this.beatPhaseConf;
+    f.kickAtMs = kickAtMs; f.barShift = barShift; f.beatPhaseMs = this.beatPhaseMs > 0 && Analyser.GRID_PHASE_TRIM_ON ? this.beatPhaseMs + this.phaseTrimMs() : this.beatPhaseMs; f.beatPhaseConf = this.beatPhaseConf;
     if (Analyser.SECTION_ON) {
       const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
       for (let i = 0; i < 8; i++) g.spec[i] += this.bandAbs[i];

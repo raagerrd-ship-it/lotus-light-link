@@ -66,6 +66,15 @@ let _manualCapture: string | null = null;
 /** index.ts pollar (4 Hz): en manuellt begard fangst ('drop'), en gang. */
 export function takeManualCapture(): string | null { const m = _manualCapture; _manualCapture = null; return m; }
 
+/** TEMPOCACHEN VID BOOT (2026-09-23, morgonagenten): attachConfigRuntime() kors forst nar mic-subsystemet startar,
+ *  dvs. nar Sonos spelar. Tempocachen ar bara en lasbar tabell pa disk och finns redan vid boot - men
+ *  `/api/tempo/cache` svarade 503 hela dagen efter 05:00-rebooten, sa nattjobbet/morgonagenten fick noll Pi-statistik
+ *  nar de kordes om efter rebooten (2026-09-23: hela dygnsposten blev {"error": "HTTP 503"}). Cachen kopplas nu in
+ *  sa fort index.ts har laddat den; attachConfigRuntime satter samma referens igen, vilket ar ofarligt. */
+export function setTempoCache(tc: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null): void {
+  attachedTempoCache = tc;
+}
+
 export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
   mic: AlsaMicModule;
