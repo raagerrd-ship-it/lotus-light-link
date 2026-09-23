@@ -19,7 +19,7 @@
  * index.ts) ger BIT-IDENTISKT tempo mot den odelade analysatorn, vilket körbänken bevisar.
  */
 
-export const REC_LEN = 29;
+export const REC_LEN = 33;
 export const RING_N = 1024;                    // ~10 s vid 100 Hz — workern får ligga efter utan att tappa
 export const RING_MARGIN = 8;                  // records workern lämnar orörda mot skrivaren (80 ms) — läses aldrig närmare kanten
 
@@ -27,7 +27,9 @@ export const RING_MARGIN = 8;                  // records workern lämnar orörd
 export const R_SEQ = 0, R_PERF = 1, R_WALL = 2, R_ENV = 3, R_BASS = 4, R_FLAGS = 5, R_HINT_MS = 6, R_VCLOCK = 7,
   R_SEC_N = 8, R_SEC_INT = 9, R_SEC_KICKS = 10, R_SEC_BREAK = 11, R_SEC_RMS2 = 12, R_SEC_CENT = 13, R_SEC_DT = 14,
   R_DROPS = 15, R_ACTIVE = 16, R_BUILD = 17, R_SEC_SPEC0 = 18 /* ..25 */, R_SEC_WALL = 26, R_TS = 27 /* Date.now() vid skrivning, for lagmatt over tradar */,
-  R_FLAGCNT = 28 /* packade flaggräknare (se packFlagCounts): hur många gånger varje flagga rests t.o.m. detta record */;
+  R_FLAGCNT = 28 /* packade flaggräknare (se packFlagCounts): hur många gånger varje flagga rests t.o.m. detta record */,
+  R_SEC_BON = 29 /* NYA SEKTIONSSARDRAG (09-23): basonset-envelope (dB-flux 20-250 Hz, summa per hop) */, R_SEC_BPK = 30 /* basonset-toppar (librosa-lik toppplockning, antal) */,
+  R_SEC_FLUX = 31 /* helbandsflux (fluxNorm, summa) */, R_SEC_RMS4 = 32 /* summa rms^4 (dynamik inom blocket) */;
 
 // Flaggor (bitmask i R_FLAGS)
 export const F_SIL350 = 1, F_SIL10 = 2, F_RESET_TEMPO = 4, F_HINT = 8, F_RESET_BAR = 16, F_VCLOCK_SET = 32, F_VCLOCK_NULL = 64;
