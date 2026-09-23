@@ -181,7 +181,12 @@ if (existsSync(DIR)) for (const f of _files.filter((_, i) => _keep(i))) {
   }
   const a1Beats = meta.allin1?.beatsS || [];                              // all-in-one (ML-slagfoljare via Replicate) som tredje referens
   const [phaseA1] = phaseVs(a1Beats);
-  const btBeats = meta.beatthis?.beatsS || [];                            // Beat This! (lokal ML-slagfoljare, beatthis_facit.py)
+  // 2026-09-23 (morgonagenten): facit-tjansten lagger INTE langre slagen under meta.beatthis - den vinnande
+  // slaglistan star i result.beatsS med result.beatsSource ('beatthis' | 'pc'). Efter att korpusen gjordes om
+  // 09-21 var meta.beatthis darfor tom i ALLA filer, sa bade 'fas mot Beat This!' och hela foljar-emuleringen
+  // (offset-median = det signerade gridslapet) tystnade utan felmeddelande - scoreboard-kolumnen 'fas' stod tom
+  // fran 09-22. Fallback till result.beatsS nar kallan ar beatthis; ingen matandring for gamla filer.
+  const btBeats = meta.beatthis?.beatsS || (meta.result?.beatsSource === 'beatthis' ? (meta.result?.beatsS || []) : []);
   const [phaseBt] = phaseVs(btBeats);
   // FOLJAR-EMULERING (09-20): motorns gridfas-foljare (piEngine LOTUS_PHASE_FOLLOW) korts pa analysatorns fasmatningar
   // (4 Hz) och de resulterande PULSERNA mats mot Beat This!-slagen (stelt grid): on-beat-andel + IQR. Live 12:42-14:50
