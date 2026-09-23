@@ -28,7 +28,9 @@ for f in todo:
     with sf.open(tmp, 'wb') as fh: fh.write(files[f])
     rc, out, err = run(f"node --check {tmp}")
     if rc: sys.exit(f"node --check {f} misslyckades: {err[:300]}")
-    rc, out, _ = sudo(f"[ -f {REMOTE}/{f} ] && cp {REMOTE}/{f} {REMOTE}/{f}.bak-{ts}; cp {tmp} {REMOTE}/{f} && chown root:root {REMOTE}/{f} && chmod 644 {REMOTE}/{f} && ls -la {REMOTE}/{f}")
+    # mkdir -p (2026-09-23): en NY underkatalog (heartbeat/) saknades pa Pi:n -> cp foll tyst, piEngine.js pekade pa en modul som inte fanns.
+    rc, out, _ = sudo(f"mkdir -p $(dirname {REMOTE}/{f}) && ([ -f {REMOTE}/{f} ] && cp {REMOTE}/{f} {REMOTE}/{f}.bak-{ts}; true) && cp {tmp} {REMOTE}/{f} && chown root:root {REMOTE}/{f} && chmod 644 {REMOTE}/{f} && ls -la {REMOTE}/{f}")
+    if rc or not out.strip(): sys.exit(f"cp {f} misslyckades pa Pi:n - aterstall fran .bak-{ts} (deployade filer hittills kan peka pa saknade moduler)")
     print(out.strip())
 for m in IMPORTS:
     rc, out, _ = run(f"cd /opt/lotus-light/pi && timeout 10 node -e \"import('{REMOTE}/{m}').then(()=>{{console.log('importtest ok {m}');process.exit(0)}}).catch(e=>{{console.log('IMPORTTEST FEL',e.message);process.exit(2)}})\"")
