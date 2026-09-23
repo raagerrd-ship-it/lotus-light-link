@@ -349,6 +349,9 @@ export interface LightCalibration {
   /** OSYNK = OSAKER (agaren 19:02: 'battre den gar tillbaka till energi an kor osynk'): rastrets tillit skalas ner nar fasfelet
    *  (|_beatErr|, andel av ett slag) overstiger denna grans (0 vid dubbla), och ar 0 i ateratagningsfonstret efter latbyte. */
   beatSyncErrFrac?: number;
+  /** ATERLAS I BAKGRUNDEN (agaren 19:05: 'battre den jobbar i bakgrunden med att synka igen innan den slapper pa'): har den raa tilliten
+   *  legat under 0,2 langre an sa har manga ms nollas bevistiden, sa rastret maste klattra beatLockHoldS igen medan energin driver. */
+  beatRelockAfterMs?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -829,7 +832,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -3223,6 +3226,9 @@ export class PiLightEngine {
       const _syncLim = Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12), _syncErr = Math.abs(this._beatErr);
       const _syncMul = Date.now() < this._reacqUntil ? 0 : _syncErr <= _syncLim ? 1 : Math.max(0, 1 - (_syncErr - _syncLim) / _syncLim);
       _tRaw *= _syncMul; this._syncMul = _syncMul;
+      { const _nowR = Date.now(), _relock = this.cal.beatRelockAfterMs ?? 1500;
+        if (_tRaw < 0.2) { if (this._trustLowSince === 0) this._trustLowSince = _nowR; else if (_nowR - this._trustLowSince >= _relock) this._bpmStableSince = _nowR; }
+        else this._trustLowSince = 0; }
       // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
       // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
       // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
