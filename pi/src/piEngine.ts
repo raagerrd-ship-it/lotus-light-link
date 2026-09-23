@@ -335,6 +335,10 @@ export interface LightCalibration {
   /** Golv på trust: låter modulationen leva på FAKTISKA transienter när takten är
    *  otydlig. Utan golv blir energyForm = ceil rakt av — lugnt men dött. */
   beatTrustFloor: number;
+  /** TAKTLASETS BEVISTID (2026-09-23, agaren i kallaren: 'efter kanske 20 s in i laten ar den bra ... kor langre BPM-analys innan den
+   *  laser, fram till dess energi'): rasterpulsens tillit rampas 0 -> 1 (transientgolvet ligger kvar = energi pa alla anslag) over sa manga sekunder som tempot legat stabilt
+   *  (+-3 %). Ny lat / tempo borta nollar. 0 = av (som forr). Intron = ren energi (nivakanalen), takten kommer in nar den bevisat sig. */
+  beatLockHoldS?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -474,6 +478,7 @@ const DEFAULT_CAL: LightCalibration = {
   beatTrustHiConf: 0.70,
   beatTrustSmoothMs: 400,
   beatTrustFloor: 0.35,      // golvet är den viktiga halvan: modulation på transienter
+  beatLockHoldS: 12,         // takten maste ligga stabilt 12 s innan pulsen far full tillit (intro = energi)
   recordFrames: 0,
   recordEnabled: true,
   useRecording: true,
@@ -814,6 +819,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1923,8 +1929,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean;
-  } {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -1937,7 +1942,8 @@ export class PiLightEngine {
       gridPulses: this._gridPulseCount,
       subdivLevel: this._subdivLevel,
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
-      trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
+      trust: Math.max(this.cal.beatTrustFloor ?? 0.35, (this._trustSm ?? 0) * this._lockRamp),   // effektiv (med bevistidsrampen)
+      lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -3208,7 +3214,17 @@ export class PiLightEngine {
       // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
       const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
       this._trustSm = trustSmooth(_tRaw, this._trustSm, TICK_PERIOD_MS, _up, _down);
-      const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm);
+      // BEVISTID (beatLockHoldS): tempot maste ha legat stabilt (+-3 %) sa lange innan tilliten (och transientgolvet) ar full.
+      const _hold = this.cal.beatLockHoldS ?? 0; let _ramp = 1;
+      if (_hold > 0) {
+        const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
+        if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; }
+        else if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; }
+        _ramp = this._bpmStableSince > 0 ? Math.min(1, (_nowMs - this._bpmStableSince) / (_hold * 1000)) : 0;
+      }
+      this._lockRamp = _ramp;
+      // Golvet (modulation pa FAKTISKA transienter = 'reagerar pa allt ljud') rampas INTE - bara rasterpulsens tillit (agaren 18:50).
+      const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm * _ramp);
 
       // ── SEKTIONSBETEENDE ────────────────────────────────────────────────
       // Kraver att vi VET var i laten vi ar. Klockan sager null tills den har
