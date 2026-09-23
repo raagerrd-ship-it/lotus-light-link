@@ -358,6 +358,8 @@ export interface LightCalibration {
   energyActRef?: number;
   /** Tillit (trustSm x lockRamp) som kravs for att gridet ska driva pulsen i stallet for anslagen. */
   energyGridTrust?: number;
+  /** Kortaste avstand mellan anslagspulser i energilaget (ms). */
+  energyMinGapMs?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -838,7 +840,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1062,7 +1064,12 @@ export class PiLightEngine {
       fired = true;
       this.onsetLastFrameIdx = this.onsetFrameCounter;
       // strong pulse — clearly visible "in the beat". Hoppas över när gridet driver.
-      if (allowTrigger) this.onsetTarget = 0.45;
+      // ENERGILAGETS PULSAVSTAND (agaren 19:30: 'fladdrar fortfarande' - matt 27 toppar/10 s, 0,25 s isar = basgangens attondelar):
+      // i energilaget satter anslagen pulsen, men hogst en per energyMinGapMs (330 = ~3/s). PLL:en ser fortfarande varje flank (fired).
+      if (allowTrigger) {
+        const _nowE = Date.now(), _gap = this.cal.energyMinGapMs ?? 330;
+        if (_nowE - this._lastEnergyPulseMs >= _gap) { this.onsetTarget = 0.45; this._lastEnergyPulseMs = _nowE; }
+      }
     }
 
     // Targeten släpps exakt en gång per frame. I Mode B skalar tau med grid-intervallet
