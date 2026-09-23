@@ -112,6 +112,11 @@ def pi_stats():
         'onsetPrecision': med([dig(r, 'pc', 'onset', 'precision') for r in day if isinstance(dig(r, 'pc', 'onset', 'precision'), (int, float))]),
         'levelLagMs': med([dig(r, 'pc', 'level', 'lagMs') for r in day if isinstance(dig(r, 'pc', 'level', 'lagMs'), (int, float))]),
         'levelR': med([dig(r, 'pc', 'level', 'r') for r in day if isinstance(dig(r, 'pc', 'level', 'r'), (int, float))]),
+        # TAKMATT (09-23, tempo_facit.level_ext): takets r/lag utan taktpulsen + %/dB + klipp/golv-andel - `levelR` doms av pulsen
+        'levelCeilR': med([dig(r, 'pc', 'level', 'ceilR') for r in day if isinstance(dig(r, 'pc', 'level', 'ceilR'), (int, float))]),
+        'levelCeilLagMs': med([dig(r, 'pc', 'level', 'ceilLagMs') for r in day if isinstance(dig(r, 'pc', 'level', 'ceilLagMs'), (int, float))]),
+        'levelPctPerDb': med([dig(r, 'pc', 'level', 'pctPerDb') for r in day if isinstance(dig(r, 'pc', 'level', 'pctPerDb'), (int, float))]),
+        'levelClipShare': med([dig(r, 'pc', 'level', 'clipShare') for r in day if isinstance(dig(r, 'pc', 'level', 'clipShare'), (int, float))]),
         'anSpann': med([(r['learn']['bpmMax'] - r['learn']['bpmMin']) for r in day if r.get('learn') and r['learn'].get('bpmMax') and r['learn'].get('bpmMin')]),
         'tempoHints': sum(1 for r in rows if (r.get('tempoHint') or {}).get('ratio') not in (None, 1)),
         'drops': sum(len(r.get('dropEvents') or []) for r in rows),
@@ -195,7 +200,7 @@ def main():
     for e in hist:
         p = e.get('pi') or {}
         lines.append(f"| {e['date']} | {cell(e,'standard')} | {cell(e,'live')} | {cell(e,'evidence')} | {cell(e,'ring10')} | {cell(e,'live-cd80')} | {cell(e,'live-cd120')} | {p.get('dygn','–')} ({p.get('medFacit','–')} facit) | {p.get('okAndel','–')} | {p.get('gridLagMs','–')} ms | {p.get('onsetRecall','–')} | {p.get('onsetPrecision','–')} | {p.get('levelR','–')} |")
-    lines += ['', f"Senaste dygnet: domar {json.dumps(pi.get('domar'), ensure_ascii=False)}; kick-bias {pi.get('kickBiasMs')} ms; nivå-lag {pi.get('levelLagMs')} ms; analysatorns spann inom låt {pi.get('anSpann')} BPM (median); tempoledtrådar ≠ 1: {pi.get('tempoHints')}; dropfångster {pi.get('drops')} {json.dumps(pi.get('dropDomar'))}.",
+    lines += ['', f"Senaste dygnet: domar {json.dumps(pi.get('domar'), ensure_ascii=False)}; kick-bias {pi.get('kickBiasMs')} ms; nivå-lag {pi.get('levelLagMs')} ms; tak-r {pi.get('levelCeilR')} lag {pi.get('levelCeilLagMs')} ms {pi.get('levelPctPerDb')} %/dB klipp {pi.get('levelClipShare')}; analysatorns spann inom låt {pi.get('anSpann')} BPM (median); tempoledtrådar ≠ 1: {pi.get('tempoHints')}; dropfångster {pi.get('drops')} {json.dumps(pi.get('dropDomar'))}.",
               '', 'Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.']
     sb_ = entry.get('sektionsbank') or {}
     def secline(tag):

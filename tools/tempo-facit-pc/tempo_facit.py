@@ -355,9 +355,54 @@ def level_analysis(y: np.ndarray, sr: int, ev: dict) -> dict:
         r = float(np.corrcoef(a, c)[0, 1])
         if best is None or r > best[1]: best = (lag * 100, r)
     r0 = float(np.corrcoef(a_all[valid], b_all[valid])[0, 1]) if valid.sum() > 30 and b_all[valid].std() > 1e-6 else 0.0
-    return {'n': int(len(br)), 'lagMs': best[0] if best else None, 'r': round(best[1], 3) if best else None, 'r0': round(r0, 3),
-            'brightMin': round(float(bv.min()), 2), 'brightMedian': round(float(np.median(bv)), 2), 'brightMax': round(float(bv.max()), 2),
-            'audioDynDb': round(float(p95 - p5), 1)}
+    out = {'n': int(len(br)), 'lagMs': best[0] if best else None, 'r': round(best[1], 3) if best else None, 'r0': round(r0, 3),
+           'brightMin': round(float(bv.min()), 2), 'brightMedian': round(float(np.median(bv)), 2), 'brightMax': round(float(bv.max()), 2),
+           'audioDynDb': round(float(p95 - p5), 1)}
+    if LEVEL_EXT:
+        try: out.update(level_ext(db, t_ms, bt, bv, float(((ev.get('beat') or {}).get('bpm')) or 0)))
+        except Exception as e: out['extError'] = str(e)
+    return out
+
+
+LEVEL_EXT = os.environ.get('FACIT_LEVEL_EXT', '1') == '1'   # 09-23: takmatt (se level_ext); FACIT_LEVEL_EXT=0 stanger av
+
+
+def _ema(x: np.ndarray, alpha: float) -> np.ndarray:
+    out = np.empty_like(x); s = x[0]
+    for i, v in enumerate(x): s += alpha * (v - s); out[i] = s
+    return out
+
+
+def level_ext(db: np.ndarray, t_ms: np.ndarray, bt: np.ndarray, bv: np.ndarray, bpm: float) -> dict:
+    """TAKMATT (2026-09-23). `r` ovan mater hela ljuset (tak x taktpuls) mot RMS-kurvan i 100 ms-raster: pulserna
+    (moddjup ~0,4 x taket, fyrade FORE slaget) ar brus i den matningen och satter ett tak pa r ~0,75-0,8 aven med
+    PERFEKT tak (simulering 09-23, 40 langfangster: mal+puls 0,80, motorns eget tak 0,60 -> med puls 0,43). Motorns
+    tak gar inte att lasa ur bright utan att ta bort pulsen, sa har jamfors TVA lika slata kurvor: bright och dB
+    genom samma kausala EMA (~400 ms) - lagen kvarstar da lika pa bada sidor. Lagsokning -0,5..+2,5 s.
+      ceilR/ceilLagMs : takets trohet/synk (det som fonstret, ankaret och glattningen styr - INTE pulsen)
+      pulseShare      : andel av brights varians som EMA:n tar bort (= taktpuls + rippel); hog = pulsen dominerar bilden
+      pctPerDb        : lutning %/dB (tak i % mot dB) vid basta lag; fonstret 10 dB over 82 % = 8,2 ideal, lagre = komprimerat
+      clipShare/floorShare : andel av p90-taket (2 slag) >= 0,98 resp. <= 0,25 - fonstret ligger for lagt/hogt (ankare/gain)"""
+    idx = np.clip(np.searchsorted(bt, t_ms), 0, len(bt) - 1)
+    b = bv[idx]; valid = np.abs(bt[idx] - t_ms) < 150
+    if valid.sum() < 60: return {}
+    alpha = 1 - np.exp(-100.0 / 400.0)
+    bs, ds = _ema(b.astype(float), alpha), _ema(db.astype(float), alpha)
+    best = None
+    for lag in range(-5, 26):
+        if lag >= 0: a, c, v = ds[:len(ds) - lag], bs[lag:], valid[lag:]
+        else: a, c, v = ds[-lag:], bs[:len(bs) + lag], valid[:len(bs) + lag]
+        a, c = a[v], c[v]
+        if len(a) < 30 or a.std() < 1e-6 or c.std() < 1e-6: continue
+        r = float(np.corrcoef(a, c)[0, 1])
+        if best is None or r > best[1]: best = (lag * 100, r, float(np.polyfit(a, c, 1)[0]) * 100)
+    per = max(2, int(round(60000.0 / bpm / 100))) if bpm > 0 else 5
+    w = 2 * per; pad = w // 2; bp = np.pad(bv, (pad, w - 1 - pad), mode='edge')
+    p90 = np.array([np.percentile(bp[i:i + w], 90) for i in range(len(bv))])
+    vb = float(bv.var())
+    return {'ceilR': round(best[1], 3) if best else None, 'ceilLagMs': best[0] if best else None, 'pctPerDb': round(best[2], 2) if best else None,
+            'pulseShare': round(1 - float(bs.var()) / vb, 2) if vb > 1e-9 else None,
+            'clipShare': round(float((p90 >= 0.98).mean()), 2), 'floorShare': round(float((p90 <= 0.25).mean()), 2)}
 
 
 def onset_analysis(ev: dict, onset_lo: np.ndarray, sr: int) -> dict:
