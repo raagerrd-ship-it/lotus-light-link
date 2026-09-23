@@ -526,7 +526,7 @@ const DEFAULT_CAL: LightCalibration = {
   lightBassWeight: 0.25,    // kropp utan att låsa ljusnivån till basen
   anchorDb: -4,
   windowDb: 10,              // LÅST — ett reglage här förstör hela tuningen
-  lightSmoothMs: 350,        // release pa nivavagen ~ett slag (2026-09-20, anvandaren: "attack 0, slapp nastan hela slaget") - 55 ms lat ljuset rita av sangens stavelser; attacken (lightRiseMs 0) ar orord sa slagen landar direkt
+  lightSmoothMs: 55,         // 2026-09-23 350 -> 55 (agaren i kallaren: energin kom "pa nasta takt", niva lag 300-400 ms; 55 = samma som DMX LIGHT_SMOOTH_MS, "kanns inte mer orolig"). Forr: release pa nivavagen ~ett slag (2026-09-20, anvandaren: "attack 0, slapp nastan hela slaget") - 55 ms lat ljuset rita av sangens stavelser; attacken (lightRiseMs 0) ar orord sa slagen landar direkt
 
   buildUpGain: 0.25,
   beatDepth: 0.62,           // intrimmat 2026-08-30
