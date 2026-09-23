@@ -339,6 +339,10 @@ export interface LightCalibration {
    *  laser, fram till dess energi'): rasterpulsens tillit rampas 0 -> 1 (transientgolvet ligger kvar = energi pa alla anslag) over sa manga sekunder som tempot legat stabilt
    *  (+-3 %). Ny lat / tempo borta nollar. 0 = av (som forr). Intron = ren energi (nivakanalen), takten kommer in nar den bevisat sig. */
   beatLockHoldS?: number;
+  /** BEVIS I SLAG, INTE SEKUNDER (agaren 19:50: 'satt inte fast 12 sekunder, lat den analysera tills den ar saker'): sa manga RENA slag i rad
+   *  (konfidens >= beatTrustHiConf, |fasfel| <= beatSyncErrFrac/2, tempot stabilt) som kravs for full tillit. Ett smutsigt slag kostar tva.
+   *  0 = anvand beatLockHoldS (fast tid) i stallet. */
+  beatLockBeats?: number;
   /** ENERGIDJUP (2026-09-23, agaren: 'energin skall kunna justera ljusstyrkan lika mycket som heart-beat kan'): pulsdjupet for
    *  TRANSIENTERNA (onsetBoost), oberoende av taktens tillit. Standard = beatDepth. Rasterpulsen skalas med tilliten (rampad), inte
    *  transienterna - forr var bd = beatDepth x trust for bada, sa i intron (tillit 0,35) fick transienterna bara en fjardedel. */
@@ -840,7 +844,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1955,7 +1959,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number; onsetAct: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number; onsetAct: number; lockBeats: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -1969,7 +1973,7 @@ export class PiLightEngine {
       subdivLevel: this._subdivLevel,
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, (this._trustSm ?? 0) * this._lockRamp),   // effektiv (med bevistidsrampen)
-      onsetAct: this._onsetAct, syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
+      lockBeats: this._lockGood, onsetAct: this._onsetAct, syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -3244,7 +3248,7 @@ export class PiLightEngine {
       const _syncMul = Date.now() < this._reacqUntil ? 0 : _syncErr <= _syncLim ? 1 : Math.max(0, 1 - (_syncErr - _syncLim) / _syncLim);
       _tRaw *= _syncMul; this._syncMul = _syncMul;
       { const _nowR = Date.now(), _relock = this.cal.beatRelockAfterMs ?? 1500;
-        if (_tRaw < 0.2) { if (this._trustLowSince === 0) this._trustLowSince = _nowR; else if (_nowR - this._trustLowSince >= _relock) this._bpmStableSince = _nowR; }
+        if (_tRaw < 0.2) { if (this._trustLowSince === 0) this._trustLowSince = _nowR; else if (_nowR - this._trustLowSince >= _relock) { this._bpmStableSince = _nowR; this._lockGood = 0; } }
         else this._trustLowSince = 0; }
       // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
       // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
@@ -3252,8 +3256,23 @@ export class PiLightEngine {
       const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
       this._trustSm = trustSmooth(_tRaw, this._trustSm, TICK_PERIOD_MS, _up, _down);
       // BEVISTID (beatLockHoldS): tempot maste ha legat stabilt (+-3 %) sa lange innan tilliten (och transientgolvet) ar full.
+      const _lockBeats = this.cal.beatLockBeats ?? 8;
       const _hold = this.cal.beatLockHoldS ?? 0; let _ramp = 1;
-      if (_hold > 0) {
+      if (_lockBeats > 0) {
+        // per SLAG: rent slag = +1, smutsigt = -2 (golv 0); tempot bytt/borta = 0. ramp = rena slag / beatLockBeats.
+        const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
+        if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; this._lockGood = 0; this._lockBeatIdx = -1e9; }
+        else {
+          if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; this._lockGood = 0; }
+          const _idx = beatIndex(this._beat!, _nowMs);
+          if (_idx !== this._lockBeatIdx) {
+            this._lockBeatIdx = _idx;
+            const _clean = _c >= _hi && Math.abs(this._beatErr) <= Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12) / 2 && _nowMs >= this._reacqUntil;
+            this._lockGood = _clean ? this._lockGood + 1 : Math.max(0, this._lockGood - 2);
+          }
+        }
+        _ramp = Math.min(1, this._lockGood / _lockBeats);
+      } else if (_hold > 0) {
         const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
         if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; }
         else if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; }
