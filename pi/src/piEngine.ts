@@ -26,7 +26,7 @@ import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { nextRasterEventAt, getRasterStats, resetRasterWindow, NOMINAL_PERIOD_MS } from './ble-driver/raster.js';
-import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, trustRaw, trustSmooth, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams } from './heartbeat/heartbeat.js';
+import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, trustRaw, trustSmooth, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams, PULSE_NOMINAL } from './heartbeat/heartbeat.js';
 
 /**
  * TICK-SYNK (2026-09-21, opt-in LOTUS_TICK_SYNC=1): motorn tickar i fas med radions
@@ -339,6 +339,10 @@ export interface LightCalibration {
    *  laser, fram till dess energi'): rasterpulsens tillit rampas 0 -> 1 (transientgolvet ligger kvar = energi pa alla anslag) over sa manga sekunder som tempot legat stabilt
    *  (+-3 %). Ny lat / tempo borta nollar. 0 = av (som forr). Intron = ren energi (nivakanalen), takten kommer in nar den bevisat sig. */
   beatLockHoldS?: number;
+  /** ENERGIDJUP (2026-09-23, agaren: 'energin skall kunna justera ljusstyrkan lika mycket som heart-beat kan'): pulsdjupet for
+   *  TRANSIENTERNA (onsetBoost), oberoende av taktens tillit. Standard = beatDepth. Rasterpulsen skalas med tilliten (rampad), inte
+   *  transienterna - forr var bd = beatDepth x trust for bada, sa i intron (tillit 0,35) fick transienterna bara en fjardedel. */
+  energyDepth?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -3296,11 +3300,19 @@ export class PiLightEngine {
         if (this._dropBoost < 0.01) this._dropBoost = 0;
       }
 
-      const bd    = tc.beatDepth * trust * this._secPulse;
+      // TVA VAGAR, TVA DJUP: transienterna (onsetBoost) med energyDepth oavsett tillit; rastret (_ppOut) med beatDepth x rampad tillit
+      // (utan golv - golvets jobb, 'transienterna ska synas', gors nu av onset-vagen sjalv). pn = max av de tva, normerade mot 0,45.
+      const trustGrid = (this._trustSm ?? 0) * this._lockRamp;
+      const pnOnset = Math.min(1, this.onsetBoost / PULSE_NOMINAL);
+      const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * trustGrid;
+      const eDepth = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
+      const bd    = Math.max(tc.beatDepth * trustGrid, eDepth) * this._secPulse;
+      const pnEff = pnOnset >= pnGrid ? pnOnset : pnGrid;
+      void trust;
 
       // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
       // i stället för att adderas — kan aldrig klippa och betyder mest när ljuset är lågt. toNormalized = golv..1 (output-lagrets steg).
-      const energyForm = composeEnergy(ceil, this._secScale, _build, bd, pn, this._dropBoost);
+      const energyForm = composeEnergy(ceil, this._secScale, _build, bd, pnEff, this._dropBoost);
       const outN = toNormalized(energyForm, floorN);
 
       _diag.energyNorm = outN;
