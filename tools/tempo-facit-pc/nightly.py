@@ -56,6 +56,31 @@ def run_bench(env_extra):
     return res
 
 
+# PI-HALSA UTAN SKAL (2026-09-23): morgonagenten kors obevakad och varje korning ar en ny session utan verktygsgodkannanden -
+# den kan inte kora Bash/PowerShell/ssh. Allt som kraver natverk hamtas darfor HAR (facit-tjanstens process, HTTP mot Pi:n,
+# ingen auth) och skrivs i dygnsposten (entry.piHealth) sa agenten bara behover LASA filer. Kors 04:30 = innan den planerade
+# rebooten 05:00, alltsa med kvallens drift i raknarna.
+def pi_health():
+    out = {'at': time.strftime('%H:%M')}
+    def get(path, t=8):
+        try: return json.load(urllib.request.urlopen(PI + path, timeout=t))
+        except Exception as e: return {'error': str(e)[:120]}
+    st = get('/api/status'); lv = get('/api/live'); cal = get('/api/calibration')
+    ac = (st.get('analyserCost') or {}) if isinstance(st, dict) else {}
+    out['status'] = {'ok': st.get('ok'), 'error': st.get('error'), 'engine': st.get('engine'), 'sonos': {k: (st.get('sonos') or {}).get(k) for k in ('playbackState', 'trackName', 'artistName')} if isinstance(st.get('sonos'), dict) else None,
+                     'subsystems': {k: (v or {}).get('status') for k, v in (st.get('subsystems') or {}).items()} if isinstance(st.get('subsystems'), dict) else None,
+                     'captureEnabled': st.get('captureEnabled'), 'ble': st.get('ble')}
+    out['analyserCost'] = {k: ac.get(k) for k in ('msEMA', 'msMax', 'overBudget', 'hops', 'budgetMs')} if ac else None
+    out['split'] = ac.get('split') if ac else None
+    out['runtime'] = st.get('runtime')
+    out['sync'] = lv.get('sync') if isinstance(lv, dict) else None
+    out['section'] = lv.get('section') if isinstance(lv, dict) else None
+    out['beat'] = lv.get('beat') if isinstance(lv, dict) else None
+    out['calibration'] = {k: cal.get(k) for k in ('beatLeadMs', 'onsetRiseMs', 'chainLatencyMs', 'beatTempoSmoothS', 'beatOctaveRule', 'useMetaTempo', 'useRecording', 'beatBpmGain', 'beatBpmKeep', 'anchorOffsetDb', 'windowDb')} if isinstance(cal, dict) and not cal.get('error') else cal
+    gaps = get('/api/ble/gaps'); out['bleGaps'] = gaps if isinstance(gaps, dict) else None
+    return out
+
+
 def pi_stats():
     try:
         rows = json.load(urllib.request.urlopen(PI + '/api/tempo/cache', timeout=20))
@@ -149,7 +174,8 @@ def main():
     bench = {name: run_bench(env) for name, env in VARIANTS.items()}
     sektionsbank = section_bench()
     pi = pi_stats()
-    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'sections': sections, 'sektionsbank': sektionsbank, 'sek': round(time.time() - t0)}
+    pi_h = pi_health()
+    entry = {'date': TODAY, 'at': time.strftime('%H:%M'), 'bench': {k: {kk: v.get(kk) for kk in ('korpus', 'synt', 'kick', 'onBeat', 'phaseBt', 'error')} for k, v in bench.items()}, 'pi': pi, 'piHealth': pi_h, 'sections': sections, 'sektionsbank': sektionsbank, 'sek': round(time.time() - t0)}
     os.makedirs(DAILY, exist_ok=True)
     with open(os.path.join(DAILY, TODAY + '.json'), 'w', encoding='utf-8') as f: json.dump({'entry': entry, 'benchRows': {k: v['rows'] for k, v in bench.items()}}, f, ensure_ascii=False, indent=1)
     with open(SB, 'a', encoding='utf-8') as f: f.write(json.dumps(entry, ensure_ascii=False) + '\n')
