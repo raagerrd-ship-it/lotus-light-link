@@ -248,6 +248,14 @@ export class Analyser {
    *  opt-in och AV som dokumentation av det negativa resultatet; nasta prov ar en konstant, inte en trim. */
   private static readonly GRID_PHASE_TRIM_ON = typeof process !== 'undefined' && process.env?.LOTUS_GRID_PHASE_TRIM === '1';
   private static readonly GRID_PHASE_TRIM_MS = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_TRIM_MS)) || 25;
+  /** ONSET-FRONTENS KONSTANTA SLAP (2026-09-23, opt-in LOTUS_GRID_PHASE_OFFSET_MS, standard 0).
+   *  Mattes fram av trimmens misslyckande (se ovan): gridet OCH kickarna ligger i samma fas, ~15 ms efter
+   *  ML-slagen (Beat This!). Kedjan ljud->ljus (30 ms, mat med klapp + 240 fps) ar en ANNAN sak och
+   *  kompenseras avsiktligt inte - det har ar ett matfel i sjalva detektorn: envelope-ringen ar 10 ms-hinkar
+   *  och fasscoret tar max over +-1 sampel, vilket skjuter estimatet efter anslaget. Darfor dras en KONSTANT
+   *  fran den utsanda gridfasen (positivt varde = rapportera slaget tidigare). Ingen inlarning, inget att
+   *  skena med. Mats i banken som foljarens offset-median mot Beat This!-slagen. */
+  private static readonly GRID_PHASE_OFFSET_MS = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_OFFSET_MS)) || 0;
   private static readonly GRID_PHASE_BASS_MIN = (typeof process !== 'undefined' && Number(process.env?.LOTUS_GRID_PHASE_BASS_MIN)) || 1.2;
   /** KLISTRIG FAS (09-20 15:10, live-spar): estimatet bytte halvslag var ~20 s pa NORTHMAN Remix med kvot 1,5 och foljaren hangde med.
    *  Ny fas > 0,3 slag fran forra tas bara nar dess poang slar forra fasens poang med STICKY_K under STICKY_N raka analyser (1,5 s).
@@ -3079,7 +3087,10 @@ export class Analyser {
     f.centroid = this.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.dropCount = this.dropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
-    f.kickAtMs = kickAtMs; f.barShift = barShift; f.beatPhaseMs = this.beatPhaseMs > 0 && Analyser.GRID_PHASE_TRIM_ON ? this.beatPhaseMs + this.phaseTrimMs() : this.beatPhaseMs; f.beatPhaseConf = this.beatPhaseConf;
+    f.kickAtMs = kickAtMs; f.barShift = barShift;
+    // Gridfasen ut: konstant offset (detektorns slap) och/eller trim. Bada 0/av som standard => oforandrad fas.
+    f.beatPhaseMs = this.beatPhaseMs > 0 ? this.beatPhaseMs - Analyser.GRID_PHASE_OFFSET_MS + (Analyser.GRID_PHASE_TRIM_ON ? this.phaseTrimMs() : 0) : this.beatPhaseMs;
+    f.beatPhaseConf = this.beatPhaseConf;
     if (Analyser.SECTION_ON) {
       const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
       for (let i = 0; i < 8; i++) g.spec[i] += this.bandAbs[i];
