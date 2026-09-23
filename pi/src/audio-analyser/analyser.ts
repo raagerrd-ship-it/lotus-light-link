@@ -278,7 +278,14 @@ export class Analyser {
    *  Kandidater, alla per 1 s-block, z-normerade mot latens historik som dB: W_BASSON = basonset-toppar/s (librosa-lik toppplockning
    *  pa ett dB-flux-envelope 20-250 Hz, INTE kickdetektorn), W_BASSENV = medelvarde av samma envelope, W_HIGH = de hoga bandens
    *  absolutniva (bandAbs 6+7, 3,5-16 kHz, dB), W_FLAT = spektral flathet over 8 band (geometriskt/aritmetiskt medel),
-   *  W_FLUX = helbandsflux (fluxNorm-medel), W_DYN = dynamik inom blocket (variationskoefficient for rms^2). */
+   *  W_FLUX = helbandsflux (fluxNorm-medel), W_DYN = dynamik inom blocket (variationskoefficient for rms^2).
+   *  MATT 09-23 (blockdump, AUC 4 s-fonster mot proxy-tier / akustiskt repeat-facit, train): basonset-toppar 0,51/0,48 (skiljer INGET -
+   *  facitets egen onsetPerS skiljer refrang fran vers 2 bara 0,59 mot 0,71 for dB), basenvelope 0,59/0,51, hoga band 0,63/0,71,
+   *  flathet 0,56/0,64, flux 0,62/0,73, dynamik 0,46/0,42 (fel tecken), dagens poang 0,64/0,68. BANK (frusen korpus 165, REPEAT 117):
+   *  W_HIGH 1,0 = enda som vinner pa TEST mot bada faciten: sektionsfacit 0,29/0,54/0,65/0,52 -> 0,29/0,57/0,71/0,52 (falsk-high lika),
+   *  refrang 2 <= 4 s akustiskt 7/30 -> 9/30 (median 9,1 -> 7,5 s), proxy 1/20 -> 2/20 (proxyns <= 8 s 6 -> 4/20, n litet);
+   *  train 0,29/0,61/0,71/0,47 -> 0,38/0,61/0,75/0,47, vers 2 ej high 0,50 -> 0,58. W_FLUX 1,0-1,5 neutral/samre pa refrang 2,
+   *  W_HIGH 1,5 lika bra pa test men sektionsfacit oforandrad pa train. Standard 0 (av) tills agaren slar pa. */
   private static readonly RANK_W_BASSON = Analyser.secEnv('LOTUS_SECTION_W_BASSON', 0);
   private static readonly RANK_W_BASSENV = Analyser.secEnv('LOTUS_SECTION_W_BASSENV', 0);
   private static readonly RANK_W_HIGH = Analyser.secEnv('LOTUS_SECTION_W_HIGH', 0);
