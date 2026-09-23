@@ -3330,13 +3330,18 @@ export class PiLightEngine {
       // (utan golv - golvets jobb, 'transienterna ska synas', gors nu av onset-vagen sjalv). pn = max av de tva, normerade mot 0,45.
       const trustGrid = (this._trustSm ?? 0) * this._lockRamp;
       const pnOnset = Math.min(1, this.onsetBoost / PULSE_NOMINAL);
-      const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * trustGrid;
+      // INGEN DUBBELPULS I ENERGILAGET (agaren 19:22: 'nagot far den att fladdra - krock med leadms?'): rasterpulsen ligger 72 ms FORE
+      // slaget (lead), anslagspulsen kommer EFTER - med bada aktiva blev det tva pulser per slag. Rastret ar 0 under (energyGridTrust - 0,15)
+      // och fullt fran energyGridTrust + 0,15; anslagen viktas ner i samma takt (ner till energyLockedMul).
+      const _gt = this.cal.energyGridTrust ?? 0.5;
+      const gridW = Math.max(0, Math.min(1, (trustGrid - (_gt - 0.15)) / 0.3));
+      const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * gridW;
       const eDepthMax = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
       { const _a = Math.min(1, (this.tickMs || 18) / 1500); this._onsetAct += (pnOnset - this._onsetAct) * _a; }
       const _actRef = Math.max(0.02, this.cal.energyActRef ?? 0.25);
       const eDepth = eDepthMax * Math.min(1, this._onsetAct / _actRef);
-      const bd    = Math.max(tc.beatDepth * trustGrid, eDepth) * this._secPulse;
-      const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - trustGrid);   // energi -> heart-beat: renare
+      const bd    = Math.max(tc.beatDepth * gridW, eDepth) * this._secPulse;
+      const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - gridW);   // energi -> heart-beat: renare
       const pnEff = Math.max(pnOnset * onsetW, pnGrid);
       void trust;
 
