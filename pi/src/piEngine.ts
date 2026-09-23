@@ -346,6 +346,9 @@ export interface LightCalibration {
   /** RENARE VID LAS (agaren 18:55: 'nar den gar over till heart-beat trimmar den synk och gor lite mer rent ljus'): transienternas vikt
    *  blandas ner med rastrets tillit, ner till denna rest (0,35 = ett riktigt anslag syns anda mellan slagen; 0 = bara rastret vid las). */
   energyLockedMul?: number;
+  /** OSYNK = OSAKER (agaren 19:02: 'battre den gar tillbaka till energi an kor osynk'): rastrets tillit skalas ner nar fasfelet
+   *  (|_beatErr|, andel av ett slag) overstiger denna grans (0 vid dubbla), och ar 0 i ateratagningsfonstret efter latbyte. */
+  beatSyncErrFrac?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -826,7 +829,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1936,7 +1939,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -1950,7 +1953,7 @@ export class PiLightEngine {
       subdivLevel: this._subdivLevel,
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, (this._trustSm ?? 0) * this._lockRamp),   // effektiv (med bevistidsrampen)
-      lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
+      syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -3215,7 +3218,11 @@ export class PiLightEngine {
       const _c = this._beat?.confidence ?? 0;
       const _lo = this.cal.beatTrustLoConf ?? 0.30;
       const _hi = this.cal.beatTrustHiConf ?? 0.70;
-      const _tRaw = trustRaw(_c, hasBeat(this._beat), _lo, _hi);
+      let _tRaw = trustRaw(_c, hasBeat(this._beat), _lo, _hi);
+      // OSYNK -> ENERGI: fasfel over gransen eller ateratagning efter latbyte drar ner den raa tilliten (smoothingen ger 0,8 s ner / 0,4 s upp).
+      const _syncLim = Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12), _syncErr = Math.abs(this._beatErr);
+      const _syncMul = Date.now() < this._reacqUntil ? 0 : _syncErr <= _syncLim ? 1 : Math.max(0, 1 - (_syncErr - _syncLim) / _syncLim);
+      _tRaw *= _syncMul; this._syncMul = _syncMul;
       // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
       // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
       // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
