@@ -352,6 +352,12 @@ export interface LightCalibration {
   /** ATERLAS I BAKGRUNDEN (agaren 19:05: 'battre den jobbar i bakgrunden med att synka igen innan den slapper pa'): har den raa tilliten
    *  legat under 0,2 langre an sa har manga ms nollas bevistiden, sa rastret maste klattra beatLockHoldS igen medan energin driver. */
   beatRelockAfterMs?: number;
+  /** ENERGIDJUPET FOLJER ANSLAGSTATHETEN (agaren 19:12: 'om det ar energi som kors nu, da ar den valdigt dim'): mellan anslagen lag ljuset
+   *  pa 30 % av taket, och med glesa anslag blev det mest morkt. Nu: djup = energyDepth x tathet, dar tathet = glidande medel av
+   *  transientpulsen (tau ~1,5 s) normerat mot energyActRef. Tata anslag = full puls som hjartslaget; glesa = ljuset ligger vid taket. */
+  energyActRef?: number;
+  /** Tillit (trustSm x lockRamp) som kravs for att gridet ska driva pulsen i stallet for anslagen. */
+  energyGridTrust?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -832,7 +838,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1942,7 +1948,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number; onsetAct: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -1956,7 +1962,7 @@ export class PiLightEngine {
       subdivLevel: this._subdivLevel,
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, (this._trustSm ?? 0) * this._lockRamp),   // effektiv (med bevistidsrampen)
-      syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
+      onsetAct: this._onsetAct, syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -2404,7 +2410,11 @@ export class PiLightEngine {
           (bands != null && Number.isFinite(peakBand) && peakBand >= energyFloor);
         // Grid-driven puls (taktklockan) tar över pulsen när takten är låst OCH
         // pålitlig; annars driver den verkliga onseten pulsen som förut.
-        const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat);
+        // GRIDET DRIVER BARA MED TILLIT (agaren 19:15: 'i energilage maste vi oka dynamiken for att matcha heart-beat'): forr rackte att ett
+        // tempo fanns -> transienterna fick aldrig satta pulsen (onsetAct 0,00 i energilaget = bara dimmat tak). Nu kraver gridet
+        // trustSm x lockRamp >= energyGridTrust (0,5); under det driver anslagen med samma nominella puls (0,45) som taktslagen.
+        const _trustGridNow = (this._trustSm ?? 0) * this._lockRamp;
+        const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat) && _trustGridNow >= (this.cal.energyGridTrust ?? 0.5);
         let kickFired = false;
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux är analysatorns per-band-onsets under
@@ -3321,7 +3331,10 @@ export class PiLightEngine {
       const trustGrid = (this._trustSm ?? 0) * this._lockRamp;
       const pnOnset = Math.min(1, this.onsetBoost / PULSE_NOMINAL);
       const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * trustGrid;
-      const eDepth = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
+      const eDepthMax = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
+      { const _a = Math.min(1, (this.tickMs || 18) / 1500); this._onsetAct += (pnOnset - this._onsetAct) * _a; }
+      const _actRef = Math.max(0.02, this.cal.energyActRef ?? 0.25);
+      const eDepth = eDepthMax * Math.min(1, this._onsetAct / _actRef);
       const bd    = Math.max(tc.beatDepth * trustGrid, eDepth) * this._secPulse;
       const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - trustGrid);   // energi -> heart-beat: renare
       const pnEff = Math.max(pnOnset * onsetW, pnGrid);
