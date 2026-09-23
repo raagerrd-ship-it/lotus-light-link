@@ -149,7 +149,7 @@ def sections_step():
 # upprepningsfacitet (repeat_facit.py -> repeats/<id>.json, backfyllt forst for nya langfangster). Bada faciten ar svaga var for
 # sig (10/26 overens om refrang 2) - rapportera alltid bada. Baslinje 09-22 test: tier 0/13 <=4 s, vers 2 0,26; akustiskt 11/30,
 # median 5,1 s, vers 2 0,46; sektionsfacit 0,27/0,54/0,65/0,52; forutsagelse 4/45 @ 2,0/min. LOTUS_NIGHTLY_SECTIONS=0 stanger av.
-SECTION_ENV = {'LOTUS_SECTION': '1', 'LOTUS_GRID_PHASE': '1', 'LOTUS_SECTION_REPEAT': os.environ.get('LOTUS_NIGHTLY_SECTION_REPEAT', '117')}
+SECTION_ENV = {'LOTUS_SECTION': '1', 'LOTUS_GRID_PHASE': '1', 'LOTUS_SECTION_REPEAT': os.environ.get('LOTUS_NIGHTLY_SECTION_REPEAT', '117'), 'LOTUS_SECTION_W_HIGH': os.environ.get('LOTUS_NIGHTLY_SECTION_W_HIGH', '1.0')}   # = Pi:ns drop-in analyser-split.conf (W_HIGH sedan 09-23)
 REPEATS = os.path.join(HERE, 'repeats')
 def repeats_step():
     py = os.path.join(HERE, '.venv', 'Scripts', 'python.exe'); py = py if os.path.exists(py) else sys.executable
