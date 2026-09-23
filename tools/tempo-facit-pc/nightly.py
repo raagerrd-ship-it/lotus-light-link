@@ -22,6 +22,12 @@ def already_done():
         return any(json.loads(l).get('date') == TODAY for l in f if l.strip())
 
 
+def fnum(x):
+    """Bankens medianer kan vara 'undefined'/'-' (inga langfangster i urvalet) - 09-23 kraschade hela nattjobbet pa float('undefined')."""
+    try: return float(x)
+    except (TypeError, ValueError): return None
+
+
 def run_bench(env_extra):
     env = dict(os.environ, **GRID, **env_extra)
     # encoding utf-8 + errors replace (09-21): cp1252-lasartraden dog pa en latitel (0x81) -> stdout None -> krasch 106 ggr i rad.
@@ -36,11 +42,11 @@ def run_bench(env_extra):
         mb = re.match(r'^korpus on-beat-recall: (\S+) \(median, n=(\d+)', line)
         if mb: res['onBeat'] = {'recall': float(mb.group(1)), 'n': int(mb.group(2))}; continue
         ms_ = re.match(r'^korpus sektionsfacit \(langfangster n=(\d+)\): gransfel-traff median (\S+), high==high andel median (\S+), refrang-recall median (\S+), falsk-high median (\S+)', line)
-        if ms_: res['sektion'] = {'n': int(ms_.group(1)), 'gransfel': float(ms_.group(2)), 'highEqHigh': float(ms_.group(3)), 'recall': float(ms_.group(4)), 'falskHigh': float(ms_.group(5))}; continue
+        if ms_: res['sektion'] = {'n': int(ms_.group(1)), 'gransfel': fnum(ms_.group(2)), 'highEqHigh': fnum(ms_.group(3)), 'recall': fnum(ms_.group(4)), 'falskHigh': fnum(ms_.group(5))}; continue
         mp = re.match(r'^korpus forutsagelse \(langfangster n=(\d+)\): refrangstart forutsedd (\d+)/(\d+) \((\d+) %\), lead median (\S+) s, falska/min median (\S+)', line)
-        if mp: res['forutsagelse'] = {'n': int(mp.group(1)), 'hit': int(mp.group(2)), 'tot': int(mp.group(3)), 'leadS': float(mp.group(5)), 'falskaPerMin': float(mp.group(6))}; continue
+        if mp: res['forutsagelse'] = {'n': int(mp.group(1)), 'hit': int(mp.group(2)), 'tot': int(mp.group(3)), 'leadS': fnum(mp.group(5)), 'falskaPerMin': fnum(mp.group(6))}; continue
         mr = re.match(r'^korpus refrang2 (?:facit=(\w+) )?\(n=(\d+)\): refrang 2 igenkand <=4 s (\d+)/(\d+), <=8 s (\d+)/(\d+), median (\S+) s \| refrang 1 <=4 s (\d+)/(\d+), median (\S+) s \| vers 2 ej high median (\S+) \| refrang 2 forutsedd (\d+)/(\d+)', line)
-        if mr: res['refrang2'] = {'facit': mr.group(1) or 'tier', 'n': int(mr.group(2)), 'ch2le4': int(mr.group(3)), 'ch2le8': int(mr.group(5)), 'ch2MedianS': (float(mr.group(7)) if mr.group(7) != '-' else None), 'ch1le4': int(mr.group(8)), 'ch1MedianS': (float(mr.group(10)) if mr.group(10) != '-' else None), 'vers2EjHigh': (float(mr.group(11)) if mr.group(11) != '-' else None), 'ch2Forutsedd': int(mr.group(12))}; continue
+        if mr: res['refrang2'] = {'facit': mr.group(1) or 'tier', 'n': int(mr.group(2)), 'ch2le4': int(mr.group(3)), 'ch2le8': int(mr.group(5)), 'ch2MedianS': fnum(mr.group(7)), 'ch1le4': int(mr.group(8)), 'ch1MedianS': fnum(mr.group(10)), 'vers2EjHigh': fnum(mr.group(11)), 'ch2Forutsedd': int(mr.group(12))}; continue
         mf = re.match(r'^korpus fas mot Beat This!: on-beat-andel median (\S+), motfas (\d+), i fas (\d+), mellan (\d+) \(n=(\d+)', line)
         if mf: res['phaseBt'] = {'median': float(mf.group(1)), 'motfas': int(mf.group(2)), 'ifas': int(mf.group(3)), 'mellan': int(mf.group(4)), 'n': int(mf.group(5))}; continue
         elif line.startswith(('korpus ', 'synt   ')):
