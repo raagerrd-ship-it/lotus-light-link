@@ -343,6 +343,9 @@ export interface LightCalibration {
    *  TRANSIENTERNA (onsetBoost), oberoende av taktens tillit. Standard = beatDepth. Rasterpulsen skalas med tilliten (rampad), inte
    *  transienterna - forr var bd = beatDepth x trust for bada, sa i intron (tillit 0,35) fick transienterna bara en fjardedel. */
   energyDepth?: number;
+  /** RENARE VID LAS (agaren 18:55: 'nar den gar over till heart-beat trimmar den synk och gor lite mer rent ljus'): transienternas vikt
+   *  blandas ner med rastrets tillit, ner till denna rest (0,35 = ett riktigt anslag syns anda mellan slagen; 0 = bara rastret vid las). */
+  energyLockedMul?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -3307,7 +3310,8 @@ export class PiLightEngine {
       const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * trustGrid;
       const eDepth = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
       const bd    = Math.max(tc.beatDepth * trustGrid, eDepth) * this._secPulse;
-      const pnEff = pnOnset >= pnGrid ? pnOnset : pnGrid;
+      const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - trustGrid);   // energi -> heart-beat: renare
+      const pnEff = Math.max(pnOnset * onsetW, pnGrid);
       void trust;
 
       // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
