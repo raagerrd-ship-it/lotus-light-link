@@ -9,7 +9,7 @@
 import { TempoTracker } from './tempoTracker.js';
 import {
   REC_LEN, RING_N, R_SEQ, R_PERF, R_WALL, R_ENV, R_BASS, R_FLAGS, R_HINT_MS, R_VCLOCK, R_SEC_N, R_SEC_INT, R_SEC_KICKS, R_SEC_BREAK,
-  R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS, R_FLAGCNT, RING_MARGIN, FLAG_BITS,
+  R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS, R_FLAGCNT, RING_MARGIN, FLAG_BITS, R_SEC_BON, R_SEC_BPK, R_SEC_FLUX, R_SEC_RMS4,
   packFlagCounts, lostFlags, seqLow, seqDelta, C_WAITING, C_STATE_SEQ, S_LOST_FLAGS,
   F_SIL350, F_SIL10, F_RESET_TEMPO, F_HINT, F_RESET_BAR, F_VCLOCK_SET, F_VCLOCK_NULL,
   C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PHASE_MS, S_PHASE_CONF, S_SECTION, S_SEC_START, S_SEC_INDEX, S_SEC_TIER,
@@ -272,6 +272,27 @@ export class Analyser {
   private static readonly RANK_WIN = Analyser.secEnv('LOTUS_SECTION_WIN', 4);
   private static readonly RANK_W_DENS = Analyser.secEnv('LOTUS_SECTION_W_DENS', 0.5);
   private static readonly RANK_W_CENT = Analyser.secEnv('LOTUS_SECTION_W_CENT', 0.5);
+  /** NYA SARDRAG I RANGPOANGEN (09-23, agent-sec6; alla 0 = av = identisk poang). Bakgrund: vers 2 och refrang skiljer < 1,5 dB,
+   *  kickraknaren ar mattad (~5,8/s overallt, den raknar tempo) och centroiden skiljer ~0,02 - vers 2 ar oskiljbar med dB/kick/centroid.
+   *  Facitets tiers (section_facit.py) = librosa-RMS + BASONSET-TATHET (onset_strength fmax 220 Hz -> onset_detect toppar/s).
+   *  Kandidater, alla per 1 s-block, z-normerade mot latens historik som dB: W_BASSON = basonset-toppar/s (librosa-lik toppplockning
+   *  pa ett dB-flux-envelope 20-250 Hz, INTE kickdetektorn), W_BASSENV = medelvarde av samma envelope, W_HIGH = de hoga bandens
+   *  absolutniva (bandAbs 6+7, 3,5-16 kHz, dB), W_FLAT = spektral flathet over 8 band (geometriskt/aritmetiskt medel),
+   *  W_FLUX = helbandsflux (fluxNorm-medel), W_DYN = dynamik inom blocket (variationskoefficient for rms^2). */
+  private static readonly RANK_W_BASSON = Analyser.secEnv('LOTUS_SECTION_W_BASSON', 0);
+  private static readonly RANK_W_BASSENV = Analyser.secEnv('LOTUS_SECTION_W_BASSENV', 0);
+  private static readonly RANK_W_HIGH = Analyser.secEnv('LOTUS_SECTION_W_HIGH', 0);
+  private static readonly RANK_W_FLAT = Analyser.secEnv('LOTUS_SECTION_W_FLAT', 0);
+  private static readonly RANK_W_FLUX = Analyser.secEnv('LOTUS_SECTION_W_FLUX', 0);
+  private static readonly RANK_W_DYN = Analyser.secEnv('LOTUS_SECTION_W_DYN', 0);
+  private static readonly RANK_W_NEW = Analyser.RANK_W_BASSON !== 0 || Analyser.RANK_W_BASSENV !== 0 || Analyser.RANK_W_HIGH !== 0 || Analyser.RANK_W_FLAT !== 0 || Analyser.RANK_W_FLUX !== 0 || Analyser.RANK_W_DYN !== 0;
+  /** Basonset-toppplockning (snabba sidan, var BIG_EVERY:e hop = 8 ms): librosa onset_detect-lika parametrar i sampel a 8 ms:
+   *  pre_max 4 (30 ms), pre/post_avg 12 (100 ms), wait 4 (30 ms), delta i dB (librosas 0,07 pa ett dB-envelope). */
+  private static readonly BASSON_DELTA = Analyser.secEnv('LOTUS_BASSON_DELTA', 0.07);
+  private static readonly BASSON_LEN = 32; private static readonly BASSON_AVG = 12; private static readonly BASSON_MAX = 4; private static readonly BASSON_WAIT = 4;
+  private bassOnRing = new Float32Array(Analyser.BASSON_LEN); private bassOnN = 0; private bassOnSum = 0; private bassOnLastPk = -1e9; private bassOnPeak = false;
+  private secBlkBon = 0; private secBlkBpk = 0; private secBlkFlux = 0; private secBlkRms4 = 0;
+  private secBlkH: { bon: number[]; bpk: number[]; high: number[]; flat: number[]; flux: number[]; dyn: number[] } = { bon: [], bpk: [], high: [], flat: [], flux: [], dyn: [] };
   private static readonly RANK_HYST = Analyser.secEnv('LOTUS_SECTION_HYST', 0.15);
   private static readonly RANK_RUN = Analyser.secEnv('LOTUS_SECTION_RUN', 3);
   /** SNABB ATTACK (09-22, agent-sec5, matt REFRANG 2): LOTUS_SECTION_RUN_IN = antal raka block for att ga IN i tier 2 (high) fran en
@@ -406,7 +427,7 @@ export class Analyser {
   private slowGap = false;         // slow: records tappade sedan senast behandlade -> kontrollera forlorade flaggor
   private slowLostFlags = 0;       // slow: antal flaggor som aterskapats ur raknarna efter tapp (statistik)
   splitRestarts = 0;               // fast: antal omstarter av workern (satts av index.ts)
-  private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, spec: new Float64Array(8) };
+  private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, spec: new Float64Array(8), bon: 0, bpk: 0, flux: 0, rms4: 0 };
   private inlinePeer: Analyser | null = null;
   private slowBusyEmaUs = 0; private slowBusyMaxUs = 0; private slowLagMaxMs = 0; private slowSkipped = 0; private slowProcessed = 0;
   private localBpm = 0;
@@ -926,6 +947,7 @@ export class Analyser {
   private sectionReset(): void {
     this.section = 'intro'; this.sectionStartMs = 0; this.sectionIndex = 0; this.sectionTier = 1; this.repeatSim = 0; this.repeatAgoMs = 0; this.repeatSection = '';
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0);
+    this.secBlkBon = 0; this.secBlkBpk = 0; this.secBlkFlux = 0; this.secBlkRms4 = 0; const H = this.secBlkH; H.bon.length = 0; H.bpk.length = 0; H.high.length = 0; H.flat.length = 0; H.flux.length = 0; H.dyn.length = 0;
     this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
@@ -938,13 +960,19 @@ export class Analyser {
 
   /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
    *  for de ~4 hoppen (split.ts). Samma matematik - medelvardena delas med secBlkN i bada fallen. */
-  private sectionHop(hops: number, intSum: number, kicks: number, breaking: boolean, nowMs: number, dtMs: number, rms2Sum: number, centSum: number, spec: ArrayLike<number>, specOff = 0): void {
+  private sectionHop(hops: number, intSum: number, kicks: number, breaking: boolean, nowMs: number, dtMs: number, rms2Sum: number, centSum: number, spec: ArrayLike<number>, specOff = 0, bonSum = 0, bpk = 0, fluxSum = 0, rms4Sum = 0): void {
     if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount; }
     this.secBlkMs += dtMs; this.secBlkN += hops; this.secBlkInt += intSum; this.secBlkKicks += kicks; this.secBlkCent += centSum; this.secBlkRms2 += rms2Sum;
+    this.secBlkBon += bonSum; this.secBlkBpk += bpk; this.secBlkFlux += fluxSum; this.secBlkRms4 += rms4Sum;
     for (let i = 0; i < 8; i++) this.secBlkSpec[i] += spec[specOff + i];
     if (this.secBlkMs < 1000) return;
     const n = this.secBlkN || 1; const bInt = this.secBlkInt / n; const bKicks = this.secBlkKicks; const bCent = this.secBlkCent / n;
     const blkDb = 10 * Math.log10(this.secBlkRms2 / n + 1e-10);
+    // NYA SARDRAG (09-23): basonset-envelope/toppar, hoga band, flathet, flux, dynamik - per block, se RANK_W_*.
+    const bBon = this.secBlkBon / n, bBpk = this.secBlkBpk / Math.max(0.25, this.secBlkMs / 1000), bFlux = this.secBlkFlux / n;
+    const m2 = this.secBlkRms2 / n, v2 = this.secBlkRms4 / n - m2 * m2; const bDyn = m2 > 1e-12 ? Math.sqrt(Math.max(0, v2)) / m2 : 0;
+    let sAr = 0, sGe = 0; for (let i = 0; i < 8; i++) { const v = this.secBlkSpec[i] / n + 1e-7; sAr += v; sGe += Math.log(v); }
+    const bFlat = Math.exp(sGe / 8) / (sAr / 8); const bHigh = 20 * Math.log10((this.secBlkSpec[6] + this.secBlkSpec[7]) / n + 1e-7);
     // tystnad mellan latar: 3 tysta block -> ny lat
     if (this.activeMs === 0) { if (++this.secSilentBlocks >= 10) { this.sectionReset(); return; } }   // 10 s tystnad (var 3: en tyst vers nollade laten, Regnblota 100 s)
     else this.secSilentBlocks = 0;
@@ -954,8 +982,9 @@ export class Analyser {
       // KAUSAL PERCENTILRANG (15:35): blockets dB (ra rms, fore AGC) och basonset-tathet (kickar/s) z-normeras mot alla block
       // hittills i laten, 4 s-fonstrets medelpoang rangordnas mot alla blockpoang hittills. Minst 20 s historik; innan dess 'intro'.
       const db = 10 * Math.log10(this.secBlkRms2 / n + 1e-10); this.secBlkDb.push(db); this.secBlkDens.push(bKicks); this.secBlkCentH.push(bCent); if (Analyser.REPEAT & 769) this.secBlkT.push(nowMs);
+      if (Analyser.RANK_W_NEW) { const H = this.secBlkH; H.bon.push(bBon); H.bpk.push(bBpk); H.high.push(bHigh); H.flat.push(bFlat); H.flux.push(bFlux); H.dyn.push(bDyn); }
       if (Analyser.REPEAT & 768) { const ft = new Float32Array(Analyser.FP2_DIM); let ssum = 0; for (let i = 0; i < 8; i++) ssum += this.secBlkSpec[i]; for (let i = 0; i < 8; i++) ft[i] = ssum > 0 ? this.secBlkSpec[i] / ssum : 0; ft[8] = bCent; ft[9] = Math.min(1, bKicks / 4); ft[10] = bInt; ft[11] = db / 10; this.secBlkFeat.push(ft); this.secBlkHi.push(0); }
-      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); if (Analyser.REPEAT & 769) this.secBlkT.shift(); if (Analyser.REPEAT & 768) { this.secBlkFeat.shift(); this.secBlkHi.shift(); } }
+      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); if (Analyser.RANK_W_NEW) { const H = this.secBlkH; H.bon.shift(); H.bpk.shift(); H.high.shift(); H.flat.shift(); H.flux.shift(); H.dyn.shift(); } if (Analyser.REPEAT & 769) this.secBlkT.shift(); if (Analyser.REPEAT & 768) { this.secBlkFeat.shift(); this.secBlkHi.shift(); } }
       const nb = this.secBlkDb.length;
       if (nb >= 20) {
         const D = this.secBlkDb, K = this.secBlkDens, C = this.secBlkCentH, wk = Analyser.RANK_W_DENS, wc = Analyser.RANK_W_CENT;
@@ -964,6 +993,10 @@ export class Analyser {
         sd = Math.max(1.0, Math.sqrt(sd / nb)); sk = Math.max(0.3, Math.sqrt(sk / nb)); sc = Math.max(0.02, Math.sqrt(sc / nb));
         this.secRank.md = md; this.secRank.sd = sd; this.secRank.mk = mk; this.secRank.sk = sk;
         const S = this.secScoreBuf; for (let i = 0; i < nb; i++) S[i] = (D[i] - md) / sd + wk * (K[i] - mk) / sk + wc * (C[i] - mc) / sc;
+        if (Analyser.RANK_W_NEW) {   // nya sardrag: z mot latens historik med sd-golv (skala per sardrag), viktade in i samma poang
+          const H = this.secBlkH; const add = (X: number[], w: number, floor: number) => { if (w === 0) return; let m = 0; for (let i = 0; i < nb; i++) m += X[i]; m /= nb; let s = 0; for (let i = 0; i < nb; i++) s += (X[i] - m) ** 2; s = Math.max(floor, Math.sqrt(s / nb)); for (let i = 0; i < nb; i++) S[i] += w * (X[i] - m) / s; };
+          add(H.bpk, Analyser.RANK_W_BASSON, 0.5); add(H.bon, Analyser.RANK_W_BASSENV, 0.02); add(H.high, Analyser.RANK_W_HIGH, 1.0); add(H.flat, Analyser.RANK_W_FLAT, 0.02); add(H.flux, Analyser.RANK_W_FLUX, 0.01); add(H.dyn, Analyser.RANK_W_DYN, 0.05);
+        }
         let win = 0; const W = Math.min(Analyser.RANK_WIN, nb); for (let i = nb - W; i < nb; i++) win += S[i]; win /= W;
         let below = 0, cnt = 0;
         if (Analyser.RANK_VS_WIN) { let acc = 0; for (let e = 1; e <= nb; e++) { acc += S[e - 1]; if (e > W) acc -= S[e - 1 - W]; if (e >= W) { cnt++; if (acc / W < win) below++; } } }
@@ -1082,8 +1115,8 @@ export class Analyser {
     if (this.section === 'high') { this.lastHighDb = this.secCurDbSum / this.secCurDbN; this.lastHighDens = this.secCurDens / this.secCurDbN; }   // pagaende refrang = farskaste referensen
     this.levelVsHighDb = Number.isFinite(this.lastHighDb) ? blkDb - this.lastHighDb : 0;
     this.predictHigh(nowMs, bInt);
-    if (this.dbgSecBlock) this.dbgSecBlock({ nowMs, section: this.section, sectionStartMs: this.sectionStartMs, prev, label, bpm: this.localBpm, bInt, bKicks, bCent, blkDb, buildUp: this.buildUp, riseRun: this.secRiseRun, rise, dropped, breaking, tier: this.sectionTier, repeatSim: this.repeatSim, repeatAgoMs: this.repeatAgoMs, repeatSection: this.repeatSection, spec: Array.from(this.secBlkSpec, (v) => v / n), lastHighDb: this.lastHighDb, expectHighMs: this.expectHighMs, expectSource: this.expectSource, beatPhaseMs: this.beatPhaseMs, secLogN: this.secLog.length, secLogLast: this.secLog[this.secLog.length - 1] ?? null });
-    if (Analyser.REPEAT & 1) { this.repeatStep(nowMs, blkDb, bKicks, bCent, bInt); this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0; return; }
+    if (this.dbgSecBlock) this.dbgSecBlock({ nowMs, section: this.section, sectionStartMs: this.sectionStartMs, prev, label, bpm: this.localBpm, bInt, bKicks, bCent, blkDb, buildUp: this.buildUp, riseRun: this.secRiseRun, rise, dropped, breaking, tier: this.sectionTier, repeatSim: this.repeatSim, repeatAgoMs: this.repeatAgoMs, repeatSection: this.repeatSection, spec: Array.from(this.secBlkSpec, (v) => v / n), lastHighDb: this.lastHighDb, expectHighMs: this.expectHighMs, expectSource: this.expectSource, beatPhaseMs: this.beatPhaseMs, secLogN: this.secLog.length, secLogLast: this.secLog[this.secLog.length - 1] ?? null, bBon, bBpk, bFlux, bDyn, bHigh, bFlat, pct: this.secPct });
+    if (Analyser.REPEAT & 1) { this.repeatStep(nowMs, blkDb, bKicks, bCent, bInt); this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0; this.secBlkBon = 0; this.secBlkBpk = 0; this.secBlkFlux = 0; this.secBlkRms4 = 0; return; }
     // klangavtryck var 4:e sekund
     let sum = 0; for (let i = 0; i < 8; i++) sum += this.secBlkSpec[i];
     const acc = this.secFpAcc; for (let i = 0; i < 8; i++) acc[i] += sum > 0 ? this.secBlkSpec[i] / sum : 0;
@@ -1103,7 +1136,7 @@ export class Analyser {
       this.secFpPos = (this.secFpPos + 1) % Analyser.FP_MAX; if (this.secFpN < Analyser.FP_MAX) this.secFpN++;
       acc.fill(0); this.secFpAccN = 0;
     }
-    this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0;
+    this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0); this.secBlkRms2 = 0; this.secBlkBon = 0; this.secBlkBpk = 0; this.secBlkFlux = 0; this.secBlkRms4 = 0;
   }
 
   /** KLANGMALL (se TEMPL_*). Kors per sektionsblock i rank-laget nar bit 256/512 ar pa, efter att blockets sardrag lagts i secBlkFeat.
@@ -1327,8 +1360,8 @@ export class Analyser {
   /** Roll 'all': sektionsblocket ur samma aggregat som workern far (se secAgg). */
   private sectionFlushAgg(): void {
     const g = this.secAgg; if (!Analyser.SECTION_ON || g.n === 0) return;
-    this.sectionHop(g.n, g.int, g.kicks, g.breaking > 0, g.wall, g.dt, g.rms2, g.cent, g.spec);
-    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0);
+    this.sectionHop(g.n, g.int, g.kicks, g.breaking > 0, g.wall, g.dt, g.rms2, g.cent, g.spec, 0, g.bon, g.bpk, g.flux, g.rms4);
+    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
   }
 
   // ── DELAD ANALYSATOR: snabba sidan ────────────────────────────────────────────────────────────
@@ -1346,10 +1379,11 @@ export class Analyser {
     r[o + R_SEC_N] = g.n; r[o + R_SEC_INT] = g.int; r[o + R_SEC_KICKS] = g.kicks; r[o + R_SEC_BREAK] = g.breaking; r[o + R_SEC_RMS2] = g.rms2;
     r[o + R_SEC_CENT] = g.cent; r[o + R_SEC_DT] = g.dt; r[o + R_SEC_WALL] = g.wall;
     for (let i = 0; i < 8; i++) r[o + R_SEC_SPEC0 + i] = g.spec[i];
+    r[o + R_SEC_BON] = g.bon; r[o + R_SEC_BPK] = g.bpk; r[o + R_SEC_FLUX] = g.flux; r[o + R_SEC_RMS4] = g.rms4;
     r[o + R_DROPS] = this.dropCount; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp;
     r[o + R_FLAGCNT] = packFlagCounts(this.flagCnt);
     r[o + R_SEQ] = seq;                                    // sist: seq = recordet ar komplett
-    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0);
+    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
     this.pendFlags = 0;
     Atomics.store(ctrl, C_WRITE, seqLow(seq));             // laga 32 bitarna; workern rekonstruerar via seqDelta (wrap-sakert)
     if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WRITE, 1);   // Dekker: workern satter C_WAITING fore wait-jamforelsen
@@ -1446,7 +1480,7 @@ export class Analyser {
     this.dropCount = r[o + R_DROPS]; this.activeMs = r[o + R_ACTIVE]; this.buildUp = r[o + R_BUILD];
     this.envStep();
     if (Analyser.SECTION_ON && r[o + R_SEC_N] > 0)
-      this.sectionHop(r[o + R_SEC_N], r[o + R_SEC_INT], r[o + R_SEC_KICKS], r[o + R_SEC_BREAK] > 0, r[o + R_SEC_WALL], r[o + R_SEC_DT], r[o + R_SEC_RMS2], r[o + R_SEC_CENT], r, o + R_SEC_SPEC0);
+      this.sectionHop(r[o + R_SEC_N], r[o + R_SEC_INT], r[o + R_SEC_KICKS], r[o + R_SEC_BREAK] > 0, r[o + R_SEC_WALL], r[o + R_SEC_DT], r[o + R_SEC_RMS2], r[o + R_SEC_CENT], r, o + R_SEC_SPEC0, r[o + R_SEC_BON], r[o + R_SEC_BPK], r[o + R_SEC_FLUX], r[o + R_SEC_RMS4]);
   }
 
   private computeBpm() {
@@ -2655,6 +2689,23 @@ export class Analyser {
     // Samma hissning som magnitud-loopen: pekarna ut ur this före det inre varvet.
     const bandLo = this.bandLo, bandHi = this.bandHi;
     const prevMagBig = this.prevMagBig;
+    if (Analyser.SECTION_ON) {
+      // BASONSET-ENVELOPE (09-23, sektionssardrag): som librosa onset_strength(fmax 220): medel over basbinen (20-250 Hz) av
+      // halvvagslikriktad dB-skillnad mot forra stor-FFT:n. Toppplockning som onset_detect (pre_max/avg/post_avg/wait/delta) pa
+      // 8 ms-raster med 100 ms fordrojning (post_avg) - toppen raknas i det block som pagar, sa fordrojningen ar harmlos.
+      const lo = bandLo[0], hi = bandHi[2]; let o = 0;
+      for (let i = lo; i < hi; i++) { const d = 20 * Math.log10((magBig[i] + 1e-6) / (prevMagBig[i] + 1e-6)); if (d > 0) o += d; }
+      o /= Math.max(1, hi - lo);
+      const L = Analyser.BASSON_LEN, R = this.bassOnRing, n = this.bassOnN, A = Analyser.BASSON_AVG;
+      R[n % L] = o; this.bassOnN = n + 1;
+      // kandidat c = n - A (100 ms bakat): lokalt max over [c - pre_max, c], >= medel over [c - A, c + A] + delta, wait sedan forra toppen
+      if (n >= 2 * A) {
+        const c = n - A; const xc = R[c % L]; let ok = true;
+        for (let k = 1; k <= Analyser.BASSON_MAX && ok; k++) if (R[(c - k) % L] > xc) ok = false;
+        if (ok) { let s = 0; for (let k = c - A; k <= n; k++) s += R[k % L]; if (xc < s / (2 * A + 1) + Analyser.BASSON_DELTA) ok = false; }
+        if (ok && c - this.bassOnLastPk > Analyser.BASSON_WAIT) { this.bassOnLastPk = c; this.bassOnPeak = true; }
+      }
+    }
     for (let b = 0; b < 8; b++) {
       const lo = bandLo[b], hi = bandHi[b];
       const nb = Math.max(1, hi - lo);
@@ -2970,6 +3021,7 @@ export class Analyser {
     if (Analyser.SECTION_ON) {
       const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
       for (let i = 0; i < 8; i++) g.spec[i] += this.bandAbs[i];
+      g.bon += this.bassOnRing[(this.bassOnN - 1 + Analyser.BASSON_LEN) % Analyser.BASSON_LEN]; if (this.bassOnPeak) { g.bpk++; this.bassOnPeak = false; } g.flux += fluxNorm; g.rms4 += rms * rms * rms * rms;
     }
     f.section = this.section; f.sectionAgeMs = this.sectionStartMs > 0 ? nowWallA - this.sectionStartMs : 0; f.sectionIndex = this.sectionIndex; f.sectionTier = this.sectionTier;
     f.repeatSim = this.repeatSim; f.repeatAgoMs = this.repeatAgoMs; f.repeatSection = this.repeatSection;
