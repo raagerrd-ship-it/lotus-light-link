@@ -26,6 +26,7 @@ import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { nextRasterEventAt, getRasterStats, resetRasterWindow, NOMINAL_PERIOD_MS } from './ble-driver/raster.js';
+import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, trustRaw, trustSmooth, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams } from './heartbeat/heartbeat.js';
 
 /**
  * TICK-SYNK (2026-09-21, opt-in LOTUS_TICK_SYNC=1): motorn tickar i fas med radions
@@ -1379,11 +1380,15 @@ export class PiLightEngine {
   }
   private notePulse(atMs = Date.now()): void { this._pulseRing[this._pulsePos] = atMs; this._pulsePos = (this._pulsePos + 1) & 255; }
   // Prediktiv puls: de senaste slagen som händelser (väggtid för pulsstart = slag − lead, amplitud). Nyckel = slagindex (dedupe ram/tick).
-  private _ppT = new Float64Array(8); private _ppA = new Float64Array(8); private _ppIdx = new Float64Array(8).fill(-1e9); private _ppPos = 0;
+  // HEART-BEAT (2026-09-23): pulsringen och pulsens form bor i heartbeat/heartbeat.ts (PulseTrack, pulseEnvelope, pulseAmpFor) —
+  // utbrutet VERBATIM, bevisat bit-identiskt i pi/scripts/heartbeatProof.mjs. Motorn äger bara tidsbaserna och kalibreringen.
+  private _pp = new PulseTrack();
   private _ppLastIdxTick = -1e9; private _ppOut = 0;
-  private ppPush(idxKey: number, tMs: number, amp: number): void {
-    for (let i = 0; i < 8; i++) if (this._ppIdx[i] === idxKey) { if (amp > this._ppA[i]) this._ppA[i] = amp; return; }
-    this._ppT[this._ppPos] = tMs; this._ppA[this._ppPos] = amp; this._ppIdx[this._ppPos] = idxKey; this._ppPos = (this._ppPos + 1) & 7;
+  private ppPush(idxKey: number, tMs: number, amp: number): void { this._pp.push(idxKey, tMs, amp); }
+  private pulseParams(): PulseShapeParams {
+    return { riseMs: this.cal.onsetRiseMs ?? 0, riseHoldK: this.cal.onsetRiseHoldK ?? 2.0, fadeMode: this.cal.fadeMode ?? 0, pulseIntervalMs: this._pulseIntervalMs,
+      shapeRel: this._shapeRel ?? 1, fadeEnergyCalm: this.cal.fadeEnergyCalm ?? 1.0, fadeEnergyIntense: this.cal.fadeEnergyIntense ?? 1.0,
+      fadeTauMin: this.cal.fadeTauMin ?? 0.12, fadeTauMax: this.cal.fadeTauMax ?? 1.2, fadeIntervalK: this.cal.fadeIntervalK ?? 0.35 };
   }
   // KLAPP-LAGE (2026-09-21, matning ljud->ljus): bredbands-onset (flux) -> vit 100 % i 150 ms, annars 5 %. Inga grindar,
   // ingen takt, ingen nivakanal. Slow-mo-video av en klapp ger da: hander mots (bild) vs ljudspik (A/V-offset) vs lampans blixt.
@@ -1399,31 +1404,13 @@ export class PiLightEngine {
     if (flux > Math.max(0.01, 4 * this._clapAvg) && now - this._clapLastMs > 250) { this._clapLastMs = now; console.log(`[klapp] onset flux ${flux.toFixed(3)} (medel ${this._clapAvg.toFixed(3)})`); }
     this._clapAvg += (flux - this._clapAvg) * 0.02;
   }
-  private ppClear(): void { this._ppIdx.fill(-1e9); this._ppOut = 0; this._ppLastIdxTick = -1e9; }
+  private ppClear(): void { this._pp.clear(); this._ppOut = 0; this._ppLastIdxTick = -1e9; }
   /** Pulsens envelope vid dt ms efter pulsstart: EMA-stigning (onsetRiseMs) mot amp i hold = riseHoldK×rise, sedan exp-avklingning
    *  med samma tau som processOnset (fadeMode 2: fadeIntervalK × pulsintervall, annars 0,04 per s). */
-  private ppEnv(dt: number, amp: number): number {
-    if (dt < 0) return 0;
-    const r = this.cal.onsetRiseMs ?? 0; const H = r > 0 ? r * (this.cal.onsetRiseHoldK ?? 2.0) : 0;
-    if (dt <= H) return r > 0 ? amp * (1 - Math.exp(-dt / r)) : amp;
-    const peak = r > 0 ? amp * (1 - Math.exp(-H / r)) : amp;
-    let tauS = 1 / Math.log(25);   // 0,04 per sekund
-    if ((this.cal.fadeMode ?? 0) === 2 && this._pulseIntervalMs > 0) {
-      const _rel = Math.min(1, Math.max(0, this._shapeRel ?? 1));
-      const _fE = (this.cal.fadeEnergyCalm ?? 1.0) + ((this.cal.fadeEnergyIntense ?? 1.0) - (this.cal.fadeEnergyCalm ?? 1.0)) * _rel;
-      tauS = Math.max(this.cal.fadeTauMin ?? 0.12, Math.min(this.cal.fadeTauMax ?? 1.2, (this.cal.fadeIntervalK ?? 0.35) * (this._pulseIntervalMs / 1000) * _fE));
-    }
-    return peak * Math.exp(-(dt - H) / (tauS * 1000));
-  }
+  private ppEnv(dt: number, amp: number): number { return pulseEnvelope(dt, amp, this.pulseParams()); }
   /** Amplitud för slag idx enligt samma regler som ramen (fireBase/accent/subdiv) — 0 = inget slag presenteras. */
   private ppAmpFor(idx: number): number {
-    const next = this._subdivLevel; const bpmNow = this._beat?.bpm ?? 0;
-    const fireBase = next !== -1 || ((((idx % 2) + 2) % 2) === 0);
-    if (!fireBase) return 0;
-    const accent = this.cal.barAccent ?? 1; const shift = (getLatestFrame() as any)?.barShift ?? -1;
-    const onOne = accent > 1 && shift >= 0 && ((((idx + shift) % 4) + 4) % 4) === 0;
-    void bpmNow;
-    return onOne ? Math.min(1, 0.45 * accent) : 0.45;
+    return pulseAmpFor(idx, this._subdivLevel, this.cal.barAccent ?? 1, (getLatestFrame() as any)?.barShift ?? -1);
   }
   /** Ticken (synk): pulsvärdet vid paketets visningsögonblick + look-ahead på slag ramen inte sett än. */
   private ppTick(): void {
@@ -1437,9 +1424,7 @@ export class PiLightEngine {
       this._ppLastIdxTick = idx;
       const amp = this.ppAmpFor(idx); if (amp > 0) this.ppPush(idx, this._beat.anchorMs + idx * per - lead, amp);
     }
-    let out = 0;
-    for (let i = 0; i < 8; i++) { if (this._ppIdx[i] <= -1e9) continue; const v = this.ppEnv(tDisp - this._ppT[i], this._ppA[i]); if (v > out) out = v; }
-    this._ppOut = out;
+    this._ppOut = this._pp.valueAt(tDisp, this.pulseParams());
   }
   /** For /api/status: vad katalogen sa, hur det stamde med analysatorn, och om det driver gridet. */
   get metaTempo(): { bpm: number; source: string; ratio: number; verdict: string; drives: boolean; tempoHint: number; tempoHintApplied: boolean } {
@@ -3159,12 +3144,10 @@ export class PiLightEngine {
       // ── 6. BRIGHTNESS — TAKTEN ÄR GRUNDEN, ENERGIN SÄTTER TAKET (multiplikativ).
       // Pulsen normaliseras mot sitt NOMINELLA mål (0.45) i stället för att klampas:
       // additivt klampade både vanligt slag och ettan till ~1.0 och accenten försvann.
-      const NOM = 0.45;                                   // grid-pulsens nominella onsetTarget
+      // (heartbeat.ts) pulsen normeras mot sitt nominella mål 0,45: pn = djupet inom taket, one = ettans överskott
       if (PULSE_PREDICT) { if (inSilence) this.ppClear(); else this.ppTick(); }
-      const p   = Math.max(this.onsetBoost, this._ppOut) / NOM;   // 1.0 på vanligt slag, upp till barAccent på ettan
-      const pn  = p < 1 ? p : 1;                          // djupet INOM taket
-      const acc = Math.max(1, cal.barAccent ?? 1);
-      const one = acc > 1 ? Math.min(1, Math.max(0, p - 1) / (acc - 1)) : 0;   // 1 på ettan
+      const { p, pn, one } = pulseSplit(this.onsetBoost, this._ppOut, cal.barAccent ?? 1);
+      void p;
 
       // buildUp OCH ettan höjer TAKET (adderas inte ovanpå — då klampar de bort pulsen)
       const _f = getLatestFrame();
@@ -3206,14 +3189,11 @@ export class PiLightEngine {
           }
         }
       }
-      let ceil = shapeUse * (1 + bu * (cal.buildUpGain ?? 0));
-      ceil += (1 - ceil) * one * (cal.barAccentLift ?? 0.30);
-      if (ceil > 1) ceil = 1;
-      // SEKTIONSDYNAMIK (2026-09-21): levelVsHighDb = blockets dB mot senaste refrangens medel — LATENS EGEN referens, inte
-      // dB-ankaret (som sjunker i lugna partier och gor dem lika ljusa som refrangen; agaren i ladan: "lyser mycket aven om laten
-      // blir tystare"). Tystare an refrangen -> taket skalas 1 + dB/SECTION_DYN_DB (12 dB -> golv), aldrig upp. 0 = av.
+      // TAKET (heartbeat.ts ceilingFrom): nivåform × uppbyggnad, ettan lyfter, sedan SEKTIONSDYNAMIK (2026-09-21): levelVsHighDb =
+      // blockets dB mot senaste refrangens medel — LATENS EGEN referens, inte dB-ankaret (som sjunker i lugna partier; agaren i ladan:
+      // "lyser mycket aven om laten blir tystare"). Tystare an refrangen -> taket × (1 + dB/SECTION_DYN_DB), golv SECTION_DYN_FLOOR. 0 = av.
       const _lv = _f ? ((_f as any).levelVsHighDb ?? 0) : 0;
-      if (SECTION_DYN_DB > 0 && _lv < 0) { const g = 1 + _lv / SECTION_DYN_DB; ceil *= g > SECTION_DYN_FLOOR ? g : SECTION_DYN_FLOOR; }
+      const ceil = ceilingFrom(shapeUse, bu, cal.buildUpGain ?? 0, one, cal.barAccentLift ?? 0.30, _lv, SECTION_DYN_DB, SECTION_DYN_FLOOR);
 
       // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
       // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
@@ -3222,13 +3202,12 @@ export class PiLightEngine {
       const _c = this._beat?.confidence ?? 0;
       const _lo = this.cal.beatTrustLoConf ?? 0.30;
       const _hi = this.cal.beatTrustHiConf ?? 0.70;
-      const _tRaw = hasBeat(this._beat) ? Math.min(1, Math.max(0, (_c - _lo) / Math.max(1e-6, _hi - _lo))) : 0;
+      const _tRaw = trustRaw(_c, hasBeat(this._beat), _lo, _hi);
       // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
       // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
       // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
       const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
-      const _tA = Math.min(1, TICK_PERIOD_MS / (this._trustSm != null && _tRaw < this._trustSm ? _down : _up));
-      this._trustSm = (this._trustSm == null) ? _tRaw : this._trustSm + (_tRaw - this._trustSm) * _tA;
+      this._trustSm = trustSmooth(_tRaw, this._trustSm, TICK_PERIOD_MS, _up, _down);
       const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm);
 
       // ── SEKTIONSBETEENDE ────────────────────────────────────────────────
@@ -3303,15 +3282,10 @@ export class PiLightEngine {
 
       const bd    = tc.beatDepth * trust * this._secPulse;
 
-      let energyForm = ceil * this._secScale * _build * ((1 - bd) + bd * pn);
-      // Dropen lyfter MOT taket i stallet for att adderas — sa den aldrig kan
-      // klippa, och sa den betyder mest nar ljuset ar lagt (vilket ar precis
-      // dar en drop gor storst intryck).
-      if (this._dropBoost > 0) energyForm += this._dropBoost * (1 - energyForm);
-      if (energyForm > 1) energyForm = 1;
-      let outN = floorN + energyForm * (1 - floorN);
-      if (outN < floorN) outN = floorN;
-      if (outN > 1) outN = 1;
+      // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
+      // i stället för att adderas — kan aldrig klippa och betyder mest när ljuset är lågt. toNormalized = golv..1 (output-lagrets steg).
+      const energyForm = composeEnergy(ceil, this._secScale, _build, bd, pn, this._dropBoost);
+      const outN = toNormalized(energyForm, floorN);
 
       _diag.energyNorm = outN;
       let pct = outN * 100;
