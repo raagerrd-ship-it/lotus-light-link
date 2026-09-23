@@ -364,6 +364,8 @@ export interface LightCalibration {
   energyGridTrust?: number;
   /** Kortaste avstand mellan anslagspulser i energilaget (ms). */
   energyMinGapMs?: number;
+  /** I overgangen: anslag far bara fyra inom denna andel av slaget fran ett forutsagt slag. */
+  energyBeatWinFrac?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -844,7 +846,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1072,7 +1074,14 @@ export class PiLightEngine {
       // i energilaget satter anslagen pulsen, men hogst en per energyMinGapMs (330 = ~3/s). PLL:en ser fortfarande varje flank (fired).
       if (allowTrigger) {
         const _nowE = Date.now(), _gap = this.cal.energyMinGapMs ?? 330;
-        if (_nowE - this._lastEnergyPulseMs >= _gap) { this.onsetTarget = 0.45; this._lastEnergyPulseMs = _nowE; }
+        // I OVERGANGEN (rastret har vikt men ar inte fullt): anslag far bara fyra nara ett forutsagt slag (+-energyBeatWinFrac av slaget),
+        // annars dubblar de rasterpulsen mellan slagen = fladder (matt 21:10 'Mio min mio': 0,1-0,27 s intervall i 0,44 s-takt).
+        let _onGrid = true;
+        if (this._gridW > 0 && hasBeat(this._beat)) {
+          const _ph = beatPhase(this._beat!, _nowE); const _d = Math.min(_ph, 1 - _ph);
+          _onGrid = _d <= (this.cal.energyBeatWinFrac ?? 0.2);
+        }
+        if (_onGrid && _nowE - this._lastEnergyPulseMs >= _gap) { this.onsetTarget = 0.45; this._lastEnergyPulseMs = _nowE; }
       }
     }
 
@@ -3362,6 +3371,7 @@ export class PiLightEngine {
       const _gt = this.cal.energyGridTrust ?? 0.5;
       const gridW = Math.max(0, Math.min(1, (trustGrid - (_gt - 0.15)) / 0.3));
       const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * gridW;
+      this._gridW = gridW;
       const eDepthMax = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
       { const _a = Math.min(1, (this.tickMs || 18) / 1500); this._onsetAct += (pnOnset - this._onsetAct) * _a; }
       const _actRef = Math.max(0.02, this.cal.energyActRef ?? 0.25);
