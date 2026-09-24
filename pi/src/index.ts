@@ -127,6 +127,43 @@ const _inflight: Partial<Record<SubsystemId, Promise<void>>> = {};
 let _sonosPlayingHandler: ((playing: boolean) => Promise<void> | void) | null = null;
 let _lastSonosPlaying: boolean | null = null;
 
+// ── INSPELAREN (2026-09-24): egen modul bredvid analysatorn (recorder/recorder.ts, samma fil i pi-dmx). ──
+// Den far rasamplen fran input-lagret (alsaMic) och laser drop/sektion/gridfas ur analysatorns Frame; allt
+// lotus-specifikt (latnyckel, tempocache, ljusstyrka, motorns pulser, Sonos-lage) kommer in som krokar har.
+// Fangsterna (tempo 10 s in / 30 s, drop 15+15 s, max 2 per lat, ko 30) hamtas av PC:n via /api/tempo/snippets.
+// PUT /api/tempo/capture-enabled {enabled} = brytaren (sparas i tempo-capture.json).
+let recorder: import('./recorder/recorder.js').Recorder | null = null;
+async function startRecorder(): Promise<void> {
+  if (recorder || !alsaMic) return;
+  const { Recorder } = await import('./recorder/recorder.js');
+  const { DATA_DIR } = await import('./storage.js');
+  const { songKey } = await import('./songStore.js');
+  const { getLastSent } = await import('./ble-driver/protocol.js');
+  const mic: any = alsaMic;
+  recorder = new Recorder({
+    dir: DATA_DIR + '/snippets', sampleRate: 48000, enabled: true, enabledFile: DATA_DIR + '/tempo-capture.json',
+    sectionS: SECTION_CAPTURE_S, sectionMax: SECTION_CAPTURE_MAX, sectionCountFile: DATA_DIR + '/section-captures.json',
+  }, {
+    latestFrame: () => mic?.getLatestFrame?.() ?? null,
+    recentKicks: () => mic?.getRecentKicks?.() ?? [],
+    brightness: () => getLastSent()?.pct,
+    pulses: (since) => engineInstance?.getRecentPulses(since) ?? [],
+    beatInfo: () => engineInstance?.getBeatInfo() ?? null,
+    isPlaying: () => !!_lastSonosPlaying,
+    ready: () => !!tempoCacheRef && !!engineInstance && !!alsaMic,
+    songKey: (artist, title) => songKey(artist, title),
+    hasTempo: (key) => { const row: any = tempoCacheRef?.get(key); return !!(row && row.bpm > 0 && row.pc); },
+    hasSection: (key) => { const row: any = tempoCacheRef?.get(key); return !!(row && row.secAt); },
+    markSection: (key) => { (tempoCacheRef as any)?.update?.(key, { secAt: Date.now() }); },
+    sectionBlocked: () => !!(engineInstance as any)?.isTvMode?.(),
+    takeManual: () => configServer?.takeManualCapture?.() ?? null,
+  });
+  mic.attachRecorder?.(recorder);
+  recorder.enablePreroll(true);   // 15 s forbuffert @48 kHz for dropfangster (1,44 MB)
+  configServer?.setCaptureToggle?.(() => recorder!.isEnabled(), (on: boolean) => recorder!.setEnabled(on));
+  recorder.start();
+}
+
 /** Sparad config får aldrig tyst peka lokalt — gatewayen körs på en annan maskin. */
 function normalizeSonosBaseUrl(raw: string | null | undefined, isLocal: (u: string | null) => boolean): string | null {
   const trimmed = (raw ?? '').trim().replace(/\/$/, '');
@@ -401,7 +438,7 @@ async function startMicSubsystem(): Promise<void> {
       });
 
       alsaMic.startMic();
-      (alsaMic as any).enablePreroll?.(true);   // 15 s forbuffert @48 kHz for dropfangster (1,44 MB)
+      await startRecorder();   // inspelaren (egen modul bredvid analysatorn): 15 s forbuffert @48 kHz + fangstlogik
       eng.start();
       try {
         await alsaMic.waitForFirstAudio(3000);
@@ -478,8 +515,8 @@ async function startSonosSubsystem(): Promise<void> {
       let lastArtist: string | null = null;
       const noteTrackName = (name: string | null, artist?: string | null) => {
         if (artist !== undefined) lastArtist = artist;
+        recorder?.noteTrack(name, artist);
         if (name === lastTrackName) return;
-        if (_captureBusy && !_captureTrackChangeMs) _captureTrackChangeMs = Date.now();
         lastTrackName = name;
         if (trackDebounce) clearTimeout(trackDebounce);
         if (!name) return;                       // TV/tomt namn är inget låtbyte
@@ -488,123 +525,10 @@ async function startSonosSubsystem(): Promise<void> {
           if (name !== lastTrackName) return;    // hann ändras igen → glitch
           engineInstance?.notifyTrackChange(lastArtist, name);
           void resolveMetaTempo(lastArtist, name);
-          scheduleSnippet(lastArtist, name);
+          recorder?.trackChanged(lastArtist, name);
         }, 1500);
       };
-      // SNUTT + HANDELSELOGG FOR PC-ANALYS (09-19). Tva slag av fangst, samma vag:
-      //   'tempo': 10 s in i laten, 30 s @48 kHz (samma ljud som analysatorn)
-      //   'drop':  nar realtidsdetektorn fyrar (frame.dropCount) eller pa begaran (POST /api/tempo/capture):
-      //            15 s fore (forbuffert) + 15 s efter, sa PC:n ser uppbyggnaden och kan doma om det var en drop
-      // Under fonstret loggas kick-ringen, gridpulsernas fyrtider, ljusstyrkan (10 Hz, = lastSent.pct) och
-      // drop/riser-flaggorna -> <id>.events.json bredvid WAV:en. PC:n raknar slagfas, kickbias, nivakorrelation
-      // med lag, onset-precision, dropdom och deskriptorer mot SAMMA ljud. Ko max 30 (PC:n borta -> vanta).
-      let _captureBusy = false; let _dropCapturesThisSong = 0; let _lastDropCount = -1;
-      let _captureTrackChangeMs = 0;
-      const runCapture = async (kind: 'tempo' | 'drop' | 'section', artist: string | null, title: string, seconds: number, prerollS: number) => {
-        if (!tempoCacheRef || !engineInstance || !alsaMic || _captureBusy) return;
-        try {
-          const mic: any = alsaMic; const st = mic.getRawCaptureStatus?.();
-          if (st?.active) return;
-          if (!_captureEnabled) return;
-          const { songKey } = await import('./songStore.js'); const key = songKey(artist || '', title);
-          const id = kind === 'tempo' ? key : key + (kind === 'drop' ? '#d' : '#s') + Date.now().toString(36);
-          const fname = id.replace(/\|/g, '__').replace(/#/g, '_');
-          const { readdirSync, mkdirSync, writeFileSync } = await import('node:fs');
-          const dir = (await import('./storage.js')).DATA_DIR + '/snippets'; mkdirSync(dir, { recursive: true });
-          const pending = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.endsWith('.events.json'));
-          if (pending.includes(fname + '.json') || pending.length >= 30) return;
-          const { getLastSent } = await import('./ble-driver/protocol.js');
-          _captureBusy = true; _captureTrackChangeMs = 0;
-          mic.startRawCapture(seconds, title, true, prerollS);
-          const t0 = Date.now();
-          console.log(`[tempo] fangst ${kind}: ${prerollS ? prerollS + ' s fore + ' : ''}${seconds} s @48 kHz for "${title}"`);
-          const kicks = new Set<number>(); const bright: number[][] = []; const flags: number[][] = []; let lastFlag = '';
-          const phases: number[][] = []; let lastPhase = 0;   // analysatorns gridfas (beatPhaseMs, conf) nar den andras (4 Hz) - skiljer analysatorfel fran foljarfel (09-20 kvall: 2/8 latar i motfas)
-          const tick = setInterval(() => {
-            try {
-              const now = Date.now(); const f: any = mic.getLatestFrame?.();
-              const pct = getLastSent()?.pct; if (typeof pct === 'number') bright.push([now, Math.round(pct) / 100]);
-              if (f) {
-                const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.breaking ? 1 : 0}|${f.inZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
-                if (fl !== lastFlag) { lastFlag = fl; flags.push([now, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.breaking ? 1 : 0, f.inZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); }
-              }
-              if (f && typeof f.beatPhaseMs === 'number' && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhase) { lastPhase = f.beatPhaseMs; phases.push([Math.round(f.beatPhaseMs), Math.round((f.beatPhaseConf ?? 0) * 100) / 100, f.bpm ?? 0]); }
-              if (bright.length % 50 === 1) for (const k of (mic.getRecentKicks?.() ?? [])) kicks.add(k);
-            } catch { /* loggen far aldrig falla motorn */ }
-          }, 100);
-          setTimeout(() => {
-            clearInterval(tick); _captureBusy = false;
-            try {
-              for (const k of (mic.getRecentKicks?.() ?? [])) kicks.add(k);
-              if (kind === 'tempo' && title !== lastTrackName) { mic.getRawCaptureWav?.(); return; }   // laten bytte - kasta
-              const truncatedAtMs = kind === 'section' && title !== lastTrackName ? (_captureTrackChangeMs || Date.now()) : 0;
-              const wav = mic.getRawCaptureWav?.(); if (!wav) return;
-              const meta = mic.getRawCaptureMeta?.() ?? { startWallMs: t0, prerollSamples: 0, rate: 48000 };
-              const since = meta.startWallMs - 1000;
-              const events = { id, key, kind, artist: artist || '', title, captureStartWallMs: meta.startWallMs, prerollSamples: meta.prerollSamples, rate: 48000,
-                seconds: (wav.length - 44) / 2 / 48000, beat: engineInstance!.getBeatInfo(), kicks: [...kicks].filter((k) => k >= since).sort((a, b) => a - b),
-                pulses: engineInstance!.getRecentPulses(since), bright, flags, phases, ...(truncatedAtMs ? { truncatedAtMs } : {}) };
-              // ASYNKRONT (09-21): writeFileSync av 3-14 MB WAV pa SD-kortet stallade event-loopen 100-500 ms = sena ticks/gammalt ljus.
-              // Ordning bevaras (index-json sist) sa PC:n aldrig ser en halv snutt.
-              const _t0w = performance.now();
-              import('node:fs/promises').then(async (fsp) => {
-                await fsp.writeFile(dir + '/' + fname + '.wav', wav);
-                await fsp.writeFile(dir + '/' + fname + '.events.json', JSON.stringify(events));
-                await fsp.writeFile(dir + '/' + fname + '.json', JSON.stringify({ id, key, kind, artist: artist || '', title, capturedAt: Date.now(), rate: 48000, seconds: events.seconds, hasEvents: true }));
-                console.log(`[tempo] snutt sparad: ${id} (${(wav.length / 1e6).toFixed(1)} MB, ${events.kicks.length} kickar, ${events.pulses.length} pulser, ${bright.length} ljusprov, ko ${pending.length + 1}, ${(performance.now() - _t0w).toFixed(0)} ms async)`);
-              }).catch((e) => console.log('[tempo] snutt kunde inte sparas:', (e as Error).message));
-            } catch (e) { console.log('[tempo] snutt kunde inte sparas:', (e as Error).message); }
-          }, (seconds + 2) * 1000);
-        } catch (e) { _captureBusy = false; console.log('[tempo] fangst misslyckades:', (e as Error).message); }
-      };
-      // BRYTARE (09-21, anvandaren: "toggla av inspelning nar vi tidsmater"): fangsterna (snutt/drop/sektion) ar de storsta
-      // stall-kallorna pa huvudtraden. PUT /api/tempo/capture-enabled {enabled} - sparas i tempo-capture.json, syns i /api/status.
-      const _captureFlagFile = (await import('./storage.js')).DATA_DIR + '/tempo-capture.json';
-      let _captureEnabled = true;
-      try { _captureEnabled = JSON.parse((await import('node:fs')).readFileSync(_captureFlagFile, 'utf8')).enabled !== false; } catch { /* standard pa */ }
-      configServer?.setCaptureToggle?.(() => _captureEnabled, (on: boolean) => {
-        _captureEnabled = on;
-        import('node:fs/promises').then((fsp) => fsp.writeFile(_captureFlagFile, JSON.stringify({ enabled: on, at: Date.now() }))).catch(() => { /* flaggan far aldrig falla motorn */ });
-        console.log(`[tempo] fangster ${on ? 'PA' : 'AV'} (capture-enabled)`);
-      });
-      if (!_captureEnabled) console.log('[tempo] fangster AV (tempo-capture.json) - inga snuttar/dropfangster till PC:n');
-      const _sectionCountFile = (await import('./storage.js')).DATA_DIR + '/section-captures.json';
-      let _sectionCaptures = 0;
-      try { _sectionCaptures = Number(JSON.parse((await import('node:fs')).readFileSync(_sectionCountFile, 'utf8')).count) || 0; } catch { /* forsta gangen */ }
-      const _fsMod = await import('node:fs');
-      const _saveSectionCount = () => { try { _fsMod.writeFileSync(_sectionCountFile, JSON.stringify({ count: _sectionCaptures, at: Date.now() })); } catch { /* raknaren far aldrig falla motorn */ } };
-      if (SECTION_CAPTURE_S > 0) console.log(`[tempo] langfangst for sektionsfacit PA: ${SECTION_CAPTURE_S} s, ${_sectionCaptures}/${SECTION_CAPTURE_MAX} tagna`);
-      const scheduleSnippet = (artist: string | null, title: string) => {
-        _dropCapturesThisSong = 0;
-        setTimeout(async () => {
-          try {
-            if (title !== lastTrackName || !tempoCacheRef) return;
-            const { songKey } = await import('./songStore.js');
-            const row: any = tempoCacheRef.get(songKey(artist || '', title));
-            if (SECTION_CAPTURE_S > 0 && !(row && row.secAt) && _sectionCaptures < SECTION_CAPTURE_MAX && !(engineInstance as any)?.isTvMode?.() && !_captureBusy) {
-              // raknas bara nar fangsten faktiskt startar (busy/aktiv fangst -> vanlig tempofangst nasta gang i stallet)
-              _sectionCaptures++; _saveSectionCount();
-              (tempoCacheRef as any).update?.(songKey(artist || '', title), { secAt: Date.now() });
-              void runCapture('section', artist, title, SECTION_CAPTURE_S, 0);
-              return;
-            }
-            if (row && row.bpm > 0 && row.pc) return;          // facit + PC-analys finns redan
-            void runCapture('tempo', artist, title, 30, 0);
-          } catch { /* aldrig falla motorn */ }
-        }, 10000);
-      };
-      // DROPTRIGGER: 4 Hz-poll pa analysatorns dropCount (+ manuell begaran). Max 2 per lat.
-      setInterval(() => {
-        try {
-          const f: any = (alsaMic as any)?.getLatestFrame?.(); const manual = configServer?.takeManualCapture?.();
-          const fired = !!(f && typeof f.dropCount === 'number' && _lastDropCount >= 0 && f.dropCount !== _lastDropCount);
-          if (f && typeof f.dropCount === 'number') _lastDropCount = f.dropCount;
-          if ((fired || manual) && lastTrackName && _lastSonosPlaying && _dropCapturesThisSong < 2) {
-            _dropCapturesThisSong++;
-            void runCapture('drop', lastArtist, lastTrackName, 15, 15);
-          }
-        } catch { /* aldrig falla motorn */ }
-      }, 250);
+      // FANGSTERNA (snutt/drop/sektion + handelselogg) bor i inspelaren (recorder/recorder.ts), se startRecorder().
       // Katalogtempo for den nya laten: cache forst (0 ms), annars Deezer (~0,8 s). Svaret
       // skickas bara om laten fortfarande ar densamma; motorn kontrollerar ocksa sjalv.
       const resolveMetaTempo = async (artist: string | null, title: string) => {

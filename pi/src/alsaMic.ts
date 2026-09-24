@@ -16,6 +16,7 @@
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame, type Analyser } from './audio-analyser/index.js';
+import type { Recorder } from './recorder/recorder.js';
 import { Fingerprinter, type Landmark } from './fingerprint.js';
 import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
 
@@ -545,124 +546,31 @@ let acrBuf = new Int16Array(ACR_MAX_SAMPLES);
 let acrLen = 0;
 let acrDecimCount = 0;
 
-// ── RAW_CAPTURE (2026-08-31) ────────────────────────────────────────────
-// FULL-RATE rå-PCM (48 kHz), till skillnad från ACR-buffern ovan som decimerar
-// till 8 kHz för fingerprinting. Syftet är ett annat: att kunna spela upp EXAKT
-// det ljud som orsakade ett fel genom analysatorn i offline-bänken, om och om
-// igen, och A/B:a kodändringar mot identisk insignal.
-//
-// VARFÖR: bänken (pi-dmx/engine/tools/testBpmHard.mjs) har bara syntetiska
-// scenarier. Uppmätt 2026-08-31: inget av dem — inte ens en medvetet skärpt
-// subharmonisk fälla — reproducerar det verkliga 2/3-felet (137 → 93 BPM i 43 s).
-// Utan riktigt ljud går det inte att skilja "fixen fungerar" från "materialet
-// råkade vara snällare", vilket är den fälla som kostat mest tid i projektet.
-//
-// HELA LÅTAR, INTE UTDRAG (2026-09-01).
-// Ett 40-sekundersklipp duger till TEMPO men inte till STRUKTUR: klippet ÄR
-// introt, och strukturmodellen svarar då helt riktigt "intro/intro" (uppmätt).
-// Sektioner, taktettor och drops kräver hela låten.
-//
-// Därför decimeras rå-capturen till 16 kHz — samma takt som systerprojektet
-// pi-dmx skickar till samma modell, alltså en beprövad kvalitet för ändamålet.
-// Minnet är det som styr: motorn har MemoryMax 300 MB och Pi:n 416 MB TOTALT.
-//   48 kHz, 7 min = 40 MB   → oacceptabelt
-//   16 kHz, 7 min = 13,4 MB → ryms
-const RAW_RATE = 16000;
-const RAW_DECIM = SAMPLE_RATE / RAW_RATE;   // 3
-const RAW_MAX_SECONDS = 420;                // 7 min täcker praktiskt taget allt
-const RAW_MAX_SAMPLES = RAW_RATE * RAW_MAX_SECONDS;
-let rawCaptureActive = false;
-let rawBuf: Int16Array | null = null;
-let rawLen = 0;
-let rawTarget = 0;
-// FULL-RATE (09-19): facit fran PC:n ska raknas pa SAMMA ljud som analysatorn (48 kHz, samma kanal),
-// inte pa 16 kHz-decimatet. 30 s @48 kHz = 2,9 MB - ryms. rawRate/rawDecimN valjs per capture.
-let rawRate = RAW_RATE; let rawDecimN = RAW_DECIM;
-// FORBUFFERT (09-19): rullande 15 s @48 kHz (1,44 MB Int16) sa en dropfangst kan borja 15 s FORE handelsen
-// (realtidsdetektorn fyrar vid smallen; PC:n vill se uppbyggnaden). Pa nar motorn begart det (enablePreroll).
-const PRE_SECONDS = 15; const PRE_LEN = SAMPLE_RATE * PRE_SECONDS;
-let preBuf: Int16Array | null = null; let prePos = 0; let preFilled = 0;
-let rawStartWallMs = 0; let rawPrerollSamples = 0;
-export function enablePreroll(on: boolean): void {
-  if (on) { if (!preBuf) preBuf = new Int16Array(PRE_LEN); }
-  else { preBuf = null; prePos = 0; preFilled = 0; }
-}
-/** Vaggklocka for WAV:ens sample 0 (Date.now vid forsta blocket, +-5 ms) och hur manga sampel som kom ur forbufferten. */
+// ── INSPELAREN (flyttad 2026-09-24 till recorder/recorder.ts) ─────────
+// Forbuffert, ra-fangst och fangstlogik bor i en egen modul BREDVID analysatorn (samma fil i pi-dmx).
+// Input-lagret lamnar bara rasamplen (vanster kanal, fore gain/EQ - samma som forr) per callback.
+// Funktionerna nedan finns kvar som tunna delegater sa konfigservern och ovriga anropare ar orda.
+let _recorder: Recorder | null = null;
+let _recScratch = new Float32Array(1024);
+/** Koppla inspelaren till input-lagret (null kopplar ur). */
+export function attachRecorder(r: Recorder | null): void { _recorder = r; }
+export function getRecorder(): Recorder | null { return _recorder; }
+export function enablePreroll(on: boolean): void { _recorder?.enablePreroll(on); }
+/** Vaggklocka for WAV:ens sample 0 och hur manga sampel som kom ur forbufferten. */
 export function getRawCaptureMeta(): { startWallMs: number; prerollSamples: number; rate: number } {
-  return { startWallMs: rawStartWallMs, prerollSamples: rawPrerollSamples, rate: rawRate };
+  return _recorder ? _recorder.rawMeta() : { startWallMs: 0, prerollSamples: 0, rate: 16000 };
 }
-// Latnamn + facit-BPM foljer med inspelningen. UTAN detta ar en inspelad WAV ett
-// klipp UTAN facit, och tempot maste gissas i efterhand -- vilket 2026-08-30/31
-// kostade en hel kvall: mina egna autokorrelationer sa 137.5 och 60.0 om samma
-// ~90 BPM-lat (3/2- respektive 2/3-fallan), och forst nar anvandaren gav
-// Songstats-varden gick regressionerna att mata alls.
-let rawLabel = '';
-// Decimering 48 -> 16 kHz: MEDELVÄRDE av tre samples, inte var tredje. Att bara
-// plocka var tredje är osamplad nedsampling och viker in allt över 8 kHz som
-// alias — och det är onset-transienterna som skadas mest av det, alltså exakt
-// det strukturmodellen ska läsa.
-let rawDecim = 0;
-let rawAcc = 0;
-
-/** Starta full-rate rå-capture. Allokerar först vid anrop — annars ligger 8,6 MB
- *  och skräpar i en process med MemoryMax 300 MB. */
+/** Starta en ra-fangst (se Recorder.startRaw). Utan inspelare: 0. */
 export function startRawCapture(seconds: number, label?: string, fullRate = false, prerollS = 0): number {
-  const sec = Math.max(1, Math.min(fullRate ? 150 : RAW_MAX_SECONDS, Math.round(seconds)));   // 150 s @48 kHz = 14,4 MB tak (langfangst for sektionsfacit 09-20; motorn ~100 MB av 300)
-  rawLabel = (label ?? '').slice(0, 120);
-  rawRate = fullRate ? SAMPLE_RATE : RAW_RATE; rawDecimN = fullRate ? 1 : RAW_DECIM;
-  // Forbuffert forst: de senaste `pre` samplen ur ringen, i ordning, sa WAV:en borjar prerollS fore nu.
-  const pre = (fullRate && prerollS > 0 && preBuf) ? Math.min(preFilled, SAMPLE_RATE * Math.min(PRE_SECONDS, Math.round(prerollS))) : 0;
-  rawTarget = rawRate * sec + pre;
-  rawDecim = 0; rawAcc = 0;
-  if (!rawBuf || rawBuf.length < rawTarget) rawBuf = new Int16Array(rawTarget);
-  rawLen = 0; rawPrerollSamples = pre; rawStartWallMs = 0;
-  if (pre > 0 && preBuf) {
-    // Tva memcpy (09-21, stall-jakten): sampel-for-sampel-loopen over 720 k sampel holl huvudtraden ~100 ms.
-    let src = prePos - pre; if (src < 0) src += PRE_LEN;
-    const n1 = Math.min(pre, PRE_LEN - src);
-    rawBuf.set(preBuf.subarray(src, src + n1), 0);
-    if (n1 < pre) rawBuf.set(preBuf.subarray(0, pre - n1), n1);
-    rawLen = pre;
-    rawStartWallMs = Date.now() - (pre / SAMPLE_RATE) * 1000;
-  }
-  rawCaptureActive = true;
-  return sec;
+  return _recorder ? _recorder.startRaw(seconds, label, fullRate, prerollS) : 0;
 }
-
 export function getRawCaptureStatus(): { active: boolean; seconds: number; done: boolean; label: string } {
-  return { active: rawCaptureActive, seconds: rawLen / rawRate, done: rawLen >= rawTarget && rawTarget > 0, label: rawLabel };
+  return _recorder ? _recorder.rawStatus() : { active: false, seconds: 0, done: false, label: '' };
 }
-
 /** Filnamnsvanligt latnamn, t.ex. "ricky-rose-utan-dig-90". Tomt om inget angavs. */
-export function getRawCaptureLabel(): string {
-  return rawLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-}
-
+export function getRawCaptureLabel(): string { return _recorder ? _recorder.rawLabel() : ''; }
 /** WAV av det som samlats. Frigör bufferten — den behövs inte i drift. */
-export function getRawCaptureWav(): Buffer | null {
-  if (!rawBuf || rawLen < rawRate) return null;   // minst 1 s
-  rawCaptureActive = false;
-  const dataBytes = rawLen * 2;
-  const buf = Buffer.alloc(44 + dataBytes);
-  buf.write('RIFF', 0);
-  buf.writeUInt32LE(36 + dataBytes, 4);
-  buf.write('WAVE', 8);
-  buf.write('fmt ', 12);
-  buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(1, 22);
-  buf.writeUInt32LE(rawRate, 24);
-  buf.writeUInt32LE(rawRate * 2, 28);
-  buf.writeUInt16LE(2, 32);
-  buf.writeUInt16LE(16, 34);
-  buf.write('data', 36);
-  buf.writeUInt32LE(dataBytes, 40);
-  // memcpy (09-21): writeInt16LE per sampel (1,4 M anrop) holl huvudtraden ~110 ms per snutt. ARM ar little-endian = WAV.
-  Buffer.from(rawBuf.buffer, rawBuf.byteOffset, dataBytes).copy(buf, 44);
-  if (rawBuf.length > SAMPLE_RATE * 31) rawBuf = null;   // behall 30 s-bufferten (2,9 MB) for nasta snutt, slapp langfangster
-  rawLen = 0;
-  return buf;
-}
+export function getRawCaptureWav(): Buffer | null { return _recorder ? _recorder.takeWav() : null; }
 
 /** Starta en ~10s rå-PCM-capture (8kHz mono) för ACR-identifiering. */
 export function startAcrCapture(): void {
@@ -1363,6 +1271,11 @@ function onAudioData(buf: Buffer): void {
   // LJUS-TAPP: block-RMS på rå signal (gain appliceras efteråt → linjärt).
   let lightSumLocal = 0;
   let frameCount = 0;
+  // INSPELAREN (egen modul): rasamplen samlas i ett block och lamnas efter loopen - ingen kostnad utan inspelare.
+  const rec = _recorder;
+  const needRec = buf.byteLength >> (currentFormat === 'S32_LE' ? 3 : 2);
+  if (rec && _recScratch.length < needRec) _recScratch = new Float32Array(needRec);
+  const recBuf = _recScratch;
 
 
   if (currentFormat === 'S32_LE') {
@@ -1372,21 +1285,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
       lightSumLocal += rawPre * rawPre;
-      if (preBuf) {
-        let pv = rawPre * 32767; if (pv > 32767) pv = 32767; else if (pv < -32767) pv = -32767;
-        preBuf[prePos] = pv; if (++prePos >= PRE_LEN) prePos = 0; if (preFilled < PRE_LEN) preFilled++;
-      }
-      if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
-        if (rawStartWallMs === 0) rawStartWallMs = Date.now();
-        rawAcc += rawPre;
-        if (++rawDecim >= rawDecimN) {
-          let r = (rawAcc / rawDecimN) * 32767;
-          if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
-          rawBuf[rawLen++] = r;
-          rawDecim = 0; rawAcc = 0;
-          if (rawLen >= rawTarget) rawCaptureActive = false;
-        }
-      }
+      if (rec) recBuf[i] = rawPre;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -1408,21 +1307,7 @@ function onAudioData(buf: Buffer): void {
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
       lightSumLocal += rawPre * rawPre;
-      if (preBuf) {
-        let pv = rawPre * 32767; if (pv > 32767) pv = 32767; else if (pv < -32767) pv = -32767;
-        preBuf[prePos] = pv; if (++prePos >= PRE_LEN) prePos = 0; if (preFilled < PRE_LEN) preFilled++;
-      }
-      if (rawCaptureActive && rawBuf && rawLen < rawTarget) {
-        if (rawStartWallMs === 0) rawStartWallMs = Date.now();
-        rawAcc += rawPre;
-        if (++rawDecim >= rawDecimN) {
-          let r = (rawAcc / rawDecimN) * 32767;
-          if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
-          rawBuf[rawLen++] = r;
-          rawDecim = 0; rawAcc = 0;
-          if (rawLen >= rawTarget) rawCaptureActive = false;
-        }
-      }
+      if (rec) recBuf[i] = rawPre;
       if (acrCaptureActive && acrLen < ACR_MAX_SAMPLES && ++acrDecimCount >= ACR_DECIM) {
         acrDecimCount = 0;
         let s = rawPre * 32767;
@@ -1440,6 +1325,7 @@ function onAudioData(buf: Buffer): void {
   }
 
   hsState = hs;
+  if (rec && frameCount > 0) rec.push(recBuf, frameCount);
   ringPos = pos;
   const peak = prePeak * micGainAuto;
   if (peak > debugPeakRaw) debugPeakRaw = peak;
