@@ -371,7 +371,7 @@ export interface LightCalibration {
    *  forst pa nasta. pnEff = max(pnEff, min(1, (ceil/ceilSlow - 1) x energyRiseK)). 0 = av. */
   energyRiseK?: number; energyRiseTauMs?: number;
   /** PAUSA HEART-BEAT UTAN HORD TAKT (2026-09-24, agaren: 'annars blinkar lampan nar ingen takt hors'): har inget slag/anslag horts pa
-   *  beatQuietBeats slag (standard 4, minst 2 s) tonas pulsdjupet mot 0 (ren energi) pa ~0,8 s, in igen pa 0,2 s; nar slagen kommer tillbaka tonas det in igen. 0 = av. */
+   *  beatQuietBeats slag (standard 4, minst 2 s) tonas RASTERPULSEN ut (anslagen pulsar kvar = energilaget) pa ~0,8 s, in igen pa 0,2 s; nar slagen kommer tillbaka tonas det in igen. 0 = av. */
   beatQuietBeats?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
@@ -1084,7 +1084,7 @@ export class PiLightEngine {
         // I OVERGANGEN (rastret har vikt men ar inte fullt): anslag far bara fyra nara ett forutsagt slag (+-energyBeatWinFrac av slaget),
         // annars dubblar de rasterpulsen mellan slagen = fladder (matt 21:10 'Mio min mio': 0,1-0,27 s intervall i 0,44 s-takt).
         let _onGrid = true;
-        if (this._gridW > 0 && hasBeat(this._beat)) {
+        if (this._gridW * this._heardW > 0 && hasBeat(this._beat)) {
           const _ph = beatPhase(this._beat!, _nowE); const _d = Math.min(_ph, 1 - _ph);
           _onGrid = _d <= (this.cal.energyBeatWinFrac ?? 0.2);
         }
@@ -2441,7 +2441,7 @@ export class PiLightEngine {
         // tempo fanns -> transienterna fick aldrig satta pulsen (onsetAct 0,00 i energilaget = bara dimmat tak). Nu kraver gridet
         // trustSm x lockRamp >= energyGridTrust (0,5); under det driver anslagen med samma nominella puls (0,45) som taktslagen.
         const _trustGridNow = (this._trustSm ?? 0) * this._lockRamp;
-        const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat) && _trustGridNow >= (this.cal.energyGridTrust ?? 0.5);
+        const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat) && _trustGridNow >= (this.cal.energyGridTrust ?? 0.5) && this._heardW > 0.5;   // utan hord takt driver anslagen
         let kickFired = false;
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux är analysatorns per-band-onsets under
@@ -3388,9 +3388,9 @@ export class PiLightEngine {
       { const _qb = this.cal.beatQuietBeats ?? 4; const _bms = hasBeat(this._beat) ? 60000 / this._beat!.bpm : 500;
         const _quiet = _qb > 0 && Date.now() - this._lastHeardMs > Math.max(2000, _qb * _bms);   // trogt in (glesa kickar ar inte tystnad)
         this._heardW += ((_quiet ? 0 : 1) - this._heardW) * Math.min(1, (this.tickMs || 18) / (_quiet ? 800 : 200)); }   // ut 0,8 s, in 0,2 s
-      const bd    = Math.max(tc.beatDepth * gridW, eDepth) * this._secPulse * this._heardW;
+      const bd    = Math.max(tc.beatDepth * gridW * this._heardW, eDepth) * this._secPulse;   // pausen tar bara RASTRET (anslagen pulsar kvar = energilaget)
       const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - gridW);   // energi -> heart-beat: renare
-      const pnEff = Math.max(pnOnset * onsetW, pnGrid);
+      const pnEff = Math.max(pnOnset * Math.max(onsetW, 1 - this._heardW), pnGrid * this._heardW);   // utan hord takt: rastret av, anslagen fullt
       void trust;
 
       // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
