@@ -663,6 +663,12 @@ export class Analyser {
    *  Mio 1/3; helband + poang >= 177, test 84. OBS: traffgransen ar basringens (alignScore cachar percentilen per anrop,
    *  basen raknas forst) - det ar sa varianten bankades. Standard AV = bit-identiskt. */
   private static readonly TEMPO_UP43 = sysEnv('TEMPO_UP43') === '1';
+  /** TIDIG REFRANG KRAVER NIVA (2026-09-24, drejboken i ladan: varje lat fick intro -> build -> high vid 20-28 s): direkt efter 20 s-
+   *  uppvarmningen rangordnas nuet mot bara introt, sa forsta starkare parti blir 'high' aven om det ar en vers. De forsta
+   *  <prefix>SECTION_EARLY_S sekunderna (0 = av) far 'high' bara om de senaste 4 blockens medel ligger >= SECTION_EARLY_DB over
+   *  latens blockmedian hittills; annars 'build' (pa vag upp) / kvar. Drop far alltid ge high. */
+  private static readonly SECTION_EARLY_S = Number(sysEnv('SECTION_EARLY_S')) || 0;
+  private static readonly SECTION_EARLY_DB = Number(sysEnv('SECTION_EARLY_DB')) || 3;
   /** KICKDETEKTOR-RATTAR (09-20, korbank banken (bench.mjs), BENCH_GRID=1, 107 latar med PC-basonsets/slag):
    *  troskelfaktor mot MAD (4,5), grinden mot eget grid (pa), cooldown (170 ms) och energigolv (0,06). Env for A/B.
    *  Svep 2026-09-20 (tempot orort i alla): baslinje kick-recall 0,48 / precision 0,84 / on-beat-recall 0,63;
@@ -1274,6 +1280,11 @@ export class Analyser {
       else if (dropped || st === 2) label = 'high';
       else if (st === 0) label = 'low';
       else label = prev === 'high' || prev === 'break' ? 'break' : (prev === 'low' || prev === 'intro' || prev === 'build') ? 'build' : prev;
+      if (Analyser.SECTION_EARLY_S > 0 && label === 'high' && !dropped && prev !== 'high' && sinceStart < Analyser.SECTION_EARLY_S * 1000 && this.secBlkDb.length >= 4) {
+        const D = this.secBlkDb, nb = D.length; const srt = D.slice().sort((a, b) => a - b); const med = srt[nb >> 1];
+        const m4 = (D[nb - 1] + D[nb - 2] + D[nb - 3] + D[nb - 4]) / 4;
+        if (m4 < med + Analyser.SECTION_EARLY_DB) label = prev === 'intro' || prev === 'low' || prev === 'build' ? 'build' : prev;
+      }
       // MINNET (bit 2/8): nuet liknar ett tidigare parti -> det partiets tier (omrankad med dagens kunskap) vager in.
       if ((Analyser.REPEAT & 10) && this.repeatSim >= Analyser.REPEAT_THR && this.repeatTier >= 0 && !dropped) {
         if ((Analyser.REPEAT & 2) && this.repeatTier === 2 && st >= 1) label = 'high';
