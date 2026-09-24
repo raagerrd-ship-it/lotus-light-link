@@ -507,6 +507,14 @@ export class Analyser {
    *  Vikt = hur mycket basringen sticker ut (basens poangspridning); kvot < EVID_FULL_MIN => helbandet far halva rosten. */
   private static readonly EVID_BAND = (typeof process !== 'undefined' && process.env?.LOTUS_EVID_BAND) || 'bass';
   private static readonly EVID_FULL_W = (typeof process !== 'undefined' && Number(process.env?.LOTUS_EVID_FULL_W)) || 0.5;
+  /** FANTOM UPPAT (opt-in LOTUS_TEMPO_UP43=1, 09-24): evidensvinnaren b (80..160) provas mot b*4/3 och b*3/2 (under 160):
+   *  har den hogre perioden minst lika hog traffandel (alignScore.hit) pa HELBANDSringen tas den. Mal: 3+3+2-rytmer (Mio min
+   *  mio, facit 141, live 108 = 3/4): basringens traffandel ar mattad (0,8-1,0 for alla kandidater, kickarna sitter pa 3+3+2
+   *  sa 141 far LAGRE baspoang an fantomen) - virveln pa 2 och 4 syns bara i helbandet. Korbank live vs live+UP43 (214 latar):
+   *  171 -> 180 (+11/-2), test 81 -> 86/104 (+6/-1), syntet 6/8 = 6/8, Mio 1/3 -> 2/3. Basringen som domare gav 176 (+11/-6),
+   *  Mio 1/3; helband + poang >= 177, test 84. OBS: traffgransen ar basringens (alignScore cachar percentilen per anrop,
+   *  basen raknas forst) - det ar sa varianten bankades. Standard AV = bit-identiskt. */
+  private static readonly TEMPO_UP43 = typeof process !== 'undefined' && process.env?.LOTUS_TEMPO_UP43 === '1';
   /** KICKDETEKTOR-RATTAR (09-20, korbank tools/tempo-facit-pc/bench.mjs, BENCH_GRID=1, 107 latar med PC-basonsets/slag):
    *  troskelfaktor mot MAD (4,5), grinden mot eget grid (pa), cooldown (170 ms) och energigolv (0,06). Env for A/B.
    *  Svep 2026-09-20 (tempot orort i alla): baslinje kick-recall 0,48 / precision 0,84 / on-beat-recall 0,63;
@@ -539,14 +547,14 @@ export class Analyser {
   private evidChangeBpm = 0; private evidChangeVotes = 0; private localBpmF = 0; private evidLastLocal = 0;
   /** Antal evidensomlasningar (telemetri/korbank) + lasets senaste slagpoang. */
   evidenceRelocks = 0; evidenceLockScore = 0;
-  private candLag = new Int32Array(12); private candVal = new Float32Array(12); private candScore = new Float32Array(12); private candHalf = new Float32Array(12); private candFull = new Float32Array(12);
+  private candLag = new Int32Array(12); private candVal = new Float32Array(12); private candScore = new Float32Array(12); private candHalf = new Float32Array(12); private candHit = new Float32Array(12); private candFull = new Float32Array(12);
   /** Senaste evidensvalets telemetri: vald kandidats slagpoang, halvslagskvot, antal kandidater, tvaans poang. */
   evidenceScore = 0; evidenceHalf = 0; evidenceCands = 0; evidenceSecond = 0;
   /** Senaste RA-estimatet (vikt till 80..160) fore las/median - for korbanken. */
   rawBpmLast = 0;
   /** Korbank: kandidaterna fran senaste evidensvalet. */
-  debugCandidates(): Array<{ lag: number; bpm: number; tg: number; score: number; half: number }> {
-    const out: Array<{ lag: number; bpm: number; tg: number; score: number; half: number }> = []; for (let i = 0; i < this.evidenceCands; i++) out.push({ lag: this.candLag[i], bpm: Math.round(Analyser.ENV_HZ * 60 / this.candLag[i] * 10) / 10, tg: this.candVal[i], score: this.candScore[i], half: this.candHalf[i] });
+  debugCandidates(): Array<{ lag: number; bpm: number; tg: number; score: number; half: number; hit: number }> {
+    const out: Array<{ lag: number; bpm: number; tg: number; score: number; half: number; hit: number }> = []; for (let i = 0; i < this.evidenceCands; i++) out.push({ lag: this.candLag[i], bpm: Math.round(Analyser.ENV_HZ * 60 / this.candLag[i] * 10) / 10, tg: this.candVal[i], score: this.candScore[i], half: this.candHalf[i], hit: this.candHit[i] });
     return out;
   }
   private octaveVote = 0;   // ackumulerat bevis för att byta oktav (självrättande lås)
@@ -1623,15 +1631,24 @@ export class Analyser {
         if (Analyser.EVID_BAND === 'both') {
           // bas + helband: bada normeras mot sin egen medelpoang sa de ar jamforbara, helbandet vagt EVID_FULL_W.
           let mb = 0, mf = 0; const fS = this.candFull;
-          for (let i = 0; i < nc; i++) { const rb = this.alignScore(this.envBassRing, N, cL[i]); const rf = this.alignScore(this.envRing, N, cL[i]); cS[i] = rb.score; fS[i] = rf.score; cH[i] = rb.half; mb += rb.score; mf += rf.score; }
+          for (let i = 0; i < nc; i++) { const rb = this.alignScore(this.envBassRing, N, cL[i]); const rf = this.alignScore(this.envRing, N, cL[i]); cS[i] = rb.score; fS[i] = rf.score; cH[i] = rb.half; this.candHit[i] = rb.hit; mb += rb.score; mf += rf.score; }
           mb = mb / nc || 1; mf = mf / nc || 1;
           for (let i = 0; i < nc; i++) { cS[i] = (cS[i] / mb + Analyser.EVID_FULL_W * (fS[i] / mf)) / (1 + Analyser.EVID_FULL_W) * mb; if (cS[i] > bs) { bs = cS[i]; bi = i; } }
         } else
-        for (let i = 0; i < nc; i++) { const r = this.alignScore(this.envBassRing, N, cL[i]); cS[i] = r.score; cH[i] = r.half; if (r.score > bs) { bs = r.score; bi = i; } }
+        for (let i = 0; i < nc; i++) { const r = this.alignScore(this.envBassRing, N, cL[i]); cS[i] = r.score; cH[i] = r.half; this.candHit[i] = r.hit; if (r.score > bs) { bs = r.score; bi = i; } }
         for (let i = 0; i < nc; i++) if (i !== bi && cS[i] >= bs * 0.9 && cV[i] > cV[bi] * 1.15) { bi = i; bs = cS[i]; }
         let second = 0; for (let i = 0; i < nc; i++) if (i !== bi && cS[i] > second) second = cS[i];
         this.evidenceScore = bs; this.evidenceHalf = cH[bi]; this.evidenceCands = nc; this.evidenceSecond = second;
-        if (Analyser.EVIDENCE_ON) { bestLag = cL[bi]; bestVal = tg[bestLag]; }
+        let upLag = 0;
+        if (Analyser.TEMPO_UP43 && cL[bi] > HZ * 60 / Analyser.BPM_MAX && cL[bi] <= HZ * 60 / Analyser.BPM_MIN) {
+          let upHit = this.alignScore(this.envRing, N, cL[bi]).hit;
+          for (const f of [0.75, 2 / 3]) {
+            const L = Math.round(cL[bi] * f); if (L <= HZ * 60 / Analyser.BPM_MAX || L < lagMin) continue;
+            const r = this.alignScore(this.envRing, N, L);
+            if (r.hit >= upHit) { upHit = r.hit; upLag = L; this.evidenceScore = r.score; this.evidenceHalf = r.half; }
+          }
+        }
+        if (Analyser.EVIDENCE_ON) { bestLag = upLag || cL[bi]; bestVal = tg[cL[bi]]; }   // bestVal = vinnarens topp (konfidensen), aven nar UP43 flyttar lagen
       }
     }
 
