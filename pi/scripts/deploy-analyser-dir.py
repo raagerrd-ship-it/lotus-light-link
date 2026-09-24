@@ -8,6 +8,10 @@ HOST = os.environ.get('PI_HOST', '192.168.1.174'); PW = os.environ.get('PI_PASS'
 if not PW: sys.exit('PI_PASS saknas')
 HERE = os.path.dirname(os.path.abspath(__file__)); LOCAL = os.path.normpath(os.path.join(HERE, '..', 'dist', 'audio-analyser'))
 REMOTE = '/opt/lotus-light/pi/dist/audio-analyser'
+# GEMENSAM ANALYSATOR (2026-09-24): vagra INNAN nagot rors pa Pi:n om analysatorn/inspelaren skiljer sig fran den
+# gemensamma (md5-manifestet i src/audio-analyser, och pi-dmx-kopian om den ar utcheckad bredvid). Se analyser_shared.py.
+sys.path.insert(0, HERE); import analyser_shared
+analyser_shared.check(os.path.join(HERE, '..', 'src', 'audio-analyser'), os.path.join(HERE, '..', '..', '..', 'dmx-control', 'pi-dmx', 'engine', 'src'), LOCAL)
 c = paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 c.connect(HOST, username='pi', password=PW, timeout=15, look_for_keys=False, allow_agent=False)
 def run(cmd, t=300):

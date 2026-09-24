@@ -4,11 +4,11 @@
  * 1 %-steg, INGEN vikning), och varje uppdatering vager en observation mot overgangskostnader:
  *   - observation: tempogrammets varde vid tillstandets lag (komb-scorad autokorrelation) x slagpoang pa
  *     basonseten kring kandidattopparna (fantomer 3/2, 4/3 traffar kickarna bara delvis) x halvslagsbevis
- *     (starka halvslag => stod for dubbla tempot; PC-facit-regeln: kvot >= 0,6)
+ *     (starka halvslag => stod for dubbla tempot; PC-referensens regel: kvot >= 0,6)
  *   - overgang: gratis att sta kvar, billigt att driva +-3 %, dyrt att hoppa, mattligt att byta oktav
  *   - Viterbi (max-produkt) i logdomanen: skarpa beslut, ingen underflow, hysteres inbyggd i kostnaderna
  * Utdata: basta tillstandets BPM och marginalen (log) till basta tillstand utanfor +-3 % som konfidens.
- * Korbanken (tools/tempo-facit-pc/bench.mjs) ar grinden: ska sla liveprovets 57/91 utan syntetforlust.
+ * Korbanken (banken (bench.mjs)) ar grinden: ska sla liveprovets 57/91 utan syntetforlust.
  */
 export interface TempoObservation {
   /** Tempogramvarde per tillstand (0..1-normaliserat mot max i anropet), 0 utanfor sokfonstret. */
@@ -33,7 +33,7 @@ export class TempoTracker {
   /** Kostnader i log-enheter (naturliga). */
   private static envNum(k: string, d: number): number { const v = typeof process !== 'undefined' ? Number(process.env?.[k]) : NaN; return Number.isFinite(v) && v > 0 ? v : d; }
   static readonly COST_DRIFT = TempoTracker.envNum('LOTUS_TEMPO_HMM_DRIFT', 0.6);      // per 1 %-steg, upp till +-3 steg
-  /** Mjuk oktavprior: kostnad per uppdatering och 10 BPM utanfor [80,160] - vikningens konvention (och facit:s), men slagbar av stark evidens. */
+  /** Mjuk oktavprior: kostnad per uppdatering och 10 BPM utanfor [80,160] - vikningens konvention (och referensens), men slagbar av stark evidens. */
   static readonly PRIOR_OUT = TempoTracker.envNum('LOTUS_TEMPO_HMM_PRIOR', 0.15);
   static readonly HALF_THR = TempoTracker.envNum('LOTUS_TEMPO_HMM_HALF', 0.6);
   static readonly PRIOR_HI = TempoTracker.envNum('LOTUS_TEMPO_HMM_PRIOR_HI', 160);
