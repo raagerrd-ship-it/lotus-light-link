@@ -18,8 +18,8 @@ MANIFEST = 'ANALYSER_SHARED.md5'
 
 
 def locate(src, f):
-    """Filen i kallkatalogen, eller (inspelaren i lotus) i syskonkatalogen recorder/."""
-    for p in (os.path.join(src, f), os.path.join(src, '..', 'recorder', f)):
+    """Filen i kallkatalogen, eller inspelaren i recorder/ (lotus: src/recorder bredvid audio-analyser; DMX: src/recorder)."""
+    for p in (os.path.join(src, f), os.path.join(src, 'recorder', f), os.path.join(src, '..', 'recorder', f)):
         if os.path.exists(p): return p
     return os.path.join(src, f)
 
