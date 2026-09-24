@@ -370,6 +370,9 @@ export interface LightCalibration {
    *  an sitt eget glidande medel (tau energyRiseTauMs) raknas stigningen som puls direkt, sa lampan ljusnar mellan slagen i stallet for
    *  forst pa nasta. pnEff = max(pnEff, min(1, (ceil/ceilSlow - 1) x energyRiseK)). 0 = av. */
   energyRiseK?: number; energyRiseTauMs?: number;
+  /** PAUSA HEART-BEAT UTAN HORD TAKT (2026-09-24, agaren: 'annars blinkar lampan nar ingen takt hors'): har inget slag/anslag horts pa
+   *  beatQuietBeats slag (standard 4, minst 2 s) tonas pulsdjupet mot 0 (ren energi) pa ~0,8 s, in igen pa 0,2 s; nar slagen kommer tillbaka tonas det in igen. 0 = av. */
+  beatQuietBeats?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -850,7 +853,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0; private _ceilSlow = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0; private _ceilSlow = 0; private _lastHeardMs = 0; private _heardW = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1972,7 +1975,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number; onsetAct: number; lockBeats: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; lockRamp: number; stableS: number; syncMul: number; onsetAct: number; lockBeats: number; heardW: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -1986,7 +1989,7 @@ export class PiLightEngine {
       subdivLevel: this._subdivLevel,
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, (this._trustSm ?? 0) * this._lockRamp),   // effektiv (med bevistidsrampen)
-      lockBeats: this._lockGood, onsetAct: this._onsetAct, syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
+      heardW: this._heardW, lockBeats: this._lockGood, onsetAct: this._onsetAct, syncMul: this._syncMul, lockRamp: this._lockRamp, stableS: this._bpmStableSince > 0 ? Math.round((Date.now() - this._bpmStableSince) / 1000) : 0,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -2449,6 +2452,7 @@ export class PiLightEngine {
           // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) — men den får
           // bara sätta pulsen när gridet inte driver den.
           kickFired = this.processOnset(beatFlux, !gridDrives);
+          if (kickFired) this._lastHeardMs = Date.now();   // HORD TAKT (se beatQuietBeats)
         }
         // Taktklocka: tempo från analysatorn, fas låst mot verkliga kicks (PLL).
         this.updateBeatClock(kickFired);
@@ -3380,7 +3384,11 @@ export class PiLightEngine {
       { const _a = Math.min(1, (this.tickMs || 18) / 1500); this._onsetAct += (pnOnset - this._onsetAct) * _a; }
       const _actRef = Math.max(0.02, this.cal.energyActRef ?? 0.25);
       const eDepth = eDepthMax * Math.min(1, this._onsetAct / _actRef);
-      const bd    = Math.max(tc.beatDepth * gridW, eDepth) * this._secPulse;
+      // HORD TAKT: inga slag pa beatQuietBeats slag -> pulsen tonas ut (ren energi, inget blink i break/lugnt parti)
+      { const _qb = this.cal.beatQuietBeats ?? 4; const _bms = hasBeat(this._beat) ? 60000 / this._beat!.bpm : 500;
+        const _quiet = _qb > 0 && Date.now() - this._lastHeardMs > Math.max(2000, _qb * _bms);   // trogt in (glesa kickar ar inte tystnad)
+        this._heardW += ((_quiet ? 0 : 1) - this._heardW) * Math.min(1, (this.tickMs || 18) / (_quiet ? 800 : 200)); }   // ut 0,8 s, in 0,2 s
+      const bd    = Math.max(tc.beatDepth * gridW, eDepth) * this._secPulse * this._heardW;
       const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - gridW);   // energi -> heart-beat: renare
       const pnEff = Math.max(pnOnset * onsetW, pnGrid);
       void trust;
