@@ -232,6 +232,8 @@ const DROP_RISE_LOW_Q = Number(env('DROP_RISE_LOW_Q') ?? 3);
 // refrangen) kravs starkare bevis (riser, landning vid toppen eller extra lyft). DROP_CALM_LAND_MS > 0 -> kandidaten halls och fyrar
 // forst vid verifierad landning; 0 -> nekas.
 const DROP_CALM_GATE = sysEnv('DROP_CALM_GATE') === '1';
+/** STRIKT INTRO (opt-in DROP_CALM_INTRO_STRICT=1, kraver <prefix>DROP_CALM_GATE): i 'intro' fyrar en drop bara efter riser (buildUp >= DROP_CALM_BUILD). */
+const DROP_CALM_INTRO_STRICT = typeof process !== 'undefined' && process.env?.DROP_CALM_INTRO_STRICT === '1';
 const DROP_CALM_DB = Number(env('DROP_CALM_DB') ?? 6);
 const DROP_CALM_BUILD = Number(env('DROP_CALM_BUILD') ?? 0.25);
 const DROP_CALM_Q = Number(env('DROP_CALM_Q') ?? 1.5);
@@ -3418,7 +3420,9 @@ export class Analyser {
     // LUGN-SEKTIONS-GRINDEN (se DROP_CALM_GATE). Domen tas per kandidat-hop; den hallna kandidaten (DROP_CALM_LAND_MS) foljs nedan.
     if (DROP_CALM_GATE && fireNow) {
       const calm = (Analyser.SECTION_ON && (this.section === 'low' || this.section === 'intro')) || this.levelVsHighDb <= -DROP_CALM_DB;
-      const strong = this.buildUp >= DROP_CALM_BUILD || underNow < DROP_CALM_Q || bodyRise >= BODY_RISE_DB + DROP_CALM_RISE_DB;
+      let strong = this.buildUp >= DROP_CALM_BUILD || underNow < DROP_CALM_Q || bodyRise >= BODY_RISE_DB + DROP_CALM_RISE_DB;
+      // STRIKT INTRO (ladan 09-24: 'den gjorde fortfarande drop i intro'): landning vid toppen racker inte i intro - bara en riktig riser.
+      if (DROP_CALM_INTRO_STRICT && this.section === 'intro') strong = this.buildUp >= DROP_CALM_BUILD;
       if (calm && !strong) {
         fireNow = false;
         if (DROP_CALM_LAND_MS > 0 && this.calmHoldStart === 0) { this.calmHoldStart = nowWallA; this.calmHoldRise = bodyRise; }
