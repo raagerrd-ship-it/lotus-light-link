@@ -231,6 +231,10 @@ const DROP_RISE_LOW_Q = Number(env('DROP_RISE_LOW_Q') ?? 3);
 // LUGN-SEKTIONS-GRIND (opt-in <prefix>DROP_CALM_GATE=1): i lugna partier (sektion low/intro, eller >= DROP_CALM_DB under senaste
 // refrangen) kravs starkare bevis (riser, landning vid toppen eller extra lyft). DROP_CALM_LAND_MS > 0 -> kandidaten halls och fyrar
 // forst vid verifierad landning; 0 -> nekas.
+/** SEKTIONER OVERLEVER TEMPOTAPP (opt-in <prefix>SECTION_HINT_LOWCONF=0): lassslappet efter 8 s lag taktkonfidens ar ingen latgrans, men
+ *  hintTrackChange nollade sektionerna (SECTION_ON_HINT) -> ett taktlost break mitt i laten gjorde refrangen efter till 'intro' utan historik
+ *  (ladan 2026-09-24 23:00: 'varfor ar den sa seg pa att komma igang i refrangen?'). 0 = lassslappet ror bara tempot. Standard = som forr. */
+const SECTION_HINT_LOWCONF = sysEnv('SECTION_HINT_LOWCONF') !== '0';
 const DROP_CALM_GATE = sysEnv('DROP_CALM_GATE') === '1';
 /** STRIKT INTRO (opt-in DROP_CALM_INTRO_STRICT=1, kraver <prefix>DROP_CALM_GATE): i 'intro' fyrar en drop bara efter riser (buildUp >= DROP_CALM_BUILD). */
 const DROP_CALM_INTRO_STRICT = typeof process !== 'undefined' && process.env?.DROP_CALM_INTRO_STRICT === '1';
@@ -2410,7 +2414,7 @@ export class Analyser {
       this.lowConfSinceMs = voteNow;
     } else if (this.lowConfSinceMs > 0 && voteNow - this.lowConfSinceMs > 8000) {
       this.lowConfSinceMs = voteNow;
-      this.hintTrackChange(5000);
+      this.hintTrackChange(5000, SECTION_HINT_LOWCONF);
     } else if (this.lowConfSinceMs === 0) {
       this.lowConfSinceMs = voteNow;
     }
@@ -2439,7 +2443,7 @@ export class Analyser {
    *   • lockPeak nollas så nya låtens takt inte jämförs mot förra låtens styrka,
    *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
    */
-  hintTrackChange(windowMs = 5000): void {
+  hintTrackChange(windowMs = 5000, sections = true): void {
     if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} HINT bpm=${this.localBpm} conf=${this.localBpmConfidence.toFixed(2)}`);
     // A5: reacq-fönstret jämförs mot perfNow() (samma tidbas som voteNow).
     // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
@@ -2462,7 +2466,7 @@ export class Analyser {
     // NY LAT = NY STRUKTUR. Tempot bars over (se ovan), men sektionshistoriken tillhor forra laten och maste bort:
     // annars rangordnas nya laten mot gamla block och 'intro' intraffar aldrig. sectionReset() ar samma nollning
     // som 10 s tystnad redan gor - enda skillnaden ar att vi nu ocksa litar pa latbytes-signalen.
-    if (Analyser.SECTION_ON_HINT) this.sectionReset();
+    if (Analyser.SECTION_ON_HINT && sections) this.sectionReset();
   }
 
   /** Nollställ lås-/röst-ackumulatorerna — gemensam kärna för resetTempo/hintTrackChange/
