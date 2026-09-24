@@ -17,6 +17,13 @@ SHARED = ['analyser.ts', 'split.ts', 'slowWorker.ts', 'tempoTracker.ts', 'record
 MANIFEST = 'ANALYSER_SHARED.md5'
 
 
+def locate(src, f):
+    """Filen i kallkatalogen, eller (inspelaren i lotus) i syskonkatalogen recorder/."""
+    for p in (os.path.join(src, f), os.path.join(src, '..', 'recorder', f)):
+        if os.path.exists(p): return p
+    return os.path.join(src, f)
+
+
 def md5_of(path):
     with open(path, 'rb') as f:
         return hashlib.md5(f.read().replace(b'\r\n', b'\n')).hexdigest()
@@ -37,19 +44,19 @@ def check(src, sibling=None, dist=None, dist_names=None):
     man = read_manifest(src)
     bad = []
     for f in SHARED:
-        p = os.path.join(src, f)
+        p = locate(src, f)
         if not os.path.exists(p): bad.append(f'{f}: saknas lokalt'); continue
         if man.get(f) != md5_of(p): bad.append(f'{f}: lokal md5 {md5_of(p)[:12]} != gemensam {str(man.get(f))[:12]}')
     sib = os.environ.get('ANALYSER_SIBLING') or sibling
     if sib and os.path.isdir(sib):
         for f in SHARED:
-            p = os.path.join(sib, f)
+            p = locate(sib, f)
             if not os.path.exists(p): bad.append(f'{f}: saknas i syskonrepot ({sib})'); continue
             if man.get(f) != md5_of(p): bad.append(f'{f}: syskonrepots md5 {md5_of(p)[:12]} != gemensam {str(man.get(f))[:12]} ({sib})')
     if dist:
         for f in SHARED:
             js = os.path.join(dist, (dist_names or {}).get(f, f[:-3] + '.js'))
-            if os.path.exists(js) and os.path.getmtime(js) < os.path.getmtime(os.path.join(src, f)):
+            if os.path.exists(js) and os.path.getmtime(js) < os.path.getmtime(locate(src, f)):
                 bad.append(f'{f}: bygget ({js}) ar aldre an kallfilen - bygg om')
     if bad:
         sys.exit('GEMENSAM ANALYSATOR SKILJER SIG - deployar inget:\n  ' + '\n  '.join(bad))
@@ -61,7 +68,7 @@ if __name__ == '__main__':
         src = sys.argv[2]
         with open(os.path.join(src, MANIFEST), 'w', encoding='utf-8', newline='\n') as fh:
             fh.write('# md5 (CRLF->LF) av de gemensamma filerna - samma i lotus-light-link och dmx-control. Skrivs av analyser_shared.py --write\n')
-            for f in SHARED: fh.write(f'{md5_of(os.path.join(src, f))} {f}\n')
+            for f in SHARED: fh.write(f'{md5_of(locate(src, f))} {f}\n')
         print(open(os.path.join(src, MANIFEST), encoding='utf-8').read())
     elif len(sys.argv) >= 2:
         check(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
