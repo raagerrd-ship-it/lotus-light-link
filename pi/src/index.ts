@@ -127,15 +127,15 @@ const _inflight: Partial<Record<SubsystemId, Promise<void>>> = {};
 let _sonosPlayingHandler: ((playing: boolean) => Promise<void> | void) | null = null;
 let _lastSonosPlaying: boolean | null = null;
 
-// ── INSPELAREN (2026-09-24): egen modul bredvid analysatorn (audio-analyser/recorder.ts, samma fil i pi-dmx). ──
+// ── INSPELAREN (2026-09-24): egen modul bredvid analysatorn (recorder/recorder.ts, samma fil i pi-dmx). ──
 // Den far rasamplen fran input-lagret (alsaMic) och laser drop/sektion/gridfas ur analysatorns Frame; allt
 // lotus-specifikt (latnyckel, tempocache, ljusstyrka, motorns pulser, Sonos-lage) kommer in som krokar har.
 // Fangsterna (tempo 10 s in / 30 s, drop 15+15 s, max 2 per lat, ko 30) hamtas av PC:n via /api/tempo/snippets.
 // PUT /api/tempo/capture-enabled {enabled} = brytaren (sparas i tempo-capture.json).
-let recorder: import('./audio-analyser/recorder.js').Recorder | null = null;
+let recorder: import('./recorder/recorder.js').Recorder | null = null;
 async function startRecorder(): Promise<void> {
   if (recorder || !alsaMic) return;
-  const { Recorder } = await import('./audio-analyser/recorder.js');
+  const { Recorder } = await import('./recorder/recorder.js');
   const { DATA_DIR } = await import('./storage.js');
   const { songKey } = await import('./songStore.js');
   const { getLastSent } = await import('./ble-driver/protocol.js');
@@ -528,7 +528,7 @@ async function startSonosSubsystem(): Promise<void> {
           recorder?.trackChanged(lastArtist, name);
         }, 1500);
       };
-      // FANGSTERNA (snutt/drop/sektion + handelselogg) bor i inspelaren (audio-analyser/recorder.ts), se startRecorder().
+      // FANGSTERNA (snutt/drop/sektion + handelselogg) bor i inspelaren (recorder/recorder.ts), se startRecorder().
       // Katalogtempo for den nya laten: cache forst (0 ms), annars Deezer (~0,8 s). Svaret
       // skickas bara om laten fortfarande ar densamma; motorn kontrollerar ocksa sjalv.
       const resolveMetaTempo = async (artist: string | null, title: string) => {

@@ -1,16 +1,16 @@
 /**
  * INSPELARENS SIMULERING (2026-09-24): bevisar att lotus fangar LIKA MANGA snuttar, med SAMMA ljud, efter att
- * fangsten flyttats ut ur index.ts/alsaMic.ts till den egna modulen audio-analyser/recorder.ts.
+ * fangsten flyttats ut ur index.ts/alsaMic.ts till den egna modulen recorder/recorder.ts.
  *
  * Ett langt ljud spelas hop for hop genom analysatorn (virtuell tid, falska timers). En spellista med latbyten
  * (--track-s sekunder per "lat") driver bada sidor:
  *   GAMMAL: fangstlogiken och ra-bufferten ur main (index.ts runCapture/scheduleSnippet/droppoll + alsaMic
  *           startRawCapture/getRawCaptureWav/forbuffert), overforda rad for rad hit (se OLD nedan).
- *   NY:     den kompilerade Recorder-modulen (dist/audio-analyser/recorder.js) med lotus krokar.
+ *   NY:     den kompilerade Recorder-modulen (dist/recorder/recorder.js) med lotus krokar.
  * Bada far samma rasampel per callback-block (256 sampel), samma Frame, samma latbyten, samma klocka.
  * Utskrift: antal fangster per slag + md5 av varje WAV (gammal/ny) + handelseloggarnas nycklar. Exit 1 vid skillnad.
  *
- *   node tools/recorderSim.mjs --analyser pi/dist/audio-analyser/index.js --recorder pi/dist/audio-analyser/recorder.js
+ *   node tools/recorderSim.mjs --analyser pi/dist/audio-analyser/index.js --recorder pi/dist/recorder/recorder.js
  *        [--secs 1200] [--track-s 150] [--section-s 0] <wav> [<wav> ...]
  */
 import { readFileSync, mkdtempSync, readdirSync, rmSync, mkdirSync } from 'node:fs';

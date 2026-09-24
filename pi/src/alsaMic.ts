@@ -16,7 +16,7 @@
 import { dlog } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame, type Analyser } from './audio-analyser/index.js';
-import type { Recorder } from './audio-analyser/recorder.js';
+import type { Recorder } from './recorder/recorder.js';
 import { Fingerprinter, type Landmark } from './fingerprint.js';
 import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
 
@@ -546,7 +546,7 @@ let acrBuf = new Int16Array(ACR_MAX_SAMPLES);
 let acrLen = 0;
 let acrDecimCount = 0;
 
-// ── INSPELAREN (flyttad 2026-09-24 till audio-analyser/recorder.ts) ─────────
+// ── INSPELAREN (flyttad 2026-09-24 till recorder/recorder.ts) ─────────
 // Forbuffert, ra-fangst och fangstlogik bor i en egen modul BREDVID analysatorn (samma fil i pi-dmx).
 // Input-lagret lamnar bara rasamplen (vanster kanal, fore gain/EQ - samma som forr) per callback.
 // Funktionerna nedan finns kvar som tunna delegater sa konfigservern och ovriga anropare ar orda.
