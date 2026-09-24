@@ -19,7 +19,7 @@ INPUT  →  ANALYS (snabb | långsam)  →  DIRIGENT  →  OUTPUT
 | HEART-BEAT/ENERGI | **identisk** | **identisk** | `heartbeat/heartbeat.ts` + `contract.ts` |
 | OUTPUT | 1 lampa, BLE-paket på radions raster | N fixturer, DMX-ram 40 Hz | `piEngine` steg 6/7 + `ble-driver/` · `postprocess.ts` + `dmx.ts` |
 
-Regeln för "identisk": samma fil, samma innehåll, kopierad — aldrig lokalt lappad. Bevis: `splitProof.mjs` (analys), `heartbeatProof.mjs`
+Regeln för "identisk": samma fil, samma innehåll, kopierad — aldrig lokalt lappad. Sedan 2026-09-24 ÄR analysatorn en fil: `analyser.ts`, `split.ts`, `slowWorker.ts`, `tempoTracker.ts` och inspelaren `recorder/recorder.ts` är byte-identiska i båda repona (md5-manifest `ANALYSER_SHARED.md5`; båda deployskripten vägrar deploya vid avvikelse). Systemskillnader bor BARA i `analyserProfile.ts` (env-prefix + standardvärden). Ändra i lotus, kopiera till DMX, `analyser_shared.py --write` i båda, bevisa med `analyserParity.mjs` (0 avvikande hop per system) eller bänk. Inspelaren är en egen modul (INPUT → recorder, läser Frame), analysatorn vet inte att den finns. Bevis: `splitProof.mjs` (analys), `heartbeatProof.mjs`
 (heart-beat). En förbättring som bevisas i det ena systemet flyttas till det andra som fil, inte som idé.
 
 ---
