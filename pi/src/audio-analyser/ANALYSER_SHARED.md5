@@ -1,5 +1,5 @@
 # md5 (CRLF->LF) av de gemensamma filerna - samma i lotus-light-link och dmx-control. Skrivs av analyser_shared.py --write
-1aef63ce5ae1736ef5cf4ad2f19a2ef1 analyser.ts
+ad06527593c94a2c95e6ea38f9f071b4 analyser.ts
 279712056706aae8a1ca3be7939cd022 split.ts
 99bdf9510e7d79ebbf14481ae0397158 slowWorker.ts
 f2897b40d28a90c658e5b602ef4e52cd tempoTracker.ts

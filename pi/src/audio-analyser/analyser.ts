@@ -650,6 +650,10 @@ export class Analyser {
   // bankmaterial - verkliga baslinjer har toner pa manga delslag, sa slagpoangen skiljer inte grannkandidater. OPT-IN.
   private static readonly EVIDENCE_ON = sysEnv('TEMPO_EVIDENCE') === '1';
   private static readonly EVIDENCE_K = 5;
+  /** FANTOMPARTNER (2026-09-24, "Mio min mio": facit 141, analysatorn 107 = 3/4-fantom; 141 fanns aldrig bland kandidaterna).
+   *  Som oktavpartnern men for 3/2-, 2/3-, 4/3- och 3/4-relationerna: varje kandidats lag x 2/3, 3/2, 3/4, 4/3 laggs till (inom
+   *  fonstret, tak 12) sa att slagpoangen pa basonseten far avgora. OPT-IN <prefix>TEMPO_PHANTOM_PARTNER=1. */
+  private static readonly PHANTOM_PARTNER = sysEnv('TEMPO_PHANTOM_PARTNER') === '1';
   /** EVIDENSBAND (09-20): kandidatvalets slagpoang mots BASringen (standard). 'both' vager in helbandsringen nar basen ar
    *  svag - orkestral/akustisk musik (filmmusik, sjomansvisor) har ingen kick, sa baspoangen blir brus och valet slumpartat.
    *  Vikt = hur mycket basringen sticker ut (basens poangspridning); kvot < EVID_FULL_MIN => helbandet far halva rosten. */
@@ -1890,7 +1894,9 @@ export class Analyser {
       // valja den (gamla vagen fick 159,8 av vikningens kant: 79,9 < 80 -> x2, tur). Varje kandidats L/2 och 2L
       // laggs darfor till (inom fonstret, tak 8), sa slagpoang och halvslagsbevis raknas for bada oktaverna.
       const nc0 = nc;
-      for (let i = 0; i < nc0 && nc < 8; i++) for (const L2 of [cL[i] >> 1, cL[i] * 2]) {
+      const ncMax = Analyser.PHANTOM_PARTNER ? Math.min(12, cL.length) : 8;
+      for (let i = 0; i < nc0 && nc < ncMax; i++) for (const L2 of (Analyser.PHANTOM_PARTNER ? [cL[i] >> 1, cL[i] * 2, Math.round(cL[i] * 2 / 3), Math.round(cL[i] * 3 / 2), Math.round(cL[i] * 3 / 4), Math.round(cL[i] * 4 / 3)] : [cL[i] >> 1, cL[i] * 2])) {
+        if (nc >= ncMax) break;
         if (L2 < lagMin || L2 > lagMax) continue;
         let dup = false; for (let j = 0; j < nc; j++) if (Math.abs(L2 / cL[j] - 1) < 0.03) { dup = true; break; }
         if (!dup) { cL[nc] = L2; cV[nc] = tg[L2] > 0 ? tg[L2] : 0; nc++; }
