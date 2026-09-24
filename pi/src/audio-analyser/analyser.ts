@@ -1896,7 +1896,7 @@ export class Analyser {
       const nc0 = nc;
       const ncMax = Analyser.PHANTOM_PARTNER ? Math.min(12, cL.length) : 8;
       for (let i = 0; i < nc0 && nc < ncMax; i++) for (const L2 of (Analyser.PHANTOM_PARTNER ? [cL[i] >> 1, cL[i] * 2, Math.round(cL[i] * 2 / 3), Math.round(cL[i] * 3 / 2), Math.round(cL[i] * 3 / 4), Math.round(cL[i] * 4 / 3)] : [cL[i] >> 1, cL[i] * 2])) {
-        if (nc >= ncMax) break;
+        if (Analyser.PHANTOM_PARTNER && nc >= ncMax) break;   // bara med flaggan: av = exakt gamla vagen (paritet)
         if (L2 < lagMin || L2 > lagMax) continue;
         let dup = false; for (let j = 0; j < nc; j++) if (Math.abs(L2 / cL[j] - 1) < 0.03) { dup = true; break; }
         if (!dup) { cL[nc] = L2; cV[nc] = tg[L2] > 0 ? tg[L2] : 0; nc++; }
