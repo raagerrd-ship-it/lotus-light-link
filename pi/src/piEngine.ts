@@ -366,6 +366,10 @@ export interface LightCalibration {
   energyMinGapMs?: number;
   /** I overgangen: anslag far bara fyra inom denna andel av slaget fran ett forutsagt slag. */
   energyBeatWinFrac?: number;
+  /** ENERGI DIREKT (2026-09-24, agaren: 'energi skall styra direkt och inte pa nasta puls som heart-beat kor'): nar taket stiger snabbare
+   *  an sitt eget glidande medel (tau energyRiseTauMs) raknas stigningen som puls direkt, sa lampan ljusnar mellan slagen i stallet for
+   *  forst pa nasta. pnEff = max(pnEff, min(1, (ceil/ceilSlow - 1) x energyRiseK)). 0 = av. */
+  energyRiseK?: number; energyRiseTauMs?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -846,7 +850,7 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
-  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
+  private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0; private _ceilSlow = 0;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -3383,7 +3387,11 @@ export class PiLightEngine {
 
       // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
       // i stället för att adderas — kan aldrig klippa och betyder mest när ljuset är lågt. toNormalized = golv..1 (output-lagrets steg).
-      const energyForm = composeEnergy(ceil, this._secScale, _build, bd, pnEff, this._dropBoost);
+      // ENERGI DIREKT: stigande tak = omedelbar puls (se energyRiseK)
+      { const _tau = Math.max(50, this.cal.energyRiseTauMs ?? 400); this._ceilSlow = this._ceilSlow <= 0 ? ceil : this._ceilSlow + (ceil - this._ceilSlow) * Math.min(1, (this.tickMs || 18) / _tau); }
+      const _riseK = this.cal.energyRiseK ?? 3;
+      const pnRise = _riseK > 0 && this._ceilSlow > 0.02 ? Math.max(0, Math.min(1, (ceil / this._ceilSlow - 1) * _riseK)) : 0;
+      const energyForm = composeEnergy(ceil, this._secScale, _build, bd, Math.max(pnEff, pnRise), this._dropBoost);
       const outN = toNormalized(energyForm, floorN);
 
       _diag.energyNorm = outN;
