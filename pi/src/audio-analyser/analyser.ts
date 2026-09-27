@@ -286,6 +286,14 @@ const PULSE_VETO = sysOn('PULSE_VETO');
 const PULSE_VETO_MIN = Number(env('PULSE_VETO_MIN') ?? 0);
 const PULSE_VETO_R = Number(env('PULSE_VETO_R') ?? 0.75);
 
+/** TYPSTABILA TALFALT (2026-09-27, realtidsprincipen): skriv ett icke-heltal och sedan ursprungsvardet, sa V8 ger faltet
+ *  Double-representation fran start. Ett Smi-initierat falt (0, -1 ...) som senare far ett decimaltal deprecerar objektets
+ *  form, och TurboFan kastar all kod som lastes med den formen (matt: 'wrong map'-deopts av process() i stabilt lage). */
+function stabiliseNumbers(o: object): void {
+  const r = o as Record<string, unknown>;
+  for (const k of Object.keys(r)) { const v = r[k]; if (typeof v === 'number') { r[k] = 0.5; r[k] = v; } }
+}
+
 export class Analyser {
   private fft: FFT;
   private window: Float32Array;
@@ -2664,6 +2672,10 @@ export class Analyser {
       kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
+    // Ramen och dess delobjekt skrivs varje hop av optimerad kod: ge alla talfalt Double-form redan har (se stabiliseNumbers).
+    for (const o of [this.outFrame, this.outProfile, this.outSpec, this.outSpecAbs, this.outOnset, this.outDrum]) stabiliseNumbers(o);
+    // Instansfalt som i stabilt lage bytte Smi->Double forst vid sallsynta handelser (V8 --trace-generalization, 540 s).
+    for (const k of ['secHiStartMs', 'secDipExpMs', 'expectHighMs', 'levelVsHighDb'] as const) { const v = (this as unknown as Record<string, number>)[k]; (this as unknown as Record<string, number>)[k] = 0.5; (this as unknown as Record<string, number>)[k] = v; }
   }
 
   /** Feed a hop-sized chunk of mono samples, get a frame back. */
