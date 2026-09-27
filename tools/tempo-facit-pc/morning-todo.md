@@ -8,3 +8,6 @@ KLART 2026-09-24 (uppdrag 1 ur rutinen): branch enad-analysator (lotus 9986032, 
 
 ## Morgonen 2026-09-24 — kalibrering
 Ingen PUT. beatTempoSmoothS kvar 15 (spann 48/44/45 > 40, men höjt 12→15 först 09-23 — väntar tre dygn med 15). beatOctaveRule kvar false (loggen 1/1–1/2, y < 5).
+
+## Morgonen 2026-09-27 — kalibrering
+Ingen PUT. PC:n nådde inte Pi:n 09-24 22:16 → 09-27 18:31 (WinError 10065) ⇒ nattjobben 25–27 utan lärrader/hälsa; smoothS kvar 15 (tre dygns spann saknas), oktavregeln kvar false (1/1, y < 5). Notera: kalibreringen har beatLockBeats 12 och anchorOffsetDb 4 (inte agentens ändring).
