@@ -286,6 +286,18 @@ const PULSE_VETO = sysOn('PULSE_VETO');
 const PULSE_VETO_MIN = Number(env('PULSE_VETO_MIN') ?? 0);
 const PULSE_VETO_R = Number(env('PULSE_VETO_R') ?? 0.75);
 
+/** Instansfalt som MATT (--trace-generalization, 240 s pop-facit, 2026-09-27) byter Smi->Double efter start. Ges Double-form i
+ *  konstruktorn (se slutet av constructor) sa kartan inte deprecerar mitt i driften. Fyra av dem stod har redan sedan 896ab7c. */
+const DOUBLE_FROM_START = [
+  'secHiStartMs', 'secDipExpMs', 'expectHighMs', 'levelVsHighDb',
+  'sumSq', 'lastT', 'dbgRms', 'lastKick', 'envAccum', 'envAccumT', 'envBassAccum', 'blAccum', 'lvlSmooth', 'lvlVU', 'engSmooth', 'activeMs',
+  'buildUp', 'novSlow', 'kickHit', 'snareHit', 'hatHit', 'bodyEnv', 'bodyFast', 'bodyCeil', 'bodyPeak', 'lastGoneSpanMs', 'lastDropMs',
+  'lastKickWallMs', 'lastMiniGoneMs', 'lastMiniMs', 'lastRiserMs', 'pendingKickMs', 'pendingKickW', 'kfPrev', 'kfPrev2', 'beatAnchorMs',
+  'blPrev1', 'blPrev2', 'blTrough', 'profBassline', 'bassOnsetsPerBeat',
+  'lastConfMs', 'lastVoteMs', 'lowConfSinceMs', 'newSongVote', 'lockPeak', 'nearChallenger', 'octaveVote', 'rawBpmLast', 'localBpmConfidence',
+  'secPct', 'secSongStartMs', 'sectionStartMs', 'secBlkMs', 'secBlkInt', 'secBlkCent', 'secBlkRms2', 'secCurDbSum', 'repeatSim', 'repeatAgoMs',
+  'miniGoneMs', 'bodyGoneMs', 'lastBodyGoneMs', 'dropArmUntil', 'dropArmAt',   // byter forst vid forsta drop-episoden (sags i andra matningen)
+] as const;
 /** TYPSTABILA TALFALT (2026-09-27, realtidsprincipen): skriv ett icke-heltal och sedan ursprungsvardet, sa V8 ger faltet
  *  Double-representation fran start. Ett Smi-initierat falt (0, -1 ...) som senare far ett decimaltal deprecerar objektets
  *  form, och TurboFan kastar all kod som lastes med den formen (matt: 'wrong map'-deopts av process() i stabilt lage). */
@@ -2681,7 +2693,12 @@ export class Analyser {
     // Ramen och dess delobjekt skrivs varje hop av optimerad kod: ge alla talfalt Double-form redan har (se stabiliseNumbers).
     for (const o of [this.outFrame, this.outProfile, this.outSpec, this.outSpecAbs, this.outOnset, this.outDrum]) stabiliseNumbers(o);
     // Instansfalt som i stabilt lage bytte Smi->Double forst vid sallsynta handelser (V8 --trace-generalization, 540 s).
-    for (const k of ['secHiStartMs', 'secDipExpMs', 'expectHighMs', 'levelVsHighDb'] as const) { const v = (this as unknown as Record<string, number>)[k]; (this as unknown as Record<string, number>)[k] = 0.5; (this as unknown as Record<string, number>)[k] = v; }
+    // FORSLAG 2026-09-27 (minnesgranskningen, tools/mem/): --trace-generalization over 240 s pop-facit visade att 60 instansfalt
+    // byter Smi->Double EFTER start (var och en deprecerar Analyser-kartan: +10..+369 kartor per falt) -> scoreEnv deoptades 41 ggr,
+    // process() 13 ggr ("wrong map", "Maps became deprecated during optimization"), och ooptimerad kod boxar varje flyttal:
+    // 43 kB skrap/hop kallt mot 1,2 kB/hop stabilt (--no-opt: 1 MB/hop). Listan ar exakt de falt som mattes generalisera.
+    for (const k of DOUBLE_FROM_START) { const v = (this as unknown as Record<string, number>)[k]; if (typeof v === 'number') { (this as unknown as Record<string, number>)[k] = 0.5; (this as unknown as Record<string, number>)[k] = v; } }
+    stabiliseNumbers(this.secRank as unknown as Record<string, unknown>);
   }
 
   /** Feed a hop-sized chunk of mono samples, get a frame back. */
