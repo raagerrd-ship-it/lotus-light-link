@@ -746,9 +746,9 @@ export class Analyser {
   private nearVote = 0;     // bevis för GRANN-fel (t.ex. 122 låst mot 136): bara före commit
   private nearChallenger = 0;  // tempot grann-rösterna pekar på (måste hålla ihop, som challengerBpm)
   private bpmStable = 0;    // antal stabila (finjusterings-)estimat i rad → committa oktaven
-  private challengerBpm = 0;   // tempot rösterna faktiskt pekar på (måste hålla ihop)
+  private challengerBpm = -0;   // typstabilt (Double fran start)   // tempot rösterna faktiskt pekar på (måste hålla ihop)
   private lockPeak = 0;        // tempogram-toppens styrka när takten är frisk (referens)
-  private lastSongVoteMs = 0;  // väggklocka för förra låtbytesrösten (bevis mäts i TID)
+  private lastSongVoteMs = -0;   // typstabilt (Double fran start)  // väggklocka för förra låtbytesrösten (bevis mäts i TID)
   private newSongVote = 0;  // ihållande oenighet trots låst oktav → låtbyte utan tystnadslucka
   /** Antal stabila finjusterings-estimat (@4Hz) innan oktaven committas OCH
    *  låtbytesvakten öppnar. MÅSTE vara samma tal på båda ställena — se dödläget
@@ -758,7 +758,7 @@ export class Analyser {
    *  låssläppningen sist i computeBpm(). 0 = ej satt. */
   private lowConfSinceMs = 0;
   /** Väggklocka: t.o.m. denna tid gäller vidgad tempo-sökning efter en låtbytes-hint. */
-  private reacqUntilMs = 0;
+  private reacqUntilMs = -0;   // typstabilt (se lastDropRise)
 
   // Ringbuffert för senaste råestimat (~5s) → median-stabilisering utan allokering.
   private static readonly BPM_HIST = 20;
@@ -794,7 +794,7 @@ export class Analyser {
    *  tyngsta slaget i så gott som all dansmusik — den plats som samlar mest
    *  kick-tyngd ÄR ettan. Glöms långsamt så ett låtbyte kan flytta fasen. */
   private barAcc = new Float64Array(4);
-  private barCount = 0;        // antal bokförda slag (bevisunderlag för taktfasen)
+  private barCount = -0;        // (typstabilt) antal bokförda slag (bevisunderlag för taktfasen)
   /** Perceptuell prior (log-Gauss runt 120 BPM) per lag — lagg→BPM ar fast, sa
    *  de ~78 Math.exp()-anropen per computeBpm-anrop kan bakas en gang. */
   private priorLut = (() => {
@@ -822,7 +822,7 @@ export class Analyser {
     }
     return t;
   })();
-  private silentMs = 0;
+  private silentMs = -0;   // typstabilt (se lastDropRise)
   private diagLagMin = 0; private diagLagMax = 0;
   private _why = "";   // TRACE: vilken gren bytte tempot (<prefix>BPM_TRACE)
   /** Senast COMMITTADE tempot. SUBHARMONIK-GUARD (<prefix>SUBH_GUARD): en kandidat som ar exakt 2/3 (SUBH_HALF: aven 1/2)
@@ -896,7 +896,7 @@ export class Analyser {
   private bodyCeil = -300;   // dB
   private bodyPeak = -300;   // SEG topp (loud-referens i minuter) for landa-hogt
   private lastGoneSpanMs = 0;
-  private lastDropRise = 0;
+  private lastDropRise = -0;   // -0 = HeapNumber: Double-falt fran start (typstabilt), beter sig som 0
   private wasBodyOnset = false;
   /** ANSLAGSDETEKTION. En tröskel som ska NÅS korsas först när basen redan
    *  kommit — uppmätt 2.5 s efter anslaget. STIGNINGSTAKTEN fyrar när den
@@ -913,12 +913,12 @@ export class Analyser {
   private bodyGoneMs = 0;
   private lastBodyGoneMs = -1e9;
   private miniDropCount = 0; private lastMiniMs = -1e9; private miniGoneMs = 0; private lastMiniGoneMs = -1e9; private wasMiniOnset = false;
-  private dropArmUntil = 0; private dropArmAt = 0; private dropArmGoneMs = -1;   // armerat drop-fonster (DROP_ARM_MS)
-  private calmHoldStart = 0; private calmHoldRise = 0;   // DROP_CALM_LAND_MS: kandidat som halls for verifierad landning
+  private dropArmUntil = 0; private dropArmAt = 0; private dropArmGoneMs = -1.5;   // armerat drop-fonster (DROP_ARM_MS)
+  private calmHoldStart = -0; private calmHoldRise = -0;   // DROP_CALM_LAND_MS: kandidat som halls for verifierad landning
   private dropPendAt = 0; private dropPendStart = 0; private dropPendRise = 0; private dropPendGrid = false; private lastKickWallMs = -1e9;   // DROP_KICK_LOCK_MS
-  private goneEpisodeMs = -1;   // gone-episodens START (lastBodyGoneMs uppdateras varje hop och duger INTE som id)
+  private goneEpisodeMs = -1.5;   // (double fran start, se dropArmGoneMs) gone-episodens START (lastBodyGoneMs uppdateras varje hop och duger INTE som id)
   private dropCount = 0;         // monoton drop-räknare (edge-säker för konsumenter)
-  private lastDropMs = -1e9;
+  private lastDropMs = -1.5e9;   // utanfor Smi-intervallet -> Double fran start (typstabilt)
   // RISER/UPPBYGGNAD (flyttad från effects)
   /**
    * OBEHANDLAD LOGBANDNIVÅ — riserdetektorns egen ingång.
@@ -1793,7 +1793,7 @@ export class Analyser {
   private slowStep(o: number): void {
     const r = this.splitRing!;
     this.applyFlags(r[o + R_FLAGS], r[o + R_HINT_MS], r[o + R_VCLOCK]);
-    this.virtualMs = r[o + R_PERF];                        // perfNow() = snabba tradens tid vid sampeln (deterministiskt)
+    this.virtualMs = r[o + R_PERF]; this.virtualOn = true;   // perfNow() = snabba tradens tid vid sampeln (deterministiskt)
     this.envRing[this.envPos] = r[o + R_ENV]; this.envBassRing[this.envPos] = r[o + R_BASS];
     if (HIGH_ON) this.envHighRing[this.envPos] = r[o + R_HIGH];
     this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
@@ -2490,7 +2490,9 @@ export class Analyser {
    *  samma bildrutor ut, oavsett hur fort man matar den. Det är förutsättningen
    *  för en regressionsbänk — och för att kunna välja tröskelvärden mot tjugo
    *  låtar i stället för mot en. Live är beteendet oförändrat (null = riktig tid). */
-  private virtualMs: number | null = null;
+  // TYPSTABIL (2026-09-27, realtidsprincipen): aldrig null<->tal i ett falt som lases varje hop - det deprecerar
+  // instansens map och kastar TurboFan-koden. virtualOn ar vaxeln, virtualMs alltid ett tal (NaN nar av).
+  private virtualMs = NaN; private virtualOn = false;
   /** Driv analysatorn på en virtuell klocka (offline-uppspelning). Anropas med
    *  ackumulerad ljudtid i ms före varje process(). null = tillbaka till realtid. */
   /**
@@ -2508,8 +2510,8 @@ export class Analyser {
     // LAGESBYTE bara vid ett HOPP (forsta anropet, bakat, eller > 1 s framat): en bank som anropar per hop med
     // ljudtiden far bara klockan flyttad (som advanceVirtualClock) - ankarna nollas inte varje hop.
     const prev = this.virtualMs;
-    const jump = ms === null || prev === null || ms < prev || ms - prev > 1000;
-    this.virtualMs = ms;
+    const jump = ms === null || !this.virtualOn || ms < prev || ms - prev > 1000;
+    if (ms === null) { this.virtualOn = false; this.virtualMs = NaN; } else { this.virtualOn = true; this.virtualMs = ms; }
     if (!jump) return;
     this.lastKick = 0;
     this.pendingKickMs = 0;
@@ -2523,8 +2525,8 @@ export class Analyser {
   /** KORBANK (09-20): flytta bara den virtuella klockan, utan att nolla nagra ankare. setVirtualClock() ar ett
    *  LAGESBYTE (nollar lastT/lastKick/pendingKickMs/lastVoteMs...) och far bara anropas en gang - anropad per hop
    *  fros AGC:n (dt=0), kickar forfinades aldrig (0 kickar) och rosterna foll varje anrop. */
-  advanceVirtualClock(ms: number): void { this.virtualMs = ms; }
-  private perfNow(): number { return this.virtualMs ?? performance.now(); }
+  advanceVirtualClock(ms: number): void { this.virtualMs = ms; this.virtualOn = true; }
+  private perfNow(): number { return this.virtualOn ? this.virtualMs : performance.now(); }
   /**
    * LJUDKLOCKAN — ms sedan start raknat ur ANTALET BEARBETADE SAMPEL, satt av
    * matningen strax fore varje process(). -1 = inte satt (aldre anropare).
@@ -2559,7 +2561,7 @@ export class Analyser {
   /** Tillbaka till Date.now(). Nasta setAudioClockMs sar om offseten. */
   clearAudioClock(): void { this.audioClockMs = -1; this.audioOffsetSeeded = false; this.audioToWallOffset = 0; }
   private wallNow(): number {
-    if (this.virtualMs !== null) return this.virtualEpoch + this.virtualMs;
+    if (this.virtualOn) return this.virtualEpoch + this.virtualMs;
     return this.audioClockMs >= 0 ? this.audioClockMs + this.audioToWallOffset : Date.now();
   }
   private virtualEpoch = 1700000000000;
