@@ -216,15 +216,10 @@ const DROP_QUALITY_DB = Number(env('DROP_QUALITY_DB') ?? 3.5);
 const DROP_ARM_MS = Number(env('DROP_ARM_MS') ?? 0);
 // FYR-LAGG: hela laggen ar bodyFast-filtret (tau 120 ms) som alla tre villkor laser. BODY_FAST_S sveper tau.
 const BODY_FAST_S = Number(env('BODY_FAST_S') ?? 0.12);
-// DROP_PEEK_MS: lopande minimum av ra bodyNow over N ms. 0 = ra-varde direkt; utelamnad = av.
-const DROP_PEEK_MS = Number(env('DROP_PEEK_MS') ?? (envOn('DROP_PEEK') ? 0 : -1));
-const DROP_PEEK = DROP_PEEK_MS >= 0;
 // DROP_RISE_MIN: stigningen mats mot MINIMUM av bodyFast senaste 0,5 s, inte mot punkten 0,5 s bakat. Mjuka
 // pop-drops har ett SUG (dipp 100-200 ms) fore dropen; med punkt-referensen nas kravet forst nar referensen
 // hamnar i dippen -> fyrningen landar 0,5 s sent = en takt vid 130 BPM ("drop en takt efter").
 const DROP_RISE_MIN = envOn('DROP_RISE_MIN');
-// UPPGRADERING: inom korta fonstret far en kandidat fyra om den landar minst sa har manga dB NARMARE toppen an forra. 0 = av.
-const DROP_UPGRADE_DB = Number(env('DROP_UPGRADE_DB') ?? 0);
 // VILLKORAT STIGNINGSKRAV: landar kandidaten NARA TOPPEN (underPeak < DROP_RISE_LOW_Q) racker DROP_RISE_LOW_DB. 0 = av.
 const DROP_RISE_LOW_DB = Number(env('DROP_RISE_LOW_DB') ?? 0);
 const DROP_RISE_LOW_Q = Number(env('DROP_RISE_LOW_Q') ?? 3);
@@ -237,7 +232,7 @@ const DROP_RISE_LOW_Q = Number(env('DROP_RISE_LOW_Q') ?? 3);
 const SECTION_HINT_LOWCONF = sysEnv('SECTION_HINT_LOWCONF') !== '0';
 const DROP_CALM_GATE = sysEnv('DROP_CALM_GATE') === '1';
 /** STRIKT INTRO (opt-in DROP_CALM_INTRO_STRICT=1, kraver <prefix>DROP_CALM_GATE): i 'intro' fyrar en drop bara efter riser (buildUp >= DROP_CALM_BUILD). */
-const DROP_CALM_INTRO_STRICT = typeof process !== 'undefined' && process.env?.DROP_CALM_INTRO_STRICT === '1';
+const DROP_CALM_INTRO_STRICT = env('DROP_CALM_INTRO_STRICT') === '1';   // bare-ratt (profilen kan satta standard)
 const DROP_CALM_DB = Number(env('DROP_CALM_DB') ?? 6);
 const DROP_CALM_BUILD = Number(env('DROP_CALM_BUILD') ?? 0.25);
 const DROP_CALM_Q = Number(env('DROP_CALM_Q') ?? 1.5);
@@ -248,8 +243,6 @@ const DROP_CALM_LAND_MS = Number(env('DROP_CALM_LAND_MS') ?? 0);
 const DROP_KICK_LOCK_MS = Number(env('DROP_KICK_LOCK_MS') ?? 0);
 const DROP_KICK_RECENT_MS = Number(env('DROP_KICK_RECENT_MS') ?? 100);
 const DROP_KICK_LOCK_GRID = env('DROP_KICK_LOCK_GRID') === '1';
-const DROP_KICK_FIRST = envOn('DROP_KICK_FIRST');
-const KICK_FIRST_RISE = Number(env('KICK_FIRST_RISE') ?? 6);
 // MINIDROPS: egen losare lyft-detektor med eget avstand MINI_SPACING_MS. 0 = av.
 const MINI_SPACING_MS = Number(env('MINI_SPACING_MS') ?? 0);
 const MINI_RISE_DB = Number(env('MINI_RISE_DB') ?? 10);
@@ -919,11 +912,8 @@ export class Analyser {
    *  blockerade av den föregående falska avfyrningen. */
   private bodyGoneMs = 0;
   private lastBodyGoneMs = -1e9;
-  private peekRing = new Float32Array(64).fill(-120); private peekPos = 0;   // DROP_PEEK_MS lopande minimum av ra bodyNow
-  private lastDropUnderPeak = 99;   // underPeak vid senaste fyrningen (DROP_UPGRADE_DB)
   private miniDropCount = 0; private lastMiniMs = -1e9; private miniGoneMs = 0; private lastMiniGoneMs = -1e9; private wasMiniOnset = false;
   private dropArmUntil = 0; private dropArmAt = 0; private dropArmGoneMs = -1;   // armerat drop-fonster (DROP_ARM_MS)
-  private dropKickGoneMs = -1; private kickSeenGoneMs = -1;   // KICK-FIRST + [firstkick]-spar per gone-episod
   private calmHoldStart = 0; private calmHoldRise = 0;   // DROP_CALM_LAND_MS: kandidat som halls for verifierad landning
   private dropPendAt = 0; private dropPendStart = 0; private dropPendRise = 0; private dropPendGrid = false; private lastKickWallMs = -1e9;   // DROP_KICK_LOCK_MS
   private goneEpisodeMs = -1;   // gone-episodens START (lastBodyGoneMs uppdateras varje hop och duger INTE som id)
@@ -3246,13 +3236,7 @@ export class Analyser {
     const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;   // ra dB
     this.bodyEnv += (bodyNow - this.bodyEnv) * Math.min(1, dtHop / 0.35);
     this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / BODY_FAST_S);
-    let bodyPeek = this.bodyFast;
-    if (DROP_PEEK) {   // villkoren far se ra-kanten efter DROP_PEEK_MS (lopande min), inte efter filtret
-      const n = Math.min(63, Math.max(1, Math.round(DROP_PEEK_MS / (dtHop * 1000)) + 1));
-      this.peekRing[this.peekPos] = bodyNow; this.peekPos = (this.peekPos + 1) & 63;
-      let mn = Infinity; for (let k = 1; k <= n; k++) { const v = this.peekRing[(this.peekPos - k) & 63]; if (v < mn) mn = v; }
-      bodyPeek = Math.max(this.bodyFast, mn);
-    }   // 0.06 testat men gav falsklarm live utan att fixa beat-lagget (det sitter i lamp-vagen/energin, inte har)
+    const bodyPeek = this.bodyFast;   // (DROP_PEEK forkastad 09-08: ra-min oppnade falska klassen)   // 0.06 testat men gav falsklarm live utan att fixa beat-lagget (det sitter i lamp-vagen/energin, inte har)
     // TAKET SJUNKER I dB PER SEKUND, inte i procent. Kroppen ar nu ett dB-tal
     // (negativt), och "1,5 % av ett negativt tal" gor taket STORRE, inte mindre —
     // den gamla raden var matematiskt omvand sa fort skalan blev logaritmisk.
@@ -3353,8 +3337,7 @@ export class Analyser {
     // stora ögonblick) släpps ändå igenom direkt (ned till 4 s).
     const sinceDrop = nowWallA - this.lastDropMs;
     const stronger = bodyRise > this.lastDropRise + DROP_ESCALATE_DB;
-    const upgrade = DROP_UPGRADE_DB > 0 && sinceDrop > 1500 && (this.bodyPeak - bodyPeek) < this.lastDropUnderPeak - DROP_UPGRADE_DB;
-    const dropSpacingOk = sinceDrop > DROP_LONG_MS || (sinceDrop > DROP_SHORT_MS && stronger) || upgrade;
+    const dropSpacingOk = sinceDrop > DROP_LONG_MS || (sinceDrop > DROP_SHORT_MS && stronger);   // (DROP_UPGRADE_DB matt 09-12, av: risk for dubbelsmall)
     // RISER-KRAVET AR AVSTANGT — men INTE for att signalen ar dod. Den gamla
     // motiveringen ("inRiser 0% av tiden, buildUp p99=0.31") mattes mot en
     // aldre riser-detektor och ar RADERAD som falsk.
@@ -3384,23 +3367,7 @@ export class Analyser {
     // gone-episod armerar (fangar en mjuk drops fordrojda topp); senare edges far bara ogonblicket.
     if (bodyOnsetEdge && this.goneEpisodeMs !== this.dropArmGoneMs) { this.dropArmUntil = nowWallA + DROP_ARM_MS; this.dropArmAt = nowWallA; this.dropArmGoneMs = this.goneEpisodeMs; }
     const armed = bodyOnsetEdge || nowWallA < this.dropArmUntil;
-    // FORSTA KICKEN efter en gone-episod (spar + KICK-FIRST). Pa mjuka drops sveller basen over en
-    // hel takt: kick & allt annat slar pa takt 1, baskroppen fyller i forst till takt 2 → kropps-
-    // detektorn fyrar takten efter oavsett troskel (ladan 2026-09-04: rise 12 med underPeak 2.5).
-    const goneRecentK = nowWallA - this.lastBodyGoneMs < 6000;
-    if (kick && goneRecentK && this.goneEpisodeMs !== this.kickSeenGoneMs) {
-      this.kickSeenGoneMs = this.goneEpisodeMs;
-      if (DROP_TRACE) console.log(`[firstkick] wall ${this.wallNow()} rise ${bodyRise.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s`);
-    }
-    // DROP_KICK_FIRST=1: fyra pa forsta KVALIFICERADE kicken (kroppen borjat lyfta ≥ KICK_FIRST_RISE dB)
-    // efter en gone-episod — en gang per episod; kroppsfyrningen sparras sedan for episoden.
-    const kickFirstOk = DROP_KICK_FIRST && kick && goneRecentK && this.goneEpisodeMs !== this.dropKickGoneMs
-      && bodyRise > KICK_FIRST_RISE && dropSpacingOk && this.activeMs > 2000;
-    if (kickFirstOk) {
-      this.dropKickGoneMs = this.goneEpisodeMs; this.dropArmUntil = 0;
-      this.dropCount++; this.lastDropMs = nowWallA; this.lastDropRise = bodyRise;
-      console.log(`[dropfire] wall ${this.wallNow()} KICKFIRST rise ${bodyRise.toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s`);
-    }
+    // (KICK-FIRST forkastad 09-04: flod pa megamix; [firstkick]-sparet borttaget 09-27.)
     // MINIDROP-lyftet (se MINI_*). Egen svacka-raknare (kortare/grundare an gone) och egen flank.
     if (MINI_SPACING_MS > 0) {
       if (this.bodyEnv < this.bodyCeil - MINI_GONE_DB) { this.miniGoneMs += dtHop * 1000; if (this.miniGoneMs >= MINI_GONE_MS) this.lastMiniGoneMs = nowWallA; }
@@ -3418,7 +3385,7 @@ export class Analyser {
     // forsta takten? Matdata for DROP_QUALITY_DB pa mjukare material (pop) dar inget referens finns.
     if (DROP_TRACE && bodyOnsetEdge && !(dropSpacingOk && fullSlam)) console.log(`[dropedge] rise ${bodyRise.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s spacingOk ${dropSpacingOk} sinceDrop ${(sinceDrop/1000).toFixed(1)}s`);
     if (kick) this.lastKickWallMs = nowWallA;
-    let fireNow = dropSpacingOk && armed && this.activeMs > 2000 && fullSlam && this.goneEpisodeMs !== this.dropKickGoneMs;
+    let fireNow = dropSpacingOk && armed && this.activeMs > 2000 && fullSlam;
     let fireTag = '';
     const underNow = this.bodyPeak - bodyPeek;
     // LUGN-SEKTIONS-GRINDEN (se DROP_CALM_GATE). Domen tas per kandidat-hop; den hallna kandidaten (DROP_CALM_LAND_MS) foljs nedan.
@@ -3460,7 +3427,7 @@ export class Analyser {
     }
     if (fireNow) {
       this.dropArmUntil = 0; this.calmHoldStart = 0;
-      this.dropCount++; this.lastDropMs = nowWallA; this.lastDropRise = bodyRise; this.lastDropUnderPeak = underNow;
+      this.dropCount++; this.lastDropMs = nowWallA; this.lastDropRise = bodyRise;
       console.log(`[dropfire] wall ${this.wallNow()}${fireTag} rise ${bodyRise.toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} ceil ${this.bodyCeil.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} sinceDrop ${(sinceDrop/1000).toFixed(1)}s goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s goneSpan ${(this.lastGoneSpanMs/1000).toFixed(1)}s edgeAgo ${(nowWallA - this.dropArmAt).toFixed(0)}ms`);
     }
 
