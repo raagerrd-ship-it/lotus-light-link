@@ -1,6 +1,6 @@
 # Resultattavla — analysatorns tempoval mot facit
 
-Uppdaterad 2026-09-27 05:14. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
+Uppdaterad 2026-09-28 05:21. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
 
 Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).
 
@@ -16,15 +16,16 @@ Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med ana
 | 2026-09-25 | 155/235 · 6/8 · slag 0.56 p 0.84 | 187/235 · 6/8 · slag 0.88 p 0.84 · fas 90/164 | 184/235 · 6/8 · slag 0.59 p 0.84 | 169/235 · 6/8 · slag 0.55 p 0.85 | 187/235 · 6/8 · slag 0.89 p 0.84 · fas 90/164 | 187/235 · 6/8 · slag 0.84 p 0.84 · fas 90/164 | – (– facit) | – | – ms | – | – | – |
 | 2026-09-26 | 155/235 · 6/8 · slag 0.56 p 0.84 | 187/235 · 6/8 · slag 0.88 p 0.84 · fas 90/164 | 184/235 · 6/8 · slag 0.59 p 0.84 | 169/235 · 6/8 · slag 0.55 p 0.85 | 187/235 · 6/8 · slag 0.89 p 0.84 · fas 90/164 | 187/235 · 6/8 · slag 0.84 p 0.84 · fas 90/164 | – (– facit) | – | – ms | – | – | – |
 | 2026-09-27 | 155/235 · 6/8 · slag 0.56 p 0.84 | 187/235 · 6/8 · slag 0.88 p 0.84 · fas 90/164 | 184/235 · 6/8 · slag 0.59 p 0.84 | 169/235 · 6/8 · slag 0.55 p 0.85 | 187/235 · 6/8 · slag 0.89 p 0.84 · fas 90/164 | 187/235 · 6/8 · slag 0.84 p 0.84 · fas 90/164 | – (– facit) | – | – ms | – | – | – |
+| 2026-09-28 | 192/286 · 6/8 · slag 0.56 p 0.84 | 232/286 · 6/8 · slag 0.87 p 0.84 · fas 109/202 | 226/286 · 6/8 · slag 0.58 p 0.84 | 208/286 · 6/8 · slag 0.56 p 0.85 | 232/286 · 6/8 · slag 0.88 p 0.84 · fas 109/202 | 232/286 · 6/8 · slag 0.82 p 0.84 · fas 109/202 | 12 (9 facit) | 1.0 | None ms | 1.0 | 0.9 | 0.6 |
 
-Senaste dygnet: domar null; kick-bias None ms; nivå-lag None ms; tak-r None lag None ms None %/dB klipp None; analysatorns spann inom låt None BPM (median); tempoledtrådar ≠ 1: None; dropfångster None null.
+Senaste dygnet: domar {"utan facit": 3, "ok": 8, "ingen dom": 1}; kick-bias 0.2 ms; nivå-lag 100.0 ms; tak-r 0.8 lag 200.0 ms 5.3 %/dB klipp 0.0; analysatorns spann inom låt 32 BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 215 {"ratt": 40, "falsk": 38, "osaker": 137}.
 
 Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.
 
 Sektioner (Pi-flaggor {"LOTUS_SECTION": "1", "LOTUS_GRID_PHASE": "1", "LOTUS_SECTION_REPEAT": "117", "LOTUS_SECTION_W_HIGH": "1.0"}, repeats {"filer": 91, "rc": 0, "tail": "", "err": ""}):
 
-- test-tier: high==high 0.59 · recall 0.73 · falsk 0.49 · gransfel 0.29 (n 40) | refrang 2 <=4 s 2/21, <=8 s 5, median 18.3 s · refrang 1 <=4 s 3 · vers 2 ej high 0.52 · forutsedd 3 | forutsagelse 11/77 @ 2.0/min
-- test-repeat: high==high 0.59 · recall 0.73 · falsk 0.49 · gransfel 0.29 (n 40) | refrang 2 <=4 s 8/34, <=8 s 16, median 6.9 s · refrang 1 <=4 s 7 · vers 2 ej high 0.57 · forutsedd 4 | forutsagelse 11/77 @ 2.0/min
+- test-tier: high==high 0.56 · recall 0.66 · falsk 0.5 · gransfel 0.33 (n 39) | refrang 2 <=4 s 1/18, <=8 s 2, median 21.5 s · refrang 1 <=4 s 3 · vers 2 ej high 0.36 · forutsedd 1 | forutsagelse 7/70 @ 2.0/min
+- test-repeat: high==high 0.56 · recall 0.66 · falsk 0.5 · gransfel 0.33 (n 39) | refrang 2 <=4 s 12/30, <=8 s 15, median 4.3 s · refrang 1 <=4 s 6 · vers 2 ej high 0.48 · forutsedd 3 | forutsagelse 7/70 @ 2.0/min
 - alla-tier: high==high 0.59 · recall 0.73 · falsk 0.48 · gransfel 0.3 (n 82) | refrang 2 <=4 s 5/39, <=8 s 9, median 18.3 s · refrang 1 <=4 s 5 · vers 2 ej high 0.52 · forutsedd 4 | forutsagelse 14/148 @ 2.0/min
 - alla-repeat: high==high 0.59 · recall 0.73 · falsk 0.48 · gransfel 0.3 (n 82) | refrang 2 <=4 s 22/66, <=8 s 34, median 5.1 s · refrang 1 <=4 s 16 · vers 2 ej high 0.55 · forutsedd 8 | forutsagelse 14/148 @ 2.0/min
 

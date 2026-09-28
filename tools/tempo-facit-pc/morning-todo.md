@@ -11,3 +11,6 @@ Ingen PUT. beatTempoSmoothS kvar 15 (spann 48/44/45 > 40, men höjt 12→15 för
 
 ## Morgonen 2026-09-27 — kalibrering
 Ingen PUT. PC:n nådde inte Pi:n 09-24 22:16 → 09-27 18:31 (WinError 10065) ⇒ nattjobben 25–27 utan lärrader/hälsa; smoothS kvar 15 (tre dygns spann saknas), oktavregeln kvar false (1/1, y < 5). Notera: kalibreringen har beatLockBeats 12 och anchorOffsetDb 4 (inte agentens ändring).
+
+## Morgonen 2026-09-28 — kalibrering
+Ingen PUT. smoothS kvar 15 (spann 32 i dag, 09-25–27 saknas ⇒ inga tre dygn), oktavregeln kvar false (1/1, y < 5). Inga återgångar (ok-andel 1,0, onset 1,0/0,9). Drops edgeAgo 09-27: n 67, median 0, p75 21 ms. Obs: pc.phase (gridLag/pulse) saknas i dygnets lärrader.
