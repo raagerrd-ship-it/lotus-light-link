@@ -20,3 +20,6 @@ Ingen PUT. smoothS kvar 15 (spann 50 i dag, 32 i går, 09-27 saknas), oktavregel
 
 ## Från kvällen 2026-09-29 (INFO, inget att utföra)
 Nivåkanalens lag bänkad av huvudsessionen: ≤75 ms går inte utan snabbare fall, och fallet är LÅST (ägaren: "vill inte ha snabbare fade-down"). Föreslå inte lag-idéer via fall/release. energyRiseK 10 (r +0,05, lag oförändrad) väntar på ägarens ögonprov — PUT:a inte själv. Nattens 100 ms-raster underskattar lagen (fin: 150 sim / 180 verkligt).
+
+## Från kvällen 2026-09-29 (UPPDRAG)
+Backup av ladans Pi-DMX finns i C:\Users\richa\Desktop\Claude\dmx-control\pi-dmx\pi-backup\2026-09-29\ (README.md, manifest.txt, pidmx-backup.tgz). Gör steg 4d (Drift och stallar) för DMX offline mot den: jämför md5 av dist/*.js i manifestet mot ett rent bygge av dmx-control main (pi-dmx/engine, `npx tsc -p .`), unit + drop-ins (heap.conf, ladan.conf) mot repots systemd/audio-dmx-engine.service och tools/ladan.py, samt config.json mot src/config.ts standardvärden. Lista varje avvikelse med vilken sida som är rätt enligt git/minnet (pi-dmx.md). Rätta repot vid ren drift (t.ex. heap.conf-flaggorna ska stå i repots unit); ändra inget på Pi:n (onåbar). Leta också efter samma felklass som GC-stallarna: flaggor, filer eller inställningar som bara finns på ena sidan. Rapportera under 'Drift och stallar'.
