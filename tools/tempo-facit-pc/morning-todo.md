@@ -14,3 +14,9 @@ Ingen PUT. PC:n nådde inte Pi:n 09-24 22:16 → 09-27 18:31 (WinError 10065) �
 
 ## Morgonen 2026-09-28 — kalibrering
 Ingen PUT. smoothS kvar 15 (spann 32 i dag, 09-25–27 saknas ⇒ inga tre dygn), oktavregeln kvar false (1/1, y < 5). Inga återgångar (ok-andel 1,0, onset 1,0/0,9). Drops edgeAgo 09-27: n 67, median 0, p75 21 ms. Obs: pc.phase (gridLag/pulse) saknas i dygnets lärrader.
+
+## Morgonen 2026-09-29 — kalibrering
+Ingen PUT. smoothS kvar 15 (spann 50 i dag, 32 i går, 09-27 saknas), oktavregeln kvar false (1/1, y < 5). Inga återgångar (ok-andel 0,8, onset 0,9/0,9). Drops edgeAgo 09-28: n 92, median 0, p75 13 ms. pc.phase.pulse n = 0 i ALLA snuttar sedan 09-24 21:00: kalibreringen har energyGridTrust 99 ⇒ gridet driver aldrig (energiläge 100 %) ⇒ gridsläp/pulsfas omätbara. Beslut åt ägaren: är heart-beat på lotus avsiktligt av? Nattjobbets SECTION_ENV saknar Pi:ns LOTUS_SECTION_EARLY_S=45 och LOTUS_SECTION_ON_HINT=1.
+
+## Från kvällen 2026-09-29 (INFO, inget att utföra)
+Nivåkanalens lag bänkad av huvudsessionen: ≤75 ms går inte utan snabbare fall, och fallet är LÅST (ägaren: "vill inte ha snabbare fade-down"). Föreslå inte lag-idéer via fall/release. energyRiseK 10 (r +0,05, lag oförändrad) väntar på ägarens ögonprov — PUT:a inte själv. Nattens 100 ms-raster underskattar lagen (fin: 150 sim / 180 verkligt).
