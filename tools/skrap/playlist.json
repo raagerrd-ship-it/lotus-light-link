@@ -1,0 +1,58 @@
+[
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\drakemilligan__baddaytobeabeer_smubu63fn.wav",
+  "artist": "Drake Milligan",
+  "title": "Bad Day To Be A Beer",
+  "seconds": 150,
+  "key": "drakemilligan|baddaytobeabeer"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\cooperalan__colt45countryremix_smubs9so9.wav",
+  "artist": "Cooper Alan",
+  "title": "Colt 45 (Country Remix)",
+  "seconds": 150,
+  "key": "cooperalan|colt45countryremix"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\cooperalan__thisaintcountry_smubtijbl.wav",
+  "artist": "Cooper Alan",
+  "title": "This Ain't Country",
+  "seconds": 150,
+  "key": "cooperalan|thisaintcountry"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\alanjackson__freighttrain_smubxvsrx.wav",
+  "artist": "Alan Jackson",
+  "title": "Freight Train",
+  "seconds": 150,
+  "key": "alanjackson|freighttrain"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\zacampgeorge__callitaday_smubsi1t2.wav",
+  "artist": "Zac &amp; George",
+  "title": "Call It A Day",
+  "seconds": 150,
+  "key": "zacampgeorge|callitaday"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\jakebanfield__lasso_smubvkcz9.wav",
+  "artist": "Jake Banfield",
+  "title": "Lasso",
+  "seconds": 150,
+  "key": "jakebanfield|lasso"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\cooperalan__toughones_smubxrod7.wav",
+  "artist": "Cooper Alan",
+  "title": "Tough Ones",
+  "seconds": 150,
+  "key": "cooperalan|toughones"
+ },
+ {
+  "wav": "C:/Users/richa/Desktop/Claude/lotus-light-link/tools/tempo-facit-pc/corpus\\cooperalan__jesussaves_smuc0lgqo.wav",
+  "artist": "Cooper Alan",
+  "title": "Jesus Saves",
+  "seconds": 150,
+  "key": "cooperalan|jesussaves"
+ }
+]
