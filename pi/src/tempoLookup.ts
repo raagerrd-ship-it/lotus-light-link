@@ -63,7 +63,9 @@ export class TempoCache {
   private save(): void {
     this._dirty = true;
     if (this._saveTimer) return;
-    this._saveTimer = setTimeout(() => { this._saveTimer = null; void this.saveNow(); }, 2000);
+    // LOTUS_GC_QUIET_MS: sparningen (synkron JSON.stringify ~1,5 MB = 100-150 ms pa Pi:n) vantar pa nasta tysta ogonblick (flushIfDirty),
+    // med 5 min som reserv; annars som forr 2 s efter sista andring.
+    this._saveTimer = setTimeout(() => { this._saveTimer = null; void this.saveNow(); }, Number(process.env.LOTUS_GC_QUIET_MS ?? 0) > 0 ? 300000 : 2000);
     (this._saveTimer as any)?.unref?.();
   }
   private async saveNow(): Promise<void> {
@@ -75,6 +77,12 @@ export class TempoCache {
     } catch { /* cachen far aldrig falla motorn */ }
     this._saving = false;
     if (this._dirty) this.save();
+  }
+  /** Tystnads-GC:n (piEngine.onQuietGc): spara nu om nagot andrats - i samma paus som den fulla GC:n. */
+  flushIfDirty(): void {
+    if (!this._dirty || this._saving) return;
+    if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
+    void this.saveNow();
   }
   /** Synkron skrivning (bara vid avslut). */
   flushSync(): void {

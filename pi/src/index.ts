@@ -276,6 +276,7 @@ async function ensureEngineInstance(): Promise<void> {
     const { songKey } = await import('./songStore.js');
     const tc = new TempoCache((await import('./storage.js')).DATA_DIR + '/tempo-cache.json');
     tc.load(); tempoCacheRef = tc;
+    engineInstance.onQuietGc = () => tc.flushIfDirty();   // LOTUS_GC_QUIET_MS: spara i samma tysta paus som den fulla GC:n
     configServer?.setTempoCache?.(tc);   // 09-23: /api/tempo/cache ska svara aven fore forsta laten (se configServer.setTempoCache)
     engineInstance.setMetaVerdictSaver((a, t, verdict, analyserBpm, ratio) => {
       tc.update(songKey(a, t), { verdict, analyserBpm, ratio, verdictAt: Date.now() });

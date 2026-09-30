@@ -748,6 +748,10 @@ export interface TickData {
 
 export type TickCallback = (data: TickData) => void;
 
+/** STADA I TYSTNADEN (se tickInner): ms tystnad innan full GC; 0 = av. Kraver node --expose-gc (annars ingen effekt). */
+const GC_QUIET_MS = Number(process.env.LOTUS_GC_QUIET_MS ?? 0);
+const GC_FN: (() => void) | null = typeof (globalThis as any).gc === 'function' ? (globalThis as any).gc : null;
+
 export class PiLightEngine {
   private color: [number, number, number] = [255, 80, 0];
   // Fade-mål: setColor/setPalette sätter detta; tick-loopen tweenar `color` hit
@@ -853,6 +857,9 @@ export class PiLightEngine {
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
+  private _quietSince = 0; private _musicSinceGc = false; private _lastQuietGc = -1e9;   // LOTUS_GC_QUIET_MS
+  /** Anropas direkt efter tystnads-GC:n (index.ts: tempocachen sparas i samma paus). */
+  onQuietGc: (() => void) | null = null;
   private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0; private _ceilSlow = 0; private _lastHeardMs = 0; private _heardW = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
@@ -3133,6 +3140,23 @@ export class PiLightEngine {
       const tickFloor = cal.tickEnergyFloor;
       const inSilence = !this._clapMode && tickFloor > 0 && level < tickFloor;
       if (inSilence) shape = 0;
+      // STADA I TYSTNADEN (agaren 2026-09-30: 'kan man inte matcha stor clean till mellan latar?'): med LOTUS_GC_QUIET_MS > 0 och
+      // node --expose-gc gors en full GC (Mark-Compact, 30-60 ms pa Zero 2 W) nar det varit tyst sa lange - mellan latar eller i
+      // ett tyst break, dar lampan anda star vid golvet. Heapen ar da tom infor nasta lat, sa en full GC mitt i musiken blir sallsynt.
+      // Hogst en per 60 s och bara om musik spelats sedan forra. Samma ogonblick sparar tempocachen (onQuietGc).
+      if (GC_QUIET_MS > 0 && GC_FN) {
+        const _qn = performance.now();
+        if (!inSilence) { this._quietSince = 0; this._musicSinceGc = true; }
+        else if (this._quietSince === 0) this._quietSince = _qn;
+        else if (this._musicSinceGc && _qn - this._quietSince >= GC_QUIET_MS && _qn - this._lastQuietGc >= 60000) {
+          this._lastQuietGc = _qn; this._musicSinceGc = false;
+          setImmediate(() => {
+            const t0 = performance.now(); GC_FN!();
+            console.log(`[gc] tyst ogonblick: full GC ${(performance.now() - t0).toFixed(1)} ms`);
+            try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
+          });
+        }
+      }
 
       // Takjämning före heartbeat-smoothing: shape uppdateras ~15 Hz medan motorn
       // renderar ~75 Hz, så stora enstaka hopp fördelas över flera frames.
