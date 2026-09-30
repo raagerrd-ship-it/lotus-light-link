@@ -18,7 +18,7 @@ import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame, type Analyser } from './audio-analyser/index.js';
 import type { Recorder } from './recorder/recorder.js';
 import { Fingerprinter, type Landmark } from './fingerprint.js';
-import { noteOverrun, noteNativeCall } from './runtimeHealth.js';
+import { noteOverrun, noteNativeCall, SLOW_NATIVE_MS } from './runtimeHealth.js';
 
 
 let _overrunLogAt = 0;
@@ -211,8 +211,11 @@ export function setBeatCutoffHz(hz: number): void {
 const ringBuf = new Float32Array(RING_SIZE);
 let ringPos = 0;
 
-// High-shelf filter state
-let hsState = 0;
+// High-shelf filter state. I en Float64Array, INTE en modul-`let` (skrapjakten 2026-09-30): lasen av en
+// modulvariabel ar taggad, sa loopens `hs`-fas i onAudioData boxades - TurboFan allokerade ett HeapNumber per
+// sampel (256 x 16 B per callback = ~750 kB/s skrap, halften av huvudtradens allt). En typad array ger en ren
+// float64 in och ut; vardet ar exakt detsamma.
+const hsState = new Float64Array(1);
 
 // LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
 // emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
@@ -1259,7 +1262,7 @@ function onAudioData(buf: Buffer): void {
   // klippa (level pinnad 100 %) och blandade ihop de två vägarna.
   
   const hsAlpha = HS_ALPHA;
-  let hs = hsState;
+  let hs = hsState[0];
 
   let pos = ringPos;
   const ring = ringBuf;
@@ -1324,7 +1327,7 @@ function onAudioData(buf: Buffer): void {
     }
   }
 
-  hsState = hs;
+  hsState[0] = hs;
   if (rec && frameCount > 0) rec.push(recBuf, frameCount);
   ringPos = pos;
   const peak = prePeak * micGainAuto;
@@ -1394,13 +1397,10 @@ function onAudioData(buf: Buffer): void {
   while (analyserSamplesReceived >= ANALYSER_HOP) {
     const off = analyserSamplesReceived;
     const start = (ringPos - off) & mask;
-    // Bulk-copy när blocket är kontiguet i ringen (~87.5 % av hoppen).
+    // Kopiering med indexloop, inte dst.set(ringBuf.subarray(...)): subarray skapade en ny vy per hop (~100 B,
+    // ~36 kB/s skrap). 128 float32 per hop kostar ingenting; samma varden som forut.
     const dst = analyserSlots[fftSlot];
-    if (start + ANALYSER_HOP <= RING_SIZE) {
-      dst.set(ringBuf.subarray(start, start + ANALYSER_HOP));
-    } else {
-      for (let i = 0; i < ANALYSER_HOP; i++) dst[i] = ringBuf[(start + i) & mask];
-    }
+    for (let i = 0; i < ANALYSER_HOP; i++) dst[i] = ringBuf[(start + i) & mask];
     // Ljudklockan VARJE hop, FORE ett ev. process(): slagtiden stamplas da ur
     // sampelraknaren, inte ur vaggklockan vid leverans. Se Analyser.setAudioClockMs.
     // LOTUS_AUDIO_CLOCK=0 stanger av matningen -> analysatorn faller tillbaka pa
@@ -1445,7 +1445,9 @@ function onAudioData(buf: Buffer): void {
   // Hela audio-callbacken (downmix + analysator-hops + engine-tick) är det enda
   // som kör på event-loopen i mic-vägen. Tar den >200ms är det den som fryser
   // ticken — noteNativeCall loggar med kontext och exponerar maxNativeCallMs.
-  noteNativeCall('alsa-audio-cb', performance.now() - _cbT0, `bytes=${buf.byteLength} hops=${analyserHopCount}`);
+  // Kontextstrangen byggs bara nar den loggas (>= SLOW_NATIVE_MS) - forr byggdes den i varje callback (~190/s).
+  const _cbMs = performance.now() - _cbT0;
+  noteNativeCall('alsa-audio-cb', _cbMs, _cbMs >= SLOW_NATIVE_MS ? `bytes=${buf.byteLength} hops=${analyserHopCount}` : undefined);
 }
 
 // ── Mic-stall-watchdog (2026-08-25) ──
@@ -1519,7 +1521,7 @@ export function stopMic(): void {
   // Endast native-pathen finns kvar (arecord-fallback borttagen 2026-04-20)
   capture.close();
   capture = null;
-  hsState = 0;
+  hsState[0] = 0;
   ringPos = 0;
   ringBuf.fill(0);
   // (smoothing-state finns inte längre i alsaMic — körs i engine.tickInner)

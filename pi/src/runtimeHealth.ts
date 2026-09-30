@@ -44,7 +44,7 @@ let maxNativeCallMs = 0;
 let lastSlowNativeCall: { op: string; ms: number; atIso: string } | null = null;
 let slowNativeCallTotal = 0;
 let lastSlowLogAt = 0;
-const SLOW_NATIVE_MS = 200;
+export const SLOW_NATIVE_MS = 200;
 const SLOW_LOG_INTERVAL_MS = 10_000;
 
 /** Anropas efter varje native-anrop (mic-callback, BLE-write) med dess varaktighet. */

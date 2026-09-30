@@ -2983,7 +2983,11 @@ export class Analyser {
       if (this.kickMad < 0) this.kickMad = 0;
     }
     const kickThresh = this.kickMed + Analyser.KICK_K * this.kickMad;
-    this.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.gain, rms: this.dbgRms, env: this.envelope, locked: this.gainLocked };   // korbank-telemetri
+    // korbank-telemetri. Objektet skapas EN gang och skrivs sedan i stallet (skrapjakten 09-30: ett nytt objekt per hop
+    // med boxade flyttal = ~220 B/hop = ~85 kB/s skrap i huvudtraden; ingen laser en gammal referens).
+    const dk = this.dbgKick;
+    if (dk === null) this.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.gain, rms: this.dbgRms, env: this.envelope, locked: this.gainLocked };
+    else { dk.flux = kickFlux; dk.thresh = kickThresh; dk.med = this.kickMed; dk.mad = this.kickMad; dk.energy = energy; dk.gain = this.gain; dk.rms = this.dbgRms; dk.env = this.envelope; dk.locked = this.gainLocked; }
     // ms → hindrar sub-beat-dubbelfyr. 0 i ratten = tempoanpassad (0,6 slag, minst 170 ms, nar tempot ar kant).
     const KICK_COOLDOWN = Analyser.KICK_COOLDOWN_MS > 0 ? Analyser.KICK_COOLDOWN_MS : (this.localBpm > 40 ? Math.max(170, (60000 / this.localBpm) * 0.6) : 170);
     let above = kickFlux > kickThresh && energy > Analyser.KICK_EFLOOR;
