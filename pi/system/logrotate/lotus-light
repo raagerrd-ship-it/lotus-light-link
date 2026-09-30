@@ -1,0 +1,11 @@
+# 2026-09-30 resursgranskningen: engine.log vaxte till 25 MB utan rotation
+/var/log/pi-control-center/apps/lotus-light/*.log {
+    daily
+    maxsize 5M
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
