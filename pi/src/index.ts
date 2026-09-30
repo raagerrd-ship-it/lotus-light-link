@@ -519,6 +519,7 @@ async function startSonosSubsystem(): Promise<void> {
         recorder?.noteTrack(name, artist);
         if (name === lastTrackName) return;
         lastTrackName = name;
+        if (name) engineInstance?.gcNow('latbyte');   // LOTUS_GC_QUIET_MS: latgransen ar det basta ogonblicket nar spellistan saknar paus
         if (trackDebounce) clearTimeout(trackDebounce);
         if (!name) return;                       // TV/tomt namn är inget låtbyte
         trackDebounce = setTimeout(() => {

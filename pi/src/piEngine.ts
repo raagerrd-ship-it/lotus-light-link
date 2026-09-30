@@ -860,6 +860,18 @@ export class PiLightEngine {
   private _quietSince = 0; private _musicSinceGc = false; private _lastQuietGc = -1e9;   // LOTUS_GC_QUIET_MS
   /** Anropas direkt efter tystnads-GC:n (index.ts: tempocachen sparas i samma paus). */
   onQuietGc: (() => void) | null = null;
+  /** Full GC nu (tystnad eller latbyte, se LOTUS_GC_QUIET_MS): hogst en per 60 s och bara om musik spelats sedan forra. */
+  gcNow(why: string): void {
+    if (!(GC_QUIET_MS > 0 && GC_FN)) return;
+    const n = performance.now();
+    if (!this._musicSinceGc || n - this._lastQuietGc < 60000) return;
+    this._lastQuietGc = n; this._musicSinceGc = false;
+    setImmediate(() => {
+      const t0 = performance.now(); GC_FN!();
+      console.log(`[gc] ${why}: full GC ${(performance.now() - t0).toFixed(1)} ms`);
+      try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
+    });
+  }
   private _bpmRef = 0; private _bpmStableSince = 0; private _lockRamp = 1; private _syncMul = 1; private _trustLowSince = 0; private _onsetAct = 0; private _lastEnergyPulseMs = 0; private _lockGood = 0; private _lockBeatIdx = -1e9; private _gridW = 0; private _ceilSlow = 0; private _lastHeardMs = 0; private _heardW = 1;   // beatLockHoldS: hur lange tempot legat stabilt, ramp 0..1
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
@@ -3148,14 +3160,7 @@ export class PiLightEngine {
         const _qn = performance.now();
         if (!inSilence) { this._quietSince = 0; this._musicSinceGc = true; }
         else if (this._quietSince === 0) this._quietSince = _qn;
-        else if (this._musicSinceGc && _qn - this._quietSince >= GC_QUIET_MS && _qn - this._lastQuietGc >= 60000) {
-          this._lastQuietGc = _qn; this._musicSinceGc = false;
-          setImmediate(() => {
-            const t0 = performance.now(); GC_FN!();
-            console.log(`[gc] tyst ogonblick: full GC ${(performance.now() - t0).toFixed(1)} ms`);
-            try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
-          });
-        }
+        else if (_qn - this._quietSince >= GC_QUIET_MS) this.gcNow('tyst ogonblick');
       }
 
       // Takjämning före heartbeat-smoothing: shape uppdateras ~15 Hz medan motorn
