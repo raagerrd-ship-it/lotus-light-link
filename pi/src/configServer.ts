@@ -55,7 +55,7 @@ export function attachSubsystemStarters(s: SubsystemStarters): void {
 // per-profil-speglingen och profiles-storage är borta. dimmingGamma och
 // gainCalibration är globala igen och bor i sina egna storage-nycklar.
 
-let attachedTempoCache: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null = null;
+let attachedTempoCache: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; appendDropEvent(k: string, a: string, t: string, ev: any): void; listFull(): Promise<any[]> } | null = null;
 /** Snuttar for PC-facit: <DATA_DIR>/snippets/<key med | -> __>.wav + .json */
 const SNIPPET_DIR = DATA_DIR + '/snippets';
 const snippetFile = (id: string) => SNIPPET_DIR + '/' + id.replace(/\|/g, '__').replace(/#/g, '_');
@@ -71,7 +71,7 @@ export function takeManualCapture(): string | null { const m = _manualCapture; _
  *  `/api/tempo/cache` svarade 503 hela dagen efter 05:00-rebooten, sa nattjobbet/morgonagenten fick noll Pi-statistik
  *  nar de kordes om efter rebooten (2026-09-23: hela dygnsposten blev {"error": "HTTP 503"}). Cachen kopplas nu in
  *  sa fort index.ts har laddat den; attachConfigRuntime satter samma referens igen, vilket ar ofarligt. */
-export function setTempoCache(tc: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null): void {
+export function setTempoCache(tc: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; appendDropEvent(k: string, a: string, t: string, ev: any): void; listFull(): Promise<any[]> } | null): void {
   attachedTempoCache = tc;
 }
 
@@ -79,7 +79,7 @@ export function attachConfigRuntime(runtime: {
   engine: PiLightEngine;
   mic: AlsaMicModule;
   songStore?: { list(): any[]; forget(k: string): boolean; save(): Promise<void>; size: number } | null;
-  tempoCache?: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; list(): any[] } | null;
+  tempoCache?: { get(k: string): any; upsert(k: string, a: string, t: string, p: any): void; appendDropEvent(k: string, a: string, t: string, ev: any): void; listFull(): Promise<any[]> } | null;
   invalidateIdleColorCache?: () => void;
 }): void {
   attachedEngine = runtime.engine;
@@ -587,9 +587,7 @@ export function startConfigServer(port = 3050): void {
       // onset-precision, dropdom och deskriptorer. Allt i raden under `pc`; dropdomar samlas i `dropEvents`.
       const analysis = (b.analysis && typeof b.analysis === 'object') ? b.analysis : undefined;
       if (kind === 'drop') {
-        const row: any = attachedTempoCache.list().find((r: any) => r.key === key);
-        const prev = Array.isArray(row?.dropEvents) ? row.dropEvents.slice(-19) : [];
-        attachedTempoCache.upsert(key, artist, title, { dropEvents: [...prev, { at: Date.now(), id, ...(analysis?.drop ?? {}), phase: analysis?.phase ?? null }] });
+        attachedTempoCache.appendDropEvent(key, artist, title, { at: Date.now(), id, ...(analysis?.drop ?? {}), phase: analysis?.phase ?? null });   // de 20 senaste, se tempoLookup
         console.log(`[tempo] PC-dropdom for "${artist} - ${title}": ${JSON.stringify(analysis?.drop ?? {}).slice(0, 160)}`);
       } else if (bpm > 40 && bpm < 300) {
         // Pi-cachen ar telemetri, inte korpus: PC:ns onset-tidslistor (~300 tal/lat) och sektionssegment ligger i corpus/ pa PC:n.
@@ -605,9 +603,9 @@ export function startConfigServer(port = 3050): void {
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ ok: false, error: e?.message ?? String(e) }); }
   });
-  app.get('/api/tempo/cache', (_req, res) => {
+  app.get('/api/tempo/cache', async (_req, res) => {
     if (!attachedTempoCache) { res.status(503).json({ error: 'ingen cache' }); return; }
-    res.json(attachedTempoCache.list());
+    try { res.json(await attachedTempoCache.listFull()); } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }   // fran disk (tempo-minnet)
   });
   app.get('/api/raw-capture/status', (_req, res) => {
     const mic: any = attachedMic;

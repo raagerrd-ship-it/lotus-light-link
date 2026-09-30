@@ -9,8 +9,8 @@
  * inom +-5 %), sa en felmatchad lat kan aldrig styra ljuset. Cache per lat (aven "inget
  * tempo", 7 dagar; natfel cachas INTE) sa natet fragas en gang per lat.
  */
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
-import { writeFile, rename } from 'node:fs/promises';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, copyFileSync, statSync, unlinkSync } from 'node:fs';
+import { appendFile, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { songKey } from './songStore.js';
 
@@ -32,10 +32,91 @@ export interface TempoCacheEntry {
 }
 const NEG_TTL_MS = 7 * 24 * 3600e3;
 
+/** TEMPO-MINNET (2026-09-30). Cachen holl ~5 MB levande heap (~30 % av huvudtradens levande data) och varje sparning var en
+ *  synkron JSON.stringify av ~1,5 MB mitt i musiken. Nu:
+ *   - I MINNET bara karnfalten (det motorn laser vid latbyte); de tunga falten (HEAVY) ligger bara pa disk. Av dem behover
+ *     motorn bara "har pc" (inspelaren) och tva tal ur learn (oktavstatistiken): egna sma tabeller.
+ *   - PA DISK: tempo-cache.json = ogonblicksbild i EXAKT det gamla formatet + tempo-cache.journal.jsonl = en rad per andring
+ *     (samma operationer som forr: set/upsert/update + dropdomen). Sparning = en asynkron append av en rad, aldrig hela filen.
+ *   - Journalen bakas in i ogonblicksbilden BARA vid load (boot/omstart, fore musiken; Pi:n rebootar 05:00) - precis dar den
+ *     gamla koden laste om sin JSON. En inbakning under drift skulle tappa platsen for undefined-falt som det gamla minnet
+ *     behaller till nasta omstart (nyckelordningen i API-svaret skulle skilja). Journalen vaxer ~0,5 KB/lat. Inbakningen
+ *     ar kraschsaker: (1) full bild -> .tmp, (2) journalen -> .baked, (3) .tmp -> tempo-cache.json, (4) .baked bort.
+ *     Finns .baked vid load har (1)-(2) hunnit ske: .tmp (om kvar) ar den fulla bilden och journalen ar redan i den.
+ *   - /api/tempo/cache (listFull) spelar upp ogonblicksbild + journal fran disk -> samma innehall och nyckelordning som forr.
+ *  Aterstallning till gammal kod: kor load() en gang med den nya koden (journalen bakas in i tempo-cache.json), sedan byt dist. */
+const HEAVY = new Set(['pc', 'candidates', 'dropEvents', 'learn']);
+type Op = { o: 'set'; k: string; e: any } | { o: 'up'; k: string; a: string; t: string; p: any } | { o: 'upd'; k: string; p: any } | { o: 'drop'; k: string; a: string; t: string; ev: any };
+/** undefined pa toppniva (t.ex. rawBpm: undefined fran resolveTempo) behaller sin plats i det gamla minnesobjektet och avgor
+ *  nyckelordningen om faltet satts senare -> journalen bar en markor och uppspelningen satter tillbaka undefined pa platsen. */
+const UNDEF = '\u0000undefined';
+function encodeOp(op: Op): string {
+  const top = op.o === 'set' ? op.e : op.o === 'drop' ? null : op.p;
+  return JSON.stringify(op, function (this: unknown, _k: string, v: unknown) { return v === undefined && this === top ? UNDEF : v; });
+}
+function decodeOp(line: string): Op | null {
+  let op: any; try { op = JSON.parse(line); } catch { return null; }   // avbruten sista rad (stromavbrott) hoppas over
+  const top = op?.o === 'set' ? op.e : op?.p;
+  if (top && typeof top === 'object') for (const f in top) if (top[f] === UNDEF) top[f] = undefined;
+  return op;
+}
+/** Exakt den gamla minnessemantiken (set/upsert/update + configServers dropdom), pa den FULLA kartan. */
+function applyOp(map: Record<string, any>, op: Op): void {
+  if (op.o === 'set') { const old = map[op.k]; map[op.k] = old?.learn ? { ...op.e, learn: old.learn, learnAt: old.learnAt } : op.e; return; }
+  if (op.o === 'upd') { const e = map[op.k]; if (e) Object.assign(e, op.p); return; }
+  const e = map[op.k] ?? (map[op.k] = { bpm: 0, source: 'ej-uppslagen', at: 0, artist: op.a, title: op.t });
+  if (op.o === 'up') { Object.assign(e, op.p); return; }
+  Object.assign(e, { dropEvents: [...(Array.isArray(e.dropEvents) ? e.dropEvents.slice(-19) : []), op.ev] });
+}
+
 export class TempoCache {
+  /** Karnfalten per lat (inga HEAVY-falt). */
   private map: Record<string, TempoCacheEntry> = {};
-  constructor(private path: string) {}
-  load(): void { try { this.map = JSON.parse(readFileSync(this.path, 'utf8')) || {}; } catch { this.map = {}; } }
+  private pcKeys = new Set<string>();
+  /** learn.octave2x / learn.facitRatioEnd per lat som har en inlarningsrad (oktavstatistiken i index.ts). */
+  private learnLite = new Map<string, { o: unknown; f: unknown }>();
+  private jpath: string;
+  private q: Promise<unknown> = Promise.resolve();
+  /** Journalens storlek (byte) som bakades in vid senaste load - bootloggen. */
+  bakedBytes = 0;
+  constructor(private path: string) { this.jpath = path.replace(/\.json$/, '') + '.journal.jsonl'; }
+
+  /** Ogonblicksbild + journal -> full karta (samma som det gamla minnet). */
+  private static replay(snap: string | null, journal: string | null): Record<string, any> {
+    let map: Record<string, any> = {};
+    try { map = (snap ? JSON.parse(snap) : {}) || {}; } catch { map = {}; }
+    if (journal) for (const line of journal.split('\n')) { if (!line) continue; const op = decodeOp(line); if (op) applyOp(map, op); }
+    return map;
+  }
+  load(): void {
+    const rd = (p: string) => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
+    try { if (existsSync(this.jpath + '.baked')) { if (existsSync(this.path + '.tmp')) renameSync(this.path + '.tmp', this.path); unlinkSync(this.jpath + '.baked'); } } catch { /* avbruten inbakning, se ovan */ }
+    const snap = rd(this.path), journal = rd(this.jpath);
+    // Engangsbackup av originalfilen (fore forsta journalen).
+    try { const bak = this.path + '.bak-tempominne'; if (snap !== null && !existsSync(bak)) copyFileSync(this.path, bak); } catch { /* bara backup */ }
+    const full = TempoCache.replay(snap, journal);
+    this.bakedBytes = journal?.length ?? 0;
+    if (journal) {
+      try {
+        mkdirSync(dirname(this.path), { recursive: true });
+        const tmp = this.path + '.tmp', baked = this.jpath + '.baked';
+        writeFileSync(tmp, JSON.stringify(full)); renameSync(this.jpath, baked); renameSync(tmp, this.path); unlinkSync(baked);
+      } catch { /* nasta load forsoker igen; journalen ar kvar */ }
+    }
+    this.map = {}; this.pcKeys.clear(); this.learnLite.clear();
+    for (const k of Object.keys(full)) { this.map[k] = this.core(full[k], true); this.noteHeavy(k, full[k], true); }
+  }
+  /** Utan HEAVY-falten. fromDisk: som en JSON-omlasning (gamla load) - undefined-falt fran journalen foljer inte med. */
+  private core(src: any, fromDisk = false): any { const c: any = {}; for (const f in src) if (!HEAVY.has(f) && !(fromDisk && src[f] === undefined)) c[f] = src[f]; return c; }
+  private noteHeavy(k: string, src: any, withLearn: boolean): void {
+    if ('pc' in src) { if (src.pc) this.pcKeys.add(k); else this.pcKeys.delete(k); }
+    if (withLearn && 'learn' in src) { if (src.learn) this.learnLite.set(k, { o: src.learn.octave2x, f: src.learn.facitRatioEnd }); else this.learnLite.delete(k); }
+  }
+  /** En rad till journalen, i ordning, asynkront. Fel far aldrig falla motorn. */
+  private log(op: Op): void {
+    let line: string; try { line = encodeOp(op) + '\n'; } catch { return; }
+    this.q = this.q.then(() => appendFile(this.jpath, line)).catch(() => { /* cachen far aldrig falla motorn */ });
+  }
   get size(): number { return Object.keys(this.map).length; }
   get(key: string): TempoCacheEntry | null {
     const e = this.map[key]; if (!e) return null;
@@ -43,52 +124,55 @@ export class TempoCache {
     if (e.bpm <= 0 && Date.now() - e.at > NEG_TTL_MS) return null;      // negativt svar har gatt ut
     return e;
   }
+  /** Har laten en PC-analys (`pc`)? (inspelaren: fanga inte tempo igen) */
+  hasPc(key: string): boolean { return this.pcKeys.has(key); }
   set(key: string, e: TempoCacheEntry): void {
-    const old = this.map[key];
-    this.map[key] = old?.learn ? { ...e, learn: old.learn, learnAt: old.learnAt } : e;   // inlarningsraden overlever nytt uppslag
-    this.save();
+    this.log({ o: 'set', k: key, e });
+    const keepLearn = this.learnLite.has(key);                          // inlarningsraden overlever nytt uppslag
+    const c = this.core(e); if (keepLearn) c.learnAt = this.map[key]?.learnAt;
+    this.map[key] = c; this.pcKeys.delete(key);
+    if (!keepLearn) this.learnLite.delete(key);
+    this.noteHeavy(key, e, !keepLearn);
   }
   /** Inlarningsrad aven for latar som aldrig slogs upp (natfel) - skapar en tom post utan att blockera uppslag. */
-  upsert(key: string, artist: string, title: string, patch: Partial<TempoCacheEntry>): void {
+  upsert(key: string, artist: string, title: string, patch: Partial<TempoCacheEntry> & Record<string, unknown>): void {
+    this.log({ o: 'up', k: key, a: artist, t: title, p: patch });
     const e = this.map[key] ?? (this.map[key] = { bpm: 0, source: 'ej-uppslagen', at: 0, artist, title });
-    Object.assign(e, patch); this.save();
+    Object.assign(e, this.core(patch)); this.noteHeavy(key, patch, true);
   }
-  update(key: string, patch: Partial<TempoCacheEntry>): void { const e = this.map[key]; if (!e) return; Object.assign(e, patch); this.save(); }
-  list(): Array<TempoCacheEntry & { key: string }> { return Object.entries(this.map).map(([key, e]) => ({ key, ...e })); }
-  private _saveTimer: ReturnType<typeof setTimeout> | null = null; private _saving = false; private _dirty = false;
-  /** HACK-FIX (2026-09-20 18:30): save() var synkron - JSON.stringify(1,7 MB, indenterad) + writeFileSync till SD pa huvudtraden
-   *  = 240-465 ms stall (alsa-audio-cb "slow native call") 0,3 s efter VARJE PC-facit-rad -> hack i ljus och BLE en gang per lat.
-   *  Nu: fordrojd (2 s efter sista andring, unref), kompakt JSON, asynkron skrivning till .tmp + rename. Synkron flush finns kvar
-   *  for avslut (flushSync). */
-  private save(): void {
-    this._dirty = true;
-    if (this._saveTimer) return;
-    // LOTUS_GC_QUIET_MS: sparningen (synkron JSON.stringify ~1,5 MB = 100-150 ms pa Pi:n) vantar pa nasta tysta ogonblick (flushIfDirty),
-    // med 5 min som reserv; annars som forr 2 s efter sista andring.
-    this._saveTimer = setTimeout(() => { this._saveTimer = null; void this.saveNow(); }, Number(process.env.LOTUS_GC_QUIET_MS ?? 0) > 0 ? 300000 : 2000);
-    (this._saveTimer as any)?.unref?.();
+  update(key: string, patch: Partial<TempoCacheEntry> & Record<string, unknown>): void {
+    const e = this.map[key]; if (!e) return;
+    this.log({ o: 'upd', k: key, p: patch });
+    Object.assign(e, this.core(patch)); this.noteHeavy(key, patch, true);
   }
-  private async saveNow(): Promise<void> {
-    if (this._saving) { this.save(); return; }
-    this._saving = true; this._dirty = false;
-    try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      const tmp = this.path + '.tmp'; await writeFile(tmp, JSON.stringify(this.map)); await rename(tmp, this.path);
-    } catch { /* cachen far aldrig falla motorn */ }
-    this._saving = false;
-    if (this._dirty) this.save();
+  /** PC:ns dropdom: laggs till latens dropEvents (de 20 senaste) utan att listan finns i minnet. */
+  appendDropEvent(key: string, artist: string, title: string, ev: Record<string, unknown>): void {
+    this.log({ o: 'drop', k: key, a: artist, t: title, ev });
+    if (!this.map[key]) this.map[key] = { bpm: 0, source: 'ej-uppslagen', at: 0, artist, title };
   }
-  /** Tystnads-GC:n (piEngine.onQuietGc): spara nu om nagot andrats - i samma paus som den fulla GC:n. */
-  flushIfDirty(): void {
-    if (!this._dirty || this._saving) return;
-    if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
-    void this.saveNow();
+  /** Oktavregelns traffsakerhet: latar med facit (bpm>0) dar regeln presenterade 2x och facitkvoten finns. */
+  octaveStat(): { hit: number; n: number } {
+    let hit = 0, n = 0;
+    for (const [k, l] of this.learnLite) {
+      if (!((this.map[k]?.bpm ?? 0) > 0) || !(((l.o as number) ?? 0) > 0.5) || typeof l.f !== 'number') continue;
+      n++; if (Math.abs(l.f / 2 - 1) < 0.05) hit++;
+    }
+    return { hit, n };
   }
-  /** Synkron skrivning (bara vid avslut). */
-  flushSync(): void {
-    if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
-    try { mkdirSync(dirname(this.path), { recursive: true }); const tmp = this.path + '.tmp'; writeFileSync(tmp, JSON.stringify(this.map)); renameSync(tmp, this.path); } catch { /* aldrig falla */ }
+  /** Hela cachen i det gamla list()-formatet (/api/tempo/cache): ogonblicksbild + journal fran disk, efter alla koade skrivningar. */
+  listFull(): Promise<Array<TempoCacheEntry & { key: string }>> {
+    const p = this.q.then(async () => {
+      const rd = async (f: string) => { try { return await readFile(f, 'utf8'); } catch { return null; } };
+      const snap = await rd(this.path), journal = await rd(this.jpath);
+      return Object.entries(TempoCache.replay(snap, journal)).map(([key, e]) => ({ key, ...e }));
+    });
+    this.q = p.catch(() => { /* kon far aldrig fastna */ });
+    return p;
   }
+  /** Vanta tills alla koade journalrader ar skrivna (tester). */
+  drain(): Promise<void> { return this.q.then(() => undefined, () => undefined); }
+  /** Journalens storlek i byte (diagnostik). */
+  journalBytes(): number { try { return statSync(this.jpath).size; } catch { return 0; } }
 }
 
 /** Titel/artist utan versaler, diakriter, "(Radio Edit)", "- Remastered", "feat. ..." och skiljetecken. */

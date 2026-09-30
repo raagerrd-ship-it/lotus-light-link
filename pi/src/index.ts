@@ -152,7 +152,7 @@ async function startRecorder(): Promise<void> {
     isPlaying: () => !!_lastSonosPlaying,
     ready: () => !!tempoCacheRef && !!engineInstance && !!alsaMic,
     songKey: (artist, title) => songKey(artist, title),
-    hasTempo: (key) => { const row: any = tempoCacheRef?.get(key); return !!(row && row.bpm > 0 && row.pc); },
+    hasTempo: (key) => { const row: any = tempoCacheRef?.get(key); return !!(row && row.bpm > 0 && tempoCacheRef!.hasPc(key)); },
     hasSection: (key) => { const row: any = tempoCacheRef?.get(key); return !!(row && row.secAt); },
     markSection: (key) => { (tempoCacheRef as any)?.update?.(key, { secAt: Date.now() }); },
     sectionBlocked: () => !!(engineInstance as any)?.isTvMode?.(),
@@ -276,7 +276,6 @@ async function ensureEngineInstance(): Promise<void> {
     const { songKey } = await import('./songStore.js');
     const tc = new TempoCache((await import('./storage.js')).DATA_DIR + '/tempo-cache.json');
     tc.load(); tempoCacheRef = tc;
-    engineInstance.onQuietGc = () => tc.flushIfDirty();   // LOTUS_GC_QUIET_MS: spara i samma tysta paus som den fulla GC:n
     configServer?.setTempoCache?.(tc);   // 09-23: /api/tempo/cache ska svara aven fore forsta laten (se configServer.setTempoCache)
     engineInstance.setMetaVerdictSaver((a, t, verdict, analyserBpm, ratio) => {
       tc.update(songKey(a, t), { verdict, analyserBpm, ratio, verdictAt: Date.now() });
@@ -320,15 +319,12 @@ async function ensureEngineInstance(): Promise<void> {
       // OKTAVREGELNS TRAFFSAKERHET mot facit, loggad lopande: bland latar dar regeln presenterade 2x
       // (octave2x > 0,5) och facit finns - hur ofta lag analysatorn verkligen en oktav under?
       try {
-        const rows = tc.list().filter((r) => r.bpm > 0 && r.learn && (r.learn.octave2x ?? 0) > 0.5 && typeof r.learn.facitRatioEnd === 'number');
-        if (rows.length) {
-          const hit = rows.filter((r) => Math.abs((r.learn!.facitRatioEnd as number) / 2 - 1) < 0.05).length;
-          console.log(`[takt] oktavregel mot facit: ${hit}/${rows.length} ratt (2x-presenterade latar med facit)`);
-        }
+        const { hit, n } = tc.octaveStat();   // tempo-minnet: learn ligger bara pa disk, statistiken ur en liten tabell
+        if (n) console.log(`[takt] oktavregel mot facit: ${hit}/${n} ratt (2x-presenterade latar med facit)`);
       } catch { /* statistik far aldrig falla motorn */ }
       console.log(`[tempo] inlärning: "${a} - ${t}"${verdictEnd ? ` facit ${e!.bpm} -> ${verdictEnd} |` : ''} analysator ${summary.bpmMedian} (${summary.bpmMin}-${summary.bpmMax}, conf ${summary.confMedian}) ring ${summary.ringIntervalMs} ms x${summary.ringPerBeat}/slag reg ${summary.ringRegular} n=${summary.ringN} ${summary.durationS}s`);
     });
-    console.log(`[tempo] katalogcache: ${tc.size} låtar (facit-läge: katalogen driver ${JSON.parse(getItem('light-calibration') || '{}').useMetaTempo === true ? 'PÅ' : 'av'})`);
+    console.log(`[tempo] katalogcache: ${tc.size} låtar, journal ${(tc.bakedBytes / 1024).toFixed(0)} KB inbakad (facit-läge: katalogen driver ${JSON.parse(getItem('light-calibration') || '{}').useMetaTempo === true ? 'PÅ' : 'av'})`);
   } catch (e) { console.log('[tempo] katalogcache kunde inte laddas:', (e as Error).message); }
 
   try {
