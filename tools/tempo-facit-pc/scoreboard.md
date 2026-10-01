@@ -1,6 +1,6 @@
 # Resultattavla — analysatorns tempoval mot facit
 
-Uppdaterad 2026-09-30 05:27. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
+Uppdaterad 2026-10-01 05:36. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
 
 Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).
 
@@ -19,15 +19,16 @@ Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med ana
 | 2026-09-28 | 192/286 · 6/8 · slag 0.56 p 0.84 | 232/286 · 6/8 · slag 0.87 p 0.84 · fas 109/202 | 226/286 · 6/8 · slag 0.58 p 0.84 | 208/286 · 6/8 · slag 0.56 p 0.85 | 232/286 · 6/8 · slag 0.88 p 0.84 · fas 109/202 | 232/286 · 6/8 · slag 0.82 p 0.84 · fas 109/202 | 12 (9 facit) | 1.0 | None ms | 1.0 | 0.9 | 0.6 |
 | 2026-09-29 | 230/346 · 6/8 · slag 0.56 p 0.85 | 281/346 · 6/8 · slag 0.86 p 0.84 · fas 134/242 | 274/346 · 6/8 · slag 0.58 p 0.85 | 246/346 · 6/8 · slag 0.55 p 0.85 | 281/346 · 6/8 · slag 0.87 p 0.84 · fas 134/242 | 281/346 · 6/8 · slag 0.82 p 0.85 · fas 134/242 | 12 (10 facit) | 0.8 | None ms | 0.9 | 0.9 | 0.6 |
 | 2026-09-30 | 247/368 · 6/8 · slag 0.56 p 0.85 | 299/368 · 6/8 · slag 0.86 p 0.84 · fas 144/261 | 294/368 · 6/8 · slag 0.58 p 0.85 | 266/368 · 6/8 · slag 0.56 p 0.85 | 299/368 · 6/8 · slag 0.87 p 0.84 · fas 144/261 | 299/368 · 6/8 · slag 0.82 p 0.85 · fas 144/261 | 5 (3 facit) | 1.0 | None ms | 0.9 | 0.9 | 0.4 |
+| 2026-10-01 | 314/474 · 6/8 · slag 0.55 p 0.85 | 387/474 · 6/8 · slag 0.85 p 0.84 · fas 190/347 | 383/474 · 6/8 · slag 0.58 p 0.85 | 334/474 · 6/8 · slag 0.55 p 0.85 | 387/474 · 6/8 · slag 0.86 p 0.84 · fas 190/347 | 387/474 · 6/8 · slag 0.81 p 0.85 · fas 190/347 | 21 (17 facit) | 0.93 | None ms | 0.9 | 0.9 | 0.6 |
 
-Senaste dygnet: domar {"utan facit": 2, "ok": 3}; kick-bias -1.3 ms; nivå-lag 100 ms; tak-r 0.4 lag 200 ms 2.1 %/dB klipp 0.2; analysatorns spann inom låt 38 BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 289 {"ratt": 50, "falsk": 61, "osaker": 178}.
+Senaste dygnet: domar {"utan facit": 4, "ok": 14, "ingen dom": 2, "ok-fantom-1.33": 1}; kick-bias 1.0 ms; nivå-lag 200.0 ms; tak-r 0.8 lag 200.0 ms 7.4 %/dB klipp 0.1; analysatorns spann inom låt 45 BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 379 {"ratt": 61, "falsk": 73, "osaker": 245}.
 
 Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.
 
 Sektioner (Pi-flaggor {"LOTUS_SECTION": "1", "LOTUS_GRID_PHASE": "1", "LOTUS_SECTION_REPEAT": "117", "LOTUS_SECTION_W_HIGH": "1.0", "LOTUS_SECTION_EARLY_S": "45", "LOTUS_SECTION_ON_HINT": "1"}, repeats {"filer": 91, "rc": 0, "tail": "", "err": ""}):
 
-- test-tier: high==high 0.65 · recall 0.62 · falsk 0.44 · gransfel 0.25 (n 38) | refrang 2 <=4 s 4/20, <=8 s 8, median 9.0 s · refrang 1 <=4 s 2 · vers 2 ej high 0.71 · forutsedd 1 | forutsagelse 10/74 @ 2.0/min
-- test-repeat: high==high 0.65 · recall 0.62 · falsk 0.44 · gransfel 0.25 (n 38) | refrang 2 <=4 s 10/32, <=8 s 17, median 5.7 s · refrang 1 <=4 s 4 · vers 2 ej high 0.65 · forutsedd 4 | forutsagelse 10/74 @ 2.0/min
+- test-tier: high==high 0.64 · recall 0.65 · falsk 0.44 · gransfel 0.27 (n 40) | refrang 2 <=4 s 4/21, <=8 s 8, median 12.7 s · refrang 1 <=4 s 2 · vers 2 ej high 0.63 · forutsedd 2 | forutsagelse 9/71 @ 2.0/min
+- test-repeat: high==high 0.64 · recall 0.65 · falsk 0.44 · gransfel 0.27 (n 40) | refrang 2 <=4 s 10/31, <=8 s 16, median 5.7 s · refrang 1 <=4 s 5 · vers 2 ej high 0.5 · forutsedd 3 | forutsagelse 9/71 @ 2.0/min
 - alla-tier: high==high 0.64 · recall 0.63 · falsk 0.45 · gransfel 0.29 (n 82) | refrang 2 <=4 s 6/39, <=8 s 11, median 13.5 s · refrang 1 <=4 s 5 · vers 2 ej high 0.62 · forutsedd 5 | forutsagelse 19/148 @ 2.0/min
 - alla-repeat: high==high 0.64 · recall 0.63 · falsk 0.45 · gransfel 0.29 (n 82) | refrang 2 <=4 s 21/66, <=8 s 34, median 5.7 s · refrang 1 <=4 s 9 · vers 2 ej high 0.57 · forutsedd 9 | forutsagelse 19/148 @ 2.0/min
 
