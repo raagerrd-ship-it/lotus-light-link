@@ -434,11 +434,17 @@ async function startMicSubsystem(): Promise<void> {
         invalidateIdleColorCache: engineMod?.invalidateIdleColorCache,
       });
 
+      // TIDTAGNING PER STEG (10-02): sessioner efter idle gav en stall pa ~700 ms nagra s in - vilket steg ar det?
+      const tS0 = performance.now();
       alsaMic.startMic();
+      const tS1 = performance.now();
       await startRecorder();   // inspelaren (egen modul bredvid analysatorn): 15 s forbuffert @48 kHz + fangstlogik
+      const tS2 = performance.now();
       eng.start();
+      const tS3 = performance.now();
       try {
         await alsaMic.waitForFirstAudio(3000);
+        console.log(`[Subsystem:mic] start: oppna mic ${(tS1 - tS0).toFixed(0)} ms, inspelare ${(tS2 - tS1).toFixed(0)} ms, motor ${(tS3 - tS2).toFixed(0)} ms, forsta ljud efter ${(performance.now() - tS3).toFixed(0)} ms`);
       } catch (e: any) {
         try { eng.stop(); } catch {}
         try { alsaMic.stopMic(); } catch {}
@@ -953,6 +959,13 @@ async function main() {
   try {
     await ensureEngineInstance();
     console.log('[Boot] ✓ engineInstance skapad eagerly (mic startas vid PLAYING)');
+    // MIC-MODULEN VID UPPSTART (agaren 10-02): importen av alsaMic (native ALSA-bindning + analysatorn) tog ~1 s och gav
+    // stallar 300-1100 ms forsta sessionen efter omstart. Nu laddas modulen och inspelaren vid boot; micen OPPNAS fortfarande
+    // forst vid PLAYING (idle-regeln), sa inget ljud fangas i onodan.
+    const tPre = performance.now();
+    alsaMic = await import('./alsaMic.js');
+    await startRecorder();
+    console.log(`[Boot] ✓ mic-modul + inspelare forladdade (${(performance.now() - tPre).toFixed(0)} ms)`);
   } catch (e: any) {
     console.warn('[Boot] ensureEngineInstance fel:', e?.message ?? e);
   }
