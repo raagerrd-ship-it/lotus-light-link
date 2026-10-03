@@ -555,7 +555,9 @@ def process_one(row: dict) -> bool:
         with open(os.path.join(CORPUS_DIR, safe + '.wav'), 'wb') as f: f.write(wav)
         with open(os.path.join(CORPUS_DIR, safe + '.json'), 'w', encoding='utf-8') as f:
             json.dump({'row': row, 'result': r, 'events': ev, 'savedAt': time.time()}, f, ensure_ascii=False)
-        wavs = sorted((os.path.join(CORPUS_DIR, f) for f in os.listdir(CORPUS_DIR) if f.endswith('.wav')), key=os.path.getmtime)
+        # langfangsterna (_smu, kind section) gallras aldrig: enda kallan till sektionsfacit och fangsten ar AV
+        # (10-03: taket tog 75 av 91 pa en kvall, sektionsbankens test 43 -> 8)
+        wavs = sorted((os.path.join(CORPUS_DIR, f) for f in os.listdir(CORPUS_DIR) if f.endswith('.wav') and '_smu' not in f), key=os.path.getmtime)
         for old in wavs[:max(0, len(wavs) - CORPUS_MAX_WAV)]:
             os.remove(old); log.info('korpus gallrad: %s', os.path.basename(old))
     except Exception as e:
