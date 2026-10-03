@@ -631,6 +631,9 @@ export const TV_CAL_DEFAULTS: Partial<LightCalibration> = {
   punchWhiteThreshold: 100, brightnessFloor: 40,
   // agaren 10-03: 'fade in lite langre och fade out mycket langre' (fore: upp ~direkt, ner ~70 ms)
   tvFadeInMs: 150, tvFadeOutMs: 1200,
+  // agaren 10-03 'sank gain i TV-lage': dB-fonstret klippte (ljus p50 98 %, wdb ~1 dB under ankaret). Gain spelar ingen roll
+  // med auto-ankaret - sank ankaret i stallet: offset 4 -> 12, fonster 6 -> 10 gav ljus p10/p50/p90 54/63/85 % (5 % >= 95).
+  anchorOffsetDb: 12, windowDb: 10,
 };
 export function loadTvCalibration(): Partial<LightCalibration> {
   try { const raw = getItem('tv-calibration'); if (raw) return { ...TV_CAL_DEFAULTS, ...JSON.parse(raw) }; } catch {}
