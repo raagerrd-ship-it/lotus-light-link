@@ -283,6 +283,8 @@ export interface LightCalibration {
    lowSoftFloor: number;
   /** BAS-AVBRUS: input-EMA tidskonstant på ljus-signalen (ms). Kort EMA före dB-mappning tar bort frame-brus utan att sakta riktiga stegringar. Default 35. */
   lightSmoothMs: number;
+  /** TV-LAGE: slutlig fade pa ljusnivan (ms, tidskonstant) upp resp. ner. 0/saknas = av. Bara i TV-overlayn (2026-10-03). */
+  tvFadeInMs?: number; tvFadeOutMs?: number;
   /** Absolut energy-gate (totalRms) under vilken onset-detektorn inte processar.
    *  Förhindrar att den adaptiva tröskeln skalar ner till brus och flashar i tysta partier.
    *  0 = av, 0.05 = default, 0.20 = bara stark musik räknas. */
@@ -627,6 +629,8 @@ export const TV_CAL_DEFAULTS: Partial<LightCalibration> = {
   bassWeight: 0.5, releaseAlpha: 0.85, attackAlpha: 1.0, tickEnergyFloor: 0.0008,
   transientGain: 1.0, flickerDeadband: 0.004, dropEnabled: false,
   punchWhiteThreshold: 100, brightnessFloor: 40,
+  // agaren 10-03: 'fade in lite langre och fade out mycket langre' (fore: upp ~direkt, ner ~70 ms)
+  tvFadeInMs: 150, tvFadeOutMs: 1200,
 };
 export function loadTvCalibration(): Partial<LightCalibration> {
   try { const raw = getItem('tv-calibration'); if (raw) return { ...TV_CAL_DEFAULTS, ...JSON.parse(raw) }; } catch {}
@@ -937,6 +941,7 @@ export class PiLightEngine {
   private _calDirty = false;
   // TV-lage: this.cal ar da bas + TV-overlay. Persisteras ALDRIG som musik.
   private _tvMode = false;
+  private _tvPctSm = -1;   // TV-fadens tillstand (pct, flyttal); -1 = starta pa nasta varde
 
   // ── Frame/analys-taps (valfria observatörer) ──
   // Frame-tap: anropas i reaktiv tickInner med den färg+brightness som accepterats
@@ -2390,6 +2395,7 @@ export class PiLightEngine {
   setTvMode(on: boolean): void {
     if (on === this._tvMode) return;
     this._tvMode = on;
+    this._tvPctSm = -1;
     // TV-LAGE LAR INTE (2026-09-20, anvandaren): TV har inget latnamn, sa notifyTrackChange kors aldrig och forra latens
     // larackumulatorer skulle annars fyllas med TV-ljud tills nasta riktiga lat (och dess dom/facit-rad forgiftas).
     // Vid TV-start skrivs forra latens rad (om >= 10 s data) och allt nollas; under TV ackumuleras inget (se learnPush).
@@ -3495,6 +3501,16 @@ export class PiLightEngine {
             }
           }
         }
+      }
+
+      // TV-FADE: egen upp/ner-tidskonstant pa slutnivan, bara i TV-lage (musikens kedja orord)
+      if (this._tvMode && ((cal.tvFadeInMs ?? 0) > 0 || (cal.tvFadeOutMs ?? 0) > 0)) {
+        if (this._tvPctSm < 0) this._tvPctSm = pct;
+        else {
+          const ms = (pct > this._tvPctSm ? cal.tvFadeInMs : cal.tvFadeOutMs) ?? 0;
+          this._tvPctSm += (ms > 0 ? 1 - Math.exp(-(this.tickMs || 18) / ms) : 1) * (pct - this._tvPctSm);
+        }
+        pct = this._tvPctSm;
       }
 
       // Fast round + clamp
