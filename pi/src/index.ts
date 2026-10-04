@@ -134,6 +134,9 @@ let _lastSonosPlaying: boolean | null = null;
 // PUT /api/tempo/capture-enabled {enabled} = brytaren (sparas i tempo-capture.json).
 let recorder: import('./recorder/recorder.js').Recorder | null = null;
 async function startRecorder(): Promise<void> {
+  // SAMMA BRYTARE SOM DMX (DMX_RECORDER, 2026-10-04 agaren): inspelaren ar en PC-/inlarningsmodul och laddas BARA med
+  // LOTUS_RECORDER=1 (drop-in + omstart) - annars importeras den inte alls: ingen forbuffert, ingen dropbevakning, inga fangster.
+  if (process.env.LOTUS_RECORDER !== '1') return;
   if (recorder || !alsaMic) return;
   const { Recorder } = await import('./recorder/recorder.js');
   const { DATA_DIR } = await import('./storage.js');
@@ -141,9 +144,8 @@ async function startRecorder(): Promise<void> {
   const { getLastSent } = await import('./ble-driver/protocol.js');
   const mic: any = alsaMic;
   recorder = new Recorder({
-    // 2026-10-04 (agaren): inspelning ligger bakom felsokning - startar ALLTID av (ingen sparad brytare), slas pa med
-    // PUT /api/debug/verbose {enabled:true, record:true} (eller /api/tempo/capture-enabled) och av med felsokningen.
-    dir: DATA_DIR + '/snippets', sampleRate: 48000, enabled: false,
+    // Laddad (LOTUS_RECORDER=1) = fangster PA, som DMX; PUT /api/debug/verbose {enabled:false} / capture-enabled stanger under drift.
+    dir: DATA_DIR + '/snippets', sampleRate: 48000, enabled: true,
     sectionS: SECTION_CAPTURE_S, sectionMax: SECTION_CAPTURE_MAX, sectionCountFile: DATA_DIR + '/section-captures.json',
   }, {
     latestFrame: () => mic?.getLatestFrame?.() ?? null,

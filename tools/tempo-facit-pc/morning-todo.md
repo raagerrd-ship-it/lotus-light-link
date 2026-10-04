@@ -46,3 +46,5 @@ Ingen PUT. smoothS kvar 15: spannet 38,5 i dag (54/41,5 före) bryter tre-dygnsr
 
 ## Från kvällen 2026-10-04 (INFO, ägarens beslut – inget att utföra)
 Inspelning och periodisk loggning ligger nu BAKOM FELSÖKNING (lotus, deployat 17:15): fångsterna startar alltid AV (ingen sparad brytare), `[raster] period` och `[gc] 10 s` skrivs bara med felsökning på. Slå på: `PUT /api/debug/verbose {"enabled":true,"record":true}` (record = fångster till facit-PC:n), av: `{"enabled":false}` (stänger även fångsterna). Följd: korpusen växer inte och dygnets lärrader saknar ofta facit – det är AVSIKTLIGT, inget fel; slå inte på fångster själv. Rastervärdena finns kvar i /api/status (sync.raster). Dessutom i dag: lecup/hciconfig via bestående sh-hjälpare (sena tickar ≥ 40 ms 18/33 min → 2/20 min).
+
+TILLÄGG 17:22: inspelaren laddas nu BARA med LOTUS_RECORDER=1 (drop-in + omstart), samma brytare som DMX_RECORDER — utan den importeras den inte alls och `record:true` i /api/debug/verbose ger record:false. Rutinen (SKILL.md) har fått blocket 'INSPELNING BAKOM FELSÖKNING … JAGA INTE KORPUSEN'.

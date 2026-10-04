@@ -559,7 +559,7 @@ export function startConfigServer(port = 3050): void {
   // KLAPP-LAGE (matning ljud->ljus): PUT {enabled:true} -> lampan blixtrar vitt pa varje bredbands-onset (klapp), inget annat.
   // FELSOKNINGSLOGG (2026-10-04): periodiska rader ([gc] 10 s, [raster] period, alla dlog) bara nar brytaren ar pa.
   // PUT {enabled:true|false, record?:true}; startlaget = LOTUS_DEBUG, galler till omstart. 88 % av engine.log var annars dessa rader.
-  // record:true slar aven pa inspelningen (fangster till facit-PC:n); felsokning AV stanger alltid inspelningen (agaren 2026-10-04).
+  // record styr fangsterna OM inspelaren ar laddad (LOTUS_RECORDER=1, samma brytare som DMX_RECORDER); utan den ar record alltid false.
   const _debugState = async () => { const d = await import('./debugLog.js'); return { enabled: d.isDebugEnabled(), record: _captureGet ? _captureGet() : false }; };
   app.get('/api/debug/verbose', async (_req, res) => res.json(await _debugState()));
   app.put('/api/debug/verbose', async (req, res) => {
@@ -572,7 +572,7 @@ export function startConfigServer(port = 3050): void {
     const engine = requireEngine(res); if (!engine) return;
     const on = req.body?.enabled === true; (engine as any).setClapMode?.(on); res.json({ ok: true, enabled: on });
   });
-  app.get('/api/tempo/capture-enabled', (_req, res) => res.json({ enabled: _captureGet ? _captureGet() : true }));
+  app.get('/api/tempo/capture-enabled', (_req, res) => res.json({ enabled: _captureGet ? _captureGet() : false }));
   app.put('/api/tempo/capture-enabled', (req, res) => {
     const on = req.body?.enabled !== false;
     if (_captureSet) _captureSet(on);
@@ -699,7 +699,7 @@ export function startConfigServer(port = 3050): void {
       // Sektionsminnet (workern): sektion, forvarning (ms till vantad refrang, -1 ingen), niva mot senaste refrangen (dB)
       section: sectionBlock(),
       sync: (engine as any)?.getSyncDiag?.() ?? null,   // tick-synk mot BLE-rastret (raster.ts), mätare även när synken är av
-      captureEnabled: _captureGet ? _captureGet() : true,
+      captureEnabled: _captureGet ? _captureGet() : false,
       clapMode: (engine as any)?.isClapMode?.() ?? false,
     });
   });
