@@ -17,7 +17,42 @@
  * via systemctl status).
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+
+// LECUP-HJALPAREN (2026-10-04): spawn() forkar hela motorprocessen (~150 MB) och holl huvudtraden 23-31 ms vid
+// VARJE re-assert (var 25:e s, mitt i musiken; cpuprofile 120 s: 5 av 13 block >= 25 ms, ljudbuffertarna koades bakom).
+// Ett litet sh startas EN gang och forkar hcitool sjalv - samma kommando, samma exitkod, ingen fork av motorn per anrop.
+// Dor hjalparen startas en ny vid nasta anrop.
+let helper: ChildProcess | null = null;
+let helperOut = '';
+let helperCur: { done: (code: number | null, out: string) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+const helperQueue: Array<{ line: string; timeoutMs: number; done: (code: number | null, out: string) => void }> = [];
+
+function helperFinish(code: number | null, out: string): void {
+  const cur = helperCur; helperCur = null; helperOut = '';
+  if (cur) { clearTimeout(cur.timer); cur.done(code, out); }
+  helperNext();
+}
+
+function helperNext(): void {
+  if (helperCur || helperQueue.length === 0) return;
+  if (!helper) {
+    const h = spawn('sh', [], { stdio: ['pipe', 'pipe', 'ignore'] });
+    helper = h;
+    h.stdout!.on('data', (b) => {
+      helperOut += b.toString();
+      const m = /@@RC (\d+)\n/.exec(helperOut);
+      if (m) helperFinish(Number(m[1]), helperOut.slice(0, m.index).trim());
+    });
+    const gone = (why: string) => { if (helper !== h) return; helper = null; helperFinish(null, `${helperOut.trim()} ${why}`.trim()); };
+    h.on('exit', () => gone('hjalparen avslutad'));
+    h.on('error', (e) => gone(`error: ${e?.message ?? e}`));
+    h.stdin!.on('error', () => { /* hanteras av exit */ });
+  }
+  const job = helperQueue.shift()!;
+  helperCur = { done: job.done, timer: setTimeout(() => { try { helper?.kill('SIGKILL'); } catch {} }, job.timeoutMs + 1000) };
+  helper.stdin!.write(job.line);
+}
 
 export interface ForceConnIntervalResult {
   ok: boolean;
@@ -47,35 +82,16 @@ export function forceConnInterval(
       '--latency', String(latency),
       '--timeout', String(supTo),
     ];
-    let proc;
-    try {
-      proc = spawn('hcitool', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (e: any) {
+    // Argumenten ar bara heltal (Number-konverterade ovan) - inget att citera. timeout dodar en hangande hcitool (137).
+    const line = `timeout -s KILL ${Math.ceil(cmdTimeoutMs / 1000)} hcitool ${args.join(' ')} 2>&1; echo "@@RC $?"\n`;
+    helperQueue.push({
+      line, timeoutMs: cmdTimeoutMs,
+      done: (code, out) => resolve({ ok: code === 0, handle, exitCode: code, stderr: out, durationMs: Date.now() - t0 }),
+    });
+    try { helperNext(); } catch (e: any) {
+      helperQueue.length = 0;
       resolve({ ok: false, handle, exitCode: null, stderr: `spawn failed: ${e?.message ?? e}`, durationMs: Date.now() - t0 });
-      return;
     }
-
-    let stderr = '';
-    proc.stderr?.on('data', (b) => { stderr += b.toString(); });
-
-    const killTimer = setTimeout(() => {
-      try { proc.kill('SIGKILL'); } catch {}
-    }, cmdTimeoutMs);
-
-    proc.on('exit', (code) => {
-      clearTimeout(killTimer);
-      resolve({
-        ok: code === 0,
-        handle,
-        exitCode: code,
-        stderr: stderr.trim(),
-        durationMs: Date.now() - t0,
-      });
-    });
-    proc.on('error', (e) => {
-      clearTimeout(killTimer);
-      resolve({ ok: false, handle, exitCode: null, stderr: `error: ${e?.message ?? e}`, durationMs: Date.now() - t0 });
-    });
   });
 }
 
