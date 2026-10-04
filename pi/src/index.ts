@@ -971,6 +971,13 @@ async function main() {
     alsaMic = await import('./alsaMic.js');
     await startRecorder();
     console.log(`[Boot] ✓ mic-modul + inspelare forladdade (${(performance.now() - tPre).toFixed(0)} ms)`);
+    // UPPVARMNING (2026-10-04, portad fran pi-dmx): analysatorns kod varms pa en skrapinstans i bakgrunden direkt efter boot
+    // (05:00), sa forsta sessionen inte far JIT-stallarna (0,3-0,85 s). Se alsaMic.warmUpAnalyserInBackground. LOTUS_WARMUP=0 = av.
+    const wp = process.env.LOTUS_WARMUP ?? '/opt/lotus-light/warmup/warmup.wav';
+    if (wp !== '0') alsaMic.warmUpAnalyserInBackground(wp, (r: { hops: number; ms: number; secs: number } | null) => {
+      if (r) console.warn(`[warmup] klar: ${r.secs.toFixed(0)} s ljud, ${r.hops} hop pa ${(r.ms / 1000).toFixed(1)} s (i bakgrunden)`);
+      else console.warn(`[warmup] inte klar: avbruten (se raden ovan) eller ${wp} saknas/fel format (mono 16-bit 48 kHz)`);
+    });
   } catch (e: any) {
     console.warn('[Boot] ensureEngineInstance fel:', e?.message ?? e);
   }

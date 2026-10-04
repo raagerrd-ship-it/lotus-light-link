@@ -15,7 +15,10 @@
 
 import { dlog, isDebugEnabled } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
+import { readFileSync } from 'node:fs';
 import { createAnalyser, type Frame, type Analyser } from './audio-analyser/index.js';
+import { Analyser as AnalyserClass } from './audio-analyser/index.js';   // uppvarmningens skrapinstans
+import { createSplitBuffers } from './audio-analyser/split.js';
 import type { Recorder } from './recorder/recorder.js';
 import { Fingerprinter, type Landmark } from './fingerprint.js';
 import { noteOverrun, noteNativeCall, SLOW_NATIVE_MS } from './runtimeHealth.js';
@@ -349,7 +352,7 @@ export const FRAME_MS = (ANALYSER_HOP * BAND_EVERY_HOPS / SAMPLE_RATE) * 1000;
 //    Användarens gain rör ALDRIG denna väg.
 //  • LJUS-tappen: egen linjär RMS × micGain (tvåpunkts Sonos-kurva) → brightness.
 //    Ingen AGC, ingen normalisering → gainen är effektiv hela vägen till lampan.
-const analyser = createAnalyser({
+const ANALYSER_CFG = {
   sampleRate: SAMPLE_RATE,
   hopSize: ANALYSER_HOP * FFT_EVERY,   // se FFT_EVERY: analysatorn far sanningen om sin hop
   // Percentil-AGC: 0.75 är ett TAK för topparna (95:e percentilen), inte ett medel.
@@ -361,8 +364,53 @@ const analyser = createAnalyser({
   // slog den till skarpt for forsta gangen och tempotraffen foll 30/64 -> 12/64 pa samma korpus (bench.mjs),
   // live 50 % -> 16 % ok. LOTUS_ONSET_ENH=1 slar pa den - bara efter korbanksvinst.
   onsetEnhancements: process.env.LOTUS_ONSET_ENH === '1',
-});
+};
+const analyser = createAnalyser(ANALYSER_CFG);
 analyser.setGainLock(false);
+
+/**
+ * UPPVARMNING I BAKGRUNDEN (2026-10-04, portad fran pi-dmx warmup.ts). V8 optimerar process() forst nar den varit het en
+ * stund och kastar optimerad kod varje gang en gren kors forsta gangen (drop, tystnad, latgrans, tempokandidat) - matt pa
+ * lotus: 0,3-0,85 s ren CPU-stallar de forsta 1-2 min efter varje kallstart (omstart 05:00, deploy). En SKRAP-instans med
+ * samma konfig och samma roll (fast vid LOTUS_ANALYSER_SPLIT, annars all) kor DMX:s 74 s-klipp i bitar om hogst
+ * LOTUS_WARMUP_BUDGET_MS (4) per setImmediate-varv -> samma funktioner och objektformer blir varma, tillstandet kastas.
+ * Bitarna halls korta (ALSA-bufferten) - pi-dmx 09-27: en synkron variant blockerade event-loopen 30-50 s.
+ * LOTUS_WARMUP=<sokvag> valjer fil, LOTUS_WARMUP=0 stanger av.
+ */
+export function warmUpAnalyserInBackground(path: string, done: (r: { hops: number; ms: number; secs: number } | null) => void): void {
+  let d: Buffer;
+  try { d = readFileSync(path); } catch { done(null); return; }
+  if (d.length < 48 || d.toString('ascii', 0, 4) !== 'RIFF' || d.readUInt16LE(22) !== 1 || d.readUInt32LE(24) !== SAMPLE_RATE || d.readUInt16LE(34) !== 16) { done(null); return; }
+  const n = (d.length - 44) >> 1, HOP = ANALYSER_CFG.hopSize;
+  const BUDGET_MS = Math.max(1, Math.min(50, Number(process.env.LOTUS_WARMUP_BUDGET_MS) || 4));
+  const split = process.env.LOTUS_ANALYSER_SPLIT === 'worker' || process.env.LOTUS_ANALYSER_SPLIT === 'inline';
+  // Ingen worker kopplas till skrapets ringbuffert - fast-rollen skriver bara (blockerar aldrig) och laser ett tomt tillstand.
+  const an = split ? new AnalyserClass(ANALYSER_CFG, { role: 'fast', split: createSplitBuffers() }) : new AnalyserClass(ANALYSER_CFG);
+  an.setGainLock(false);
+  const buf = new Float32Array(HOP);
+  const t0 = performance.now();
+  let hops = 0, off = 0;
+  const step = (): void => {
+    // ALDRIG SAMTIDIGT MED MUSIK (matt 16:51: deploy-omstart mitt i en lat -> 17 sena tickar 44-430 ms medan uppvarmningen
+    // korde). Uppvarmningen ar till for tomgang (omstarten 05:00); ar micen oppen avbryts den - koden varms da av musiken sjalv.
+    if (isMicActive()) { console.warn(`[warmup] avbruten efter ${hops} hop: micen ar oppen (musik)`); done(null); return; }
+    try {
+      const tSlice = performance.now();
+      do {
+        for (let i = 0; i < HOP; i++) buf[i] = d.readInt16LE(44 + (off + i) * 2) / 32768;
+        an.setVirtualClock((off * 1000) / SAMPLE_RATE);
+        an.process(buf);
+        hops++; off += HOP;
+      } while (off + HOP <= n && performance.now() - tSlice < BUDGET_MS);
+    } catch (e) {
+      console.warn(`[warmup] avbruten efter ${hops} hop: ${(e as Error)?.message ?? e}`);   // skrapet far aldrig falla motorn
+      done(null); return;
+    }
+    if (off + HOP <= n) setImmediate(step);
+    else done({ hops, ms: performance.now() - t0, secs: n / SAMPLE_RATE });
+  };
+  setImmediate(step);
+}
 
 // ── LANDMARKEN: var i inspelningen ar vi? ──────────────────────────────────
 //

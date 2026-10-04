@@ -9,6 +9,7 @@
  * inom +-5 %), sa en felmatchad lat kan aldrig styra ljuset. Cache per lat (aven "inget
  * tempo", 7 dagar; natfel cachas INTE) sa natet fragas en gang per lat.
  */
+import { isDebugEnabled } from './debugLog.js';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, copyFileSync, statSync, unlinkSync } from 'node:fs';
 import { appendFile, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -241,6 +242,10 @@ export async function resolveTempo(cache: TempoCache, artist: string | null, tit
   const key = songKey(artist || '', title);
   const c = cache.get(key);
   if (c) return { hit: c.bpm > 0 ? { bpm: c.bpm, rawBpm: c.rawBpm ?? c.bpm, source: c.source, matchArtist: c.matchArtist || '', matchTitle: c.matchTitle || '', id: 0, score: c.score || 0 } : null, cached: true };
+  // KATALOGEN BARA VID FELSOKNING (2026-10-04, agaren: realtid utan moln): katalogtempot ar facit/statistik (styr inte ljuset,
+  // useMetaTempo av), och en ny HTTPS-anslutning pa huvudtraden kostade 120-145 ms vid varje okant latbyte (cpuprofile 16:48:
+  // isIPv6 ~53 ms + DNS-resolver + TLS-kontext). Cachen anvands som forut; ingen post skrivs, sa laten slas upp nasta gang felsokning ar pa.
+  if (!isDebugEnabled()) return { hit: null, cached: false };
   let hit: TempoHit | null;
   try { hit = await lookupDeezer(artist, title); } catch { return { hit: null, cached: false }; }
   cache.set(key, { bpm: hit?.bpm || 0, rawBpm: hit?.rawBpm, genre: hit?.genre, source: hit?.source || 'ingen', matchArtist: hit?.matchArtist, matchTitle: hit?.matchTitle, score: hit?.score, at: Date.now(), artist: artist || '', title });
