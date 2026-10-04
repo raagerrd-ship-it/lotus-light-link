@@ -1701,7 +1701,8 @@ export class PiLightEngine {
     resetLandmarks();                       // inga par over latgransen
     this._showOffsetMs = 0;
     this._songArtist = artist || ''; this._songTitle = title || '';
-    if (this._songLookup && artist && title) {
+    // Latminnet bara med useRecording (av med avsikt): ett latbyte ar bara 'namnet andrades', vilken lat spelar ingen roll (2026-10-04).
+    if (this._songLookup && artist && title && this.cal.useRecording !== false) {
       try {
         const hit = this._songLookup(artist, title);
         if (hit && hit.bpm > 0) {
@@ -1796,7 +1797,7 @@ export class PiLightEngine {
       }
     }
     if (_memBpm <= 0 && this._metaBpm > 0 && this.cal.useMetaTempo === true && this._metaVerdict !== 'avvisat') { _memBpm = this._metaBpm; this._metaDrives = true; }
-    this.learnSample(frame);
+    if (isDebugEnabled()) this.learnSample(frame);   // inlarningen (facit/statistik per lat) bara med felsokning (2026-10-04)
     const nowMs = Date.now();
     const reacq = nowMs < this._reacqUntil;
     // TEMPOSTABILITET (09-19): analysatorns ogonblicksvarde hoppade 97-108 pa 45 s ("Kla av mig",

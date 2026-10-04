@@ -514,27 +514,23 @@ async function startSonosSubsystem(): Promise<void> {
       // latbyte, sa nasta lat har nagot att stalla sin kontrast mot.
       const lastChosen = { current: null as [number, number, number] | null };
       // ── Låtbyte → hint till beat-trackern ──
-      // Gatewayen kan glitcha trackName (tom sträng mitt i en låt, dubbel-event),
-      // så bytet debouncas ~1.5 s innan motorn får sin hint. Hinten är mjuk:
-      // tempot behålls som startgissning, sökningen vidgas tillfälligt.
+      // Gatewayen kan glitcha trackName (tom sträng mitt i en låt, dubbel-event) - hanteras i noteTrackName nedan.
+      // Hinten är mjuk: tempot behålls som startgissning, sökningen vidgas tillfälligt.
       let lastTrackName: string | null = null;
-      let trackDebounce: NodeJS.Timeout | null = null;
       let lastArtist: string | null = null;
+      // ETT LATBYTE AR BARA ATT NAMNET ANDRADES (2026-10-04, agaren: "strunta i vilken lat det ar"). Tomt namn (TV, glitch
+      // mitt i en lat) ar ingen information och rör inte lastTrackName; samma namn igen (dubbel-event) ar inget byte. Darfor
+      // behovs inte langre 1,5 s-debouncen - hinten gar direkt sa analysatorn borjar lasa nya laten 1,5 s tidigare.
+      // Katalogen (facit) bara med felsokning.
       const noteTrackName = (name: string | null, artist?: string | null) => {
         if (artist !== undefined) lastArtist = artist;
         recorder?.noteTrack(name, artist);
-        if (name === lastTrackName) return;
+        if (!name || name === lastTrackName) return;
         lastTrackName = name;
-        if (name) engineInstance?.gcNow('latbyte');   // LOTUS_GC_QUIET_MS: latgransen ar det basta ogonblicket nar spellistan saknar paus
-        if (trackDebounce) clearTimeout(trackDebounce);
-        if (!name) return;                       // TV/tomt namn är inget låtbyte
-        trackDebounce = setTimeout(() => {
-          trackDebounce = null;
-          if (name !== lastTrackName) return;    // hann ändras igen → glitch
-          engineInstance?.notifyTrackChange(lastArtist, name);
-          void resolveMetaTempo(lastArtist, name);
-          recorder?.trackChanged(lastArtist, name);
-        }, 1500);
+        engineInstance?.gcNow('latbyte');   // LOTUS_GC_QUIET_MS (av): latgransen ar det basta ogonblicket nar spellistan saknar paus
+        engineInstance?.notifyTrackChange(lastArtist, name);
+        if (isDebugEnabled()) void resolveMetaTempo(lastArtist, name);
+        recorder?.trackChanged(lastArtist, name);
       };
       // FANGSTERNA (snutt/drop/sektion + handelselogg) bor i inspelaren (recorder/recorder.ts), se startRecorder().
       // Katalogtempo for den nya laten: cache forst (0 ms), annars Deezer (~0,8 s). Svaret
