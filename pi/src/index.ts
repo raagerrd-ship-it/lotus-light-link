@@ -141,7 +141,9 @@ async function startRecorder(): Promise<void> {
   const { getLastSent } = await import('./ble-driver/protocol.js');
   const mic: any = alsaMic;
   recorder = new Recorder({
-    dir: DATA_DIR + '/snippets', sampleRate: 48000, enabled: true, enabledFile: DATA_DIR + '/tempo-capture.json',
+    // 2026-10-04 (agaren): inspelning ligger bakom felsokning - startar ALLTID av (ingen sparad brytare), slas pa med
+    // PUT /api/debug/verbose {enabled:true, record:true} (eller /api/tempo/capture-enabled) och av med felsokningen.
+    dir: DATA_DIR + '/snippets', sampleRate: 48000, enabled: false,
     sectionS: SECTION_CAPTURE_S, sectionMax: SECTION_CAPTURE_MAX, sectionCountFile: DATA_DIR + '/section-captures.json',
   }, {
     latestFrame: () => mic?.getLatestFrame?.() ?? null,
@@ -159,7 +161,7 @@ async function startRecorder(): Promise<void> {
     takeManual: () => configServer?.takeManualCapture?.() ?? null,
   });
   mic.attachRecorder?.(recorder);
-  recorder.enablePreroll(true);   // 15 s forbuffert @48 kHz for dropfangster (1,44 MB)
+  recorder.enablePreroll(recorder.isEnabled());   // 15 s forbuffert @48 kHz for dropfangster (1,44 MB); bara med fangster PA (setEnabled foljer)
   configServer?.setCaptureToggle?.(() => recorder!.isEnabled(), (on: boolean) => recorder!.setEnabled(on));
   recorder.start();
 }

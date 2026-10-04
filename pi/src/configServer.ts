@@ -557,6 +557,17 @@ export function startConfigServer(port = 3050): void {
     res.sendFile(`${DATA_DIR}/${f}`);
   });
   // KLAPP-LAGE (matning ljud->ljus): PUT {enabled:true} -> lampan blixtrar vitt pa varje bredbands-onset (klapp), inget annat.
+  // FELSOKNINGSLOGG (2026-10-04): periodiska rader ([gc] 10 s, [raster] period, alla dlog) bara nar brytaren ar pa.
+  // PUT {enabled:true|false, record?:true}; startlaget = LOTUS_DEBUG, galler till omstart. 88 % av engine.log var annars dessa rader.
+  // record:true slar aven pa inspelningen (fangster till facit-PC:n); felsokning AV stanger alltid inspelningen (agaren 2026-10-04).
+  const _debugState = async () => { const d = await import('./debugLog.js'); return { enabled: d.isDebugEnabled(), record: _captureGet ? _captureGet() : false }; };
+  app.get('/api/debug/verbose', async (_req, res) => res.json(await _debugState()));
+  app.put('/api/debug/verbose', async (req, res) => {
+    const d = await import('./debugLog.js'); const on = req.body?.enabled === true; d.setDebugEnabled(on);
+    if (_captureSet) _captureSet(on && req.body?.record === true);
+    const st = await _debugState();
+    console.log(`[debug] felsokningslogg ${st.enabled ? 'PA' : 'AV'}, inspelning ${st.record ? 'PA' : 'AV'}`); res.json(st);
+  });
   app.put('/api/debug/clap', (req, res) => {
     const engine = requireEngine(res); if (!engine) return;
     const on = req.body?.enabled === true; (engine as any).setClapMode?.(on); res.json({ ok: true, enabled: on });

@@ -10,11 +10,15 @@
  * direkt — använd dlog() istället så att produktion blir helt tyst per default.
  */
 
-const ENABLED =
+let ENABLED =
   process.env.LOTUS_DEBUG === '1' ||
   process.env.LOTUS_DEBUG === 'true';
 
 export const DEBUG_ENABLED = ENABLED;
+
+/** Brytaren under drift (PUT /api/debug/verbose, 2026-10-04): felsokning utan omstart. Startlaget = LOTUS_DEBUG. */
+export function setDebugEnabled(on: boolean): void { ENABLED = on; }
+export function isDebugEnabled(): boolean { return ENABLED; }
 
 export function dlog(...args: unknown[]): void {
   if (ENABLED) console.log(...args);

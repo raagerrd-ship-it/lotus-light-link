@@ -2643,7 +2643,7 @@ export class PiLightEngine {
           if (d >= 20) { gcBig++; if (Date.now() - gcLogAt > 1000) { gcLogAt = Date.now(); console.log(`[gc] paus ${d.toFixed(0)} ms kind ${kind}`); } }
         }
         if (Date.now() - gcRepAt >= 10_000) {
-          console.log(`[gc] 10 s: ${gcN} pauser, summa ${gcMs.toFixed(0)} ms, max ${gcMax.toFixed(0)} ms, >=20 ms: ${gcBig}`);
+          dlog(`[gc] 10 s: ${gcN} pauser, summa ${gcMs.toFixed(0)} ms, max ${gcMax.toFixed(0)} ms, >=20 ms: ${gcBig}`);
           gcRepAt = Date.now(); gcN = 0; gcMs = 0; gcMax = 0; gcBig = 0;
         }
       });
@@ -2683,7 +2683,7 @@ export class PiLightEngine {
         if (logNow) {
           _rasterLogAt = now;
           const s = TICK_SYNC ? ` | synk ticks ${this._syncTicks} sena ${this._syncLate} (max ${this._syncLateMax.toFixed(1)} ms) guard ${this._guardMs}` : '';
-          console.log(`[raster] period ${r.periodMs} ms jitter ${r.jitterMs} ms kvitton ${r.events} las ${r.locked ? 1 : 0} | write→kvitto p50 ${r.w2n.p50Ms} p90 ${r.w2n.p90Ms} max ${r.w2n.maxMs} ms (n ${r.w2n.n})${s}`);
+          dlog(`[raster] period ${r.periodMs} ms jitter ${r.jitterMs} ms kvitton ${r.events} las ${r.locked ? 1 : 0} | write→kvitto p50 ${r.w2n.p50Ms} p90 ${r.w2n.p90Ms} max ${r.w2n.maxMs} ms (n ${r.w2n.n})${s}`);
           this._syncLate = 0; this._syncLateMax = 0;
         }
         resetRasterWindow();
