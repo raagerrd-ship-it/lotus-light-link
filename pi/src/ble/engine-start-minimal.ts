@@ -73,10 +73,10 @@ export async function startBleEngineMinimal(): Promise<MinimalEngineResult> {
   // Policy: mem://pi/ble/hci-up-only-policy — engine får aldrig mutera hci0.
   dlog(`${ts()} 0. Väntar passivt på att hci0 är UP RUNNING (bluetoothd äger wake)...`);
   const waitStart = Date.now();
-  let hciUp = isHci0Up();
+  let hciUp = await isHci0Up();
   while (!hciUp && Date.now() - waitStart < 8000) {
     await new Promise(r => setTimeout(r, 250));
-    hciUp = isHci0Up();
+    hciUp = await isHci0Up();
   }
   if (!hciUp) {
     const error = 'hci0 inte UP RUNNING efter 8s — bluetoothd nere? (kör: sudo systemctl restart bluetooth)';

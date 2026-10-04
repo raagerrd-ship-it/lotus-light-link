@@ -13,36 +13,23 @@
  * NOT be imported until the adapter is confirmed up.
  */
 
-import { execSync } from 'child_process';
+import { shRun } from './shHelper.js';
 
 const SAFE_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 
 /**
- * Read `hciconfig hci0` (no root required) and return true if the adapter
- * reports UP RUNNING. Returns false on any error (command missing, adapter
+ * Read `hciconfig hci0` (no root required) and resolve true if the adapter
+ * reports UP RUNNING. Resolves false on any error (command missing, adapter
  * not present, etc.) so callers fall through to "load noble anyway".
  *
- * Använder execSync direkt med PATH-safe env — INTE bash -lc (login-shell
- * får tom PATH under systemd user-service, hciconfig hittas inte).
- * Memory: mem://pi/ble/no-bash-lc-for-system-tools
+ * PATH-safe (SAFE_PATH tillagd) — INTE bash -lc (login-shell far tom PATH under
+ * systemd user-service, hciconfig hittas inte). Memory: mem://pi/ble/no-bash-lc-for-system-tools
  *
- * Notera: detta är en stand-alone kopia av isHci0Up som inte importerar
- * något annat (måste vara dependency-free, se topp-kommentar). Den kan
- * därför inte använda ./sysExec.js.
+ * 2026-10-04: via sh-hjalparen (shHelper.ts, bara node:child_process - fortfarande noble-fri) i stallet for
+ * execSync, som forkade motorn och holl huvudtraden tills hciconfig var klar (del av stallarna 0,5-0,8 s vid
+ * sessionsstart). Samma kommando och tolkning; asynkron.
  */
-export function isHci0Up(): boolean {
-  try {
-    const out = execSync('hciconfig hci0 2>&1', {
-      timeout: 1500,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        PATH: process.env.PATH ? `${process.env.PATH}:${SAFE_PATH}` : SAFE_PATH,
-        LC_ALL: 'C',
-      },
-    }) as string;
-    return /UP\s+RUNNING/.test(out);
-  } catch {
-    return false;
-  }
+export async function isHci0Up(): Promise<boolean> {
+  const { code, out } = await shRun(`env PATH="$PATH:${SAFE_PATH}" LC_ALL=C hciconfig hci0`, 1500);
+  return code === 0 && /UP\s+RUNNING/.test(out);
 }
