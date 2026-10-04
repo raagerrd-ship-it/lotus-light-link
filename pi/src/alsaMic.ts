@@ -13,7 +13,7 @@
  * efter en analysator-hop, så motorn får noll extra latens.
  */
 
-import { dlog } from "./debugLog.js";
+import { dlog, isDebugEnabled } from "./debugLog.js";
 import { getItem, setItem } from './storage.js';
 import { createAnalyser, type Frame, type Analyser } from './audio-analyser/index.js';
 import type { Recorder } from './recorder/recorder.js';
@@ -1414,7 +1414,8 @@ function onAudioData(buf: Buffer): void {
     // kickAtMs, emitBands laser senaste ram). Se kommentaren vid FFT_EVERY.
     if (++fftSlot >= FFT_EVERY) {
       fftSlot = 0;
-      const t0 = performance.now();
+      // Analysatorns kostnad mats bara med felsokning pa (PUT /api/debug/verbose, 2026-10-04 agaren) - ren diagnostik.
+      const t0 = isDebugEnabled() ? performance.now() : 0;
       latestFrame = analyser.process(analyserScratch);
       // KICK-RING HAR, inte i motorn: ticken (~53 Hz) ser bara var ~7:e av
       // analysatorns 375 frames/s, och kickAtMs ar nollskild pa EN hop per slag.
@@ -1425,11 +1426,13 @@ function onAudioData(buf: Buffer): void {
         _kickRing[_kickPos] = _kickLast; _kickPos = (_kickPos + 1) % KICK_RING;
       }
       latestFrameAt = Date.now();
-      const dt = performance.now() - t0;
-      // EMA (alfa=0.02, ~50 anrop) + max sedan senaste lasning; budget = FFT_EVERY hop
-      analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
-      if (dt > analyserMsMax) analyserMsMax = dt;
-      if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
+      if (t0 > 0) {
+        const dt = performance.now() - t0;
+        // EMA (alfa=0.02, ~50 anrop) + max sedan senaste lasning; budget = FFT_EVERY hop
+        analyserMsEMA = analyserMsEMA === 0 ? dt : analyserMsEMA + 0.02 * (dt - analyserMsEMA);
+        if (dt > analyserMsMax) analyserMsMax = dt;
+        if (dt > ANALYSER_BUDGET_MS) analyserOverBudgetCount++;
+      }
       analyserHopCount++;   // = antal process()-anrop (frames), inte 128-hop
     }
     fpHopCount++;
@@ -1446,8 +1449,9 @@ function onAudioData(buf: Buffer): void {
   // som kör på event-loopen i mic-vägen. Tar den >200ms är det den som fryser
   // ticken — noteNativeCall loggar med kontext och exponerar maxNativeCallMs.
   // Kontextstrangen byggs bara nar den loggas (>= SLOW_NATIVE_MS) - forr byggdes den i varje callback (~190/s).
-  const _cbMs = performance.now() - _cbT0;
-  noteNativeCall('alsa-audio-cb', _cbMs, _cbMs >= SLOW_NATIVE_MS ? `bytes=${buf.byteLength} hops=${analyserHopCount}` : undefined);
+  // _cbT0 ar funktionell (_lastAudioCbAt, mic-stallvakten); bara matningen av callbackens langd ligger bakom felsokning.
+  if (isDebugEnabled()) { const _cbMs = performance.now() - _cbT0;
+  noteNativeCall('alsa-audio-cb', _cbMs, _cbMs >= SLOW_NATIVE_MS ? `bytes=${buf.byteLength} hops=${analyserHopCount}` : undefined); }
 }
 
 // ── Mic-stall-watchdog (2026-08-25) ──

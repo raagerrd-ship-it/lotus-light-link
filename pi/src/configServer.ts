@@ -856,6 +856,7 @@ export function startConfigServer(port = 3050): void {
       // Taktklockan: locked/bpm/phase/nextBeatMs/beatErr/gridPulses/leadMs
       beat: engine?.getBeatInfo?.() ?? null,
       analyserCost, // { msEMA, msMax, hops, overBudget, budgetMs } — larma om msMax>budgetMs
+      measuring: (await import('./debugLog.js')).isDebugEnabled(),   // runtime/analyserCost/GC mats bara med felsokning pa (2026-10-04)
       // Runtime-hälsa: event-loop-lag, tick-jitter och verklig FFT-takt (80 Hz @ HOP=600).
       runtime: getRuntimeHealth(),
 

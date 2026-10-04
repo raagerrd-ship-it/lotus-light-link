@@ -13,7 +13,7 @@
 import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 
-import { logDebugBanner } from './debugLog.js';
+import { logDebugBanner, isDebugEnabled } from './debugLog.js';
 import { orderPaletteByContrast } from './colorPick.js';
 logDebugBanner();
 
@@ -672,6 +672,7 @@ async function main() {
   {
     const { sample } = await import('./runtimeHealth.js');
     everySeconds(1, () => {
+      if (!isDebugEnabled()) return;   // halsoprovet = ren diagnostik, bara med felsokning (2026-10-04)
       let fftCount = 0;
       try { fftCount = alsaMic?.getFFTFrameCount?.() ?? 0; } catch {}
       sample(fftCount);

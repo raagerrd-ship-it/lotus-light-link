@@ -178,7 +178,7 @@ const PHASE_BIAS_MS = Number(process.env.LOTUS_PHASE_BIAS_MS ?? 20);
 const LM_DIR = process.env.LOTUS_LM_DIR || '/var/lib/pi-control-center/apps/lotus-light';
 const SYNC_PROBE_FILE = (process.env.PCC_LOG_DIR || '/tmp') + '/syncprobe.tsv';
 import { join } from 'node:path';
-import { dlog } from "./debugLog.js";
+import { dlog, isDebugEnabled } from "./debugLog.js";
 import { noteTick } from './runtimeHealth.js';
 
 
@@ -2637,6 +2637,7 @@ export class PiLightEngine {
     try {
       let gcN = 0, gcMs = 0, gcMax = 0, gcBig = 0, gcLogAt = 0, gcRepAt = Date.now();
       const obs = new PerformanceObserver((list) => {
+        if (!isDebugEnabled()) return;   // GC-matningen bara med felsokning (2026-10-04)
         for (const e of list.getEntries()) {
           const d = e.duration; gcN++; gcMs += d; if (d > gcMax) gcMax = d;
           const kind = (e as any).detail?.kind ?? (e as any).kind ?? 0;
@@ -2760,7 +2761,8 @@ export class PiLightEngine {
     const late = now - target;
     if (late > 2) { this._syncLate++; if (late > this._syncLateMax) this._syncLateMax = late; }
     // Stall-jakt (09-21): en sen tick > 40 ms loggas med tid (max 1/s) sa den kan korreleras med raden fore i loggen.
-    if (late > 40 && Date.now() - this._lateLogAt > 1000) { this._lateLogAt = Date.now(); console.log(`[synk] sen tick ${late.toFixed(0)} ms (event-loop-stall)`); }
+    // raknarna (sync.late) alltid, raden bara vid felsokning (2026-10-04)
+    if (late > 40 && isDebugEnabled() && Date.now() - this._lateLogAt > 1000) { this._lateLogAt = Date.now(); console.log(`[synk] sen tick ${late.toFixed(0)} ms (event-loop-stall)`); }
     this._syncTicks++;
     this._nextTickDeadline = now + TICK_PERIOD_MS;
     this._lastTickTime = now;

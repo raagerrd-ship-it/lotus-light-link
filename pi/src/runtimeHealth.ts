@@ -10,6 +10,7 @@
  * Ingen egen timer: sample() anropas från den gemensamma 1 Hz-schedulern.
  */
 
+import { isDebugEnabled } from './debugLog.js';
 let loopLagEMA = 0;
 let loopLagMax = 0;
 let lastSampleAt = 0;
@@ -63,8 +64,8 @@ export function noteNativeCall(op: string, ms: number, context?: string): void {
 
 /** Anropas en gång per engine-tick med aktuell tickMs. */
 export function noteTick(nowMs: number, tickMs: number): void {
-  engineTickTotal++;
-  if (lastTickAt > 0) {
+  engineTickTotal++;   // FUNKTIONELL (Playback-Watchdog) - alltid; jittermatningen bara med felsokning (2026-10-04)
+  if (lastTickAt > 0 && isDebugEnabled()) {
     const dt = nowMs - lastTickAt;
     const jitter = Math.abs(dt - tickMs);
     tickJitterEMA += (jitter - tickJitterEMA) * 0.05;
