@@ -1,12 +1,11 @@
 # Resultattavla — analysatorns tempoval mot facit
 
-Uppdaterad 2026-10-03 05:25. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
+Uppdaterad 2026-10-04 05:34. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
 
 Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).
 
 | datum | standard | live | evidence | ring10 | live-cd80 | live-cd120 | live: dygnets låtar | ok-andel | grid-släp | onset recall | onset precision | nivå r |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-09-20 | 39/76 · 6/8 | – | 44/76 · 6/8 | 43/76 · 6/8 | – | – | 113 (96 facit) | 0.34 | -1 ms | 0.3 | 0.8 | 0.3 |
 | 2026-09-21 | 181/288 · 6/8 · slag 0.59 p 0.83 | 226/288 · 6/8 · slag 0.90 p 0.81 · fas 102/148 | 212/288 · 6/8 · slag 0.61 p 0.83 | 188/288 · 6/8 · slag 0.58 p 0.83 | 226/288 · 6/8 · slag 0.91 p 0.81 · fas 102/148 | 226/288 · 6/8 · slag 0.86 p 0.82 · fas 102/148 | 161 (118 facit) | 0.79 | 5.7 ms | 0.9 | 0.8 | 0.4 |
 | 2026-09-22 | 51/70 · 6/8 · slag 0.58 p 0.82 | 55/70 · 6/8 · slag 0.95 p 0.81 | 56/70 · 6/8 · slag 0.61 p 0.81 | 53/70 · 6/8 · slag 0.57 p 0.82 | 55/70 · 6/8 · slag 0.96 p 0.81 | 55/70 · 6/8 · slag 0.90 p 0.82 | 189 (146 facit) | 0.8 | 9.9 ms | 0.9 | 0.8 | 0.3 |
 | 2026-09-23 | 99/142 · 6/8 · slag 0.57 p 0.83 | 112/142 · 6/8 · slag 0.94 p 0.82 | 113/142 · 6/8 · slag 0.59 p 0.83 | 106/142 · 6/8 · slag 0.57 p 0.83 | 112/142 · 6/8 · slag 0.94 p 0.82 | 112/142 · 6/8 · slag 0.89 p 0.83 | – (– facit) | – | – ms | – | – | – |
@@ -20,15 +19,16 @@ Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med ana
 | 2026-10-01 | 314/474 · 6/8 · slag 0.55 p 0.85 | 387/474 · 6/8 · slag 0.85 p 0.84 · fas 190/347 | 383/474 · 6/8 · slag 0.58 p 0.85 | 334/474 · 6/8 · slag 0.55 p 0.85 | 387/474 · 6/8 · slag 0.86 p 0.84 · fas 190/347 | 387/474 · 6/8 · slag 0.81 p 0.85 · fas 190/347 | 21 (17 facit) | 0.93 | None ms | 0.9 | 0.9 | 0.6 |
 | 2026-10-02 | 358/541 · 6/8 · slag 0.55 p 0.85 | 444/541 · 6/8 · slag 0.85 p 0.85 · fas 228/404 | 438/541 · 6/8 · slag 0.57 p 0.85 | 383/541 · 6/8 · slag 0.55 p 0.85 | 444/541 · 6/8 · slag 0.86 p 0.85 · fas 228/404 | 444/541 · 6/8 · slag 0.80 p 0.85 · fas 228/404 | 20 (20 facit) | 0.9 | None ms | 0.9 | 0.9 | 0.6 |
 | 2026-10-03 | 332/548 · 6/8 · slag 0.54 p 0.87 | 435/548 · 6/8 · slag 0.84 p 0.86 · fas 222/395 | 429/548 · 6/8 · slag 0.57 p 0.87 | 359/548 · 6/8 · slag 0.54 p 0.86 | 435/548 · 6/8 · slag 0.85 p 0.86 · fas 222/395 | 435/548 · 6/8 · slag 0.79 p 0.86 · fas 222/395 | 90 (76 facit) | 0.61 | None ms | 1.0 | 0.9 | 0.6 |
+| 2026-10-04 | 343/567 · 6/8 · slag 0.54 p 0.87 | 451/567 · 6/8 · slag 0.84 p 0.86 · fas 228/406 | 448/567 · 6/8 · slag 0.57 p 0.87 | 374/567 · 6/8 · slag 0.54 p 0.86 | 451/567 · 6/8 · slag 0.85 p 0.86 · fas 228/406 | 451/567 · 6/8 · slag 0.79 p 0.87 · fas 228/406 | 6 (5 facit) | 0.6 | None ms | 0.9 | 0.9 | 0.6 |
 
-Senaste dygnet: domar {"ok": 45, "utan facit": 14, "ingen dom": 2, "ok-fantom-1.33": 5, "ok-fantom-1.50": 8, "ok-oktav-2": 2, "avvisat": 10, "ok-fantom-0.75": 3, "ok-oktav-0.5": 1}; kick-bias 0.3 ms; nivå-lag 200 ms; tak-r 0.7 lag 200 ms 5.5 %/dB klipp 0.0; analysatorns spann inom låt 54 BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 445 {"ratt": 66, "falsk": 89, "osaker": 290}.
+Senaste dygnet: domar {"utan facit": 1, "avvisat": 2, "ok": 3}; kick-bias 0.6 ms; nivå-lag 200.0 ms; tak-r 0.8 lag 200.0 ms 4.9 %/dB klipp 0.1; analysatorns spann inom låt 38.5 BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 467 {"ratt": 69, "falsk": 94, "osaker": 304}.
 
 Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.
 
 Sektioner (Pi-flaggor {"LOTUS_SECTION": "1", "LOTUS_GRID_PHASE": "1", "LOTUS_SECTION_REPEAT": "117", "LOTUS_SECTION_W_HIGH": "1.0", "LOTUS_SECTION_EARLY_S": "45", "LOTUS_SECTION_ON_HINT": "1"}, repeats {"filer": 91, "rc": 0, "tail": "", "err": ""}):
 
-- test-tier: high==high 0.63 · recall 0.58 · falsk 0.37 · gransfel 0.43 (n 8) | refrang 2 <=4 s 1/5, <=8 s 1, median 12.7 s · refrang 1 <=4 s 0 · vers 2 ej high 0.73 · forutsedd 1 | forutsagelse 2/14 @ 2.8/min
-- test-repeat: high==high 0.63 · recall 0.58 · falsk 0.37 · gransfel 0.43 (n 8) | refrang 2 <=4 s 3/6, <=8 s 4, median 4.0 s · refrang 1 <=4 s 1 · vers 2 ej high 0.74 · forutsedd 1 | forutsagelse 2/14 @ 2.8/min
+- test-tier: high==high 0.56 · recall 0.46 · falsk 0.37 · gransfel 0.43 (n 7) | refrang 2 <=4 s 1/5, <=8 s 1, median 12.7 s · refrang 1 <=4 s 0 · vers 2 ej high 0.73 · forutsedd 1 | forutsagelse 2/13 @ 2.0/min
+- test-repeat: high==high 0.56 · recall 0.46 · falsk 0.37 · gransfel 0.43 (n 7) | refrang 2 <=4 s 2/5, <=8 s 3, median 5.7 s · refrang 1 <=4 s 1 · vers 2 ej high 0.57 · forutsedd 1 | forutsagelse 2/13 @ 2.0/min
 - alla-tier: high==high 0.69 · recall 0.75 · falsk 0.37 · gransfel 0.4 (n 16) | refrang 2 <=4 s 1/8, <=8 s 1, median 12.7 s · refrang 1 <=4 s 1 · vers 2 ej high 0.6 · forutsedd 1 | forutsagelse 3/29 @ 2.4/min
 - alla-repeat: high==high 0.69 · recall 0.75 · falsk 0.37 · gransfel 0.4 (n 16) | refrang 2 <=4 s 5/13, <=8 s 7, median 5.0 s · refrang 1 <=4 s 1 · vers 2 ej high 0.5 · forutsedd 2 | forutsagelse 3/29 @ 2.4/min
 
