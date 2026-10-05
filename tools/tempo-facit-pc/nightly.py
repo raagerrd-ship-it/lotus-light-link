@@ -14,7 +14,8 @@ LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGA
 # FRYST LATLISTA (10-05): tempovarianterna kors bara pa bench-manifest.txt (bench_manifest.py) - jamforbara dygn. Sektionsbanken kor utan.
 MANIFEST = os.path.join(HERE, 'bench-manifest.txt')
 VARIANTS = {'standard': {}, 'live': LIVE, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'},
-            'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120')}
+            'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120'),
+            'live-five4': dict(LIVE, LOTUS_TEMPO_FIVE4='1')}   # 10-05: 5/4-fantomprov (opt-in 9a7f5e0), bank 388 -> 395/503 - folj ett par dygn innan deploy
 GRID = {'BENCH_GRID': '1'}
 SB = os.path.join(HERE, 'scoreboard.jsonl'); MD = os.path.join(HERE, 'scoreboard.md'); DAILY = os.path.join(HERE, 'daily')
 
