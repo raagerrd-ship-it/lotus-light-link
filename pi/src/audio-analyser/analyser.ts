@@ -683,6 +683,11 @@ export class Analyser {
    *  Mio 1/3; helband + poang >= 177, test 84. OBS: traffgransen ar basringens (alignScore cachar percentilen per anrop,
    *  basen raknas forst) - det ar sa varianten bankades. Standard AV = bit-identiskt. */
   private static readonly TEMPO_UP43 = sysEnv('TEMPO_UP43') === '1';
+  /** 5/4-FANTOM (opt-in <prefix>TEMPO_FIVE4=1, 10-05): efter evidensvalet (och UP43) provas vinnaren mot 5/4 och 4/5 av tempot pa
+   *  HELBANDSringen; en kandidat tas bara om traffandelen ar minst <prefix>FIVE4_MARGIN hogre (standard 0,15). Mal: 10 av 503
+   *  musiksnuttar dar facit (PC = Beat This!) och analysatorn skiljer 1,25/0,80 (3 Doors Down, Ricky Rose, Wailers). Standard AV. */
+  private static readonly TEMPO_FIVE4 = sysEnv('TEMPO_FIVE4') === '1';
+  private static readonly FIVE4_MARGIN = Number(sysEnv('FIVE4_MARGIN') ?? '') || 0.15;
   /** TIDIG REFRANG KRAVER NIVA (2026-09-24, drejboken i ladan: varje lat fick intro -> build -> high vid 20-28 s): direkt efter 20 s-
    *  uppvarmningen rangordnas nuet mot bara introt, sa forsta starkare parti blir 'high' aven om det ar en vers. De forsta
    *  <prefix>SECTION_EARLY_S sekunderna (0 = av) far 'high' bara om de senaste 4 blockens medel ligger >= SECTION_EARLY_DB over
@@ -1957,6 +1962,14 @@ export class Analyser {
             const L = Math.round(cL[bi] * f); if (L <= HZ * 60 / Analyser.BPM_MAX || L < lagMin) continue;
             const r = this.alignScore(this.envRing, N, L);
             if (r.hit >= upHit) { upHit = r.hit; upLag = L; this.evidenceScore = r.score; this.evidenceHalf = r.half; }
+          }
+        }
+        if (Analyser.TEMPO_FIVE4) {
+          const base = upLag || cL[bi]; let fHit = this.alignScore(this.envRing, N, base).hit + Analyser.FIVE4_MARGIN;
+          for (const f of [0.8, 1.25]) {
+            const L = Math.round(base * f); if (L <= HZ * 60 / Analyser.BPM_MAX || L > HZ * 60 / Analyser.BPM_MIN || L < lagMin || L > lagMax) continue;
+            const r = this.alignScore(this.envRing, N, L);
+            if (r.hit > fHit) { fHit = r.hit; upLag = L; this.evidenceScore = r.score; this.evidenceHalf = r.half; }
           }
         }
         if (Analyser.EVIDENCE_ON) { bestLag = upLag || cL[bi]; bestVal = tg[cL[bi]]; }   // bestVal = vinnarens topp (konfidensen), aven nar UP43 flyttar lagen
