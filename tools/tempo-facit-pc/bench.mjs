@@ -70,7 +70,10 @@ function runOne(y, rate) {
 }
 
 const rows = [];
-const _files = readdirSync(DIR).filter((f) => f.endsWith('.json') && (!process.env.BENCH_FILTER || f.includes(process.env.BENCH_FILTER))).sort();   // BENCH_FILTER=_smu9 -> bara langfangsterna
+// BENCH_MANIFEST=<fil> (10-05): fryst latlista (en json-fil per rad, bench_manifest.py) - bara de filerna. Utan den ar korpusen ett rullande
+// fonster (taket gallrar aldsta, nya snuttar roterar in) och dygnen gar inte att jamfora (matfalla 38/39: 61 ljudbocker 10-04).
+const _manifest = process.env.BENCH_MANIFEST && existsSync(process.env.BENCH_MANIFEST) ? new Set(readFileSync(process.env.BENCH_MANIFEST, 'utf8').split(/\r?\n/).map((x) => x.trim()).filter(Boolean)) : null;
+const _files = readdirSync(DIR).filter((f) => f.endsWith('.json') && (!_manifest || _manifest.has(f)) && (!process.env.BENCH_FILTER || f.includes(process.env.BENCH_FILTER))).sort();   // BENCH_FILTER=_smu9 -> bara langfangsterna
 // BENCH_SPLIT=train|test (09-22): jamna index = train, udda = test, pa SORTERAD filordning - tuna pa train, rapportera test. Utan = alla.
 const _split = process.env.BENCH_SPLIT; const _keep = (i) => !_split || (_split === 'train' ? i % 2 === 0 : i % 2 === 1);
 if (existsSync(DIR)) for (const f of _files.filter((_, i) => _keep(i))) {

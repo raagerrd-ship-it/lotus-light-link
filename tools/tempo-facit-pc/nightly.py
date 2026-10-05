@@ -9,7 +9,10 @@ FORCE = '--force' in sys.argv
 TODAY = time.strftime('%Y-%m-%d')
 # 'live' = det som kor pa Pi:n (tempo-variant.conf: evidensval + 10 s ring + kickgrind av + cooldown 100, sedan 2026-09-20 10:23).
 # 'standard' = gamla vagen utan flaggor. BENCH_GRID=1 pa alla = som motorn (analysatorn grindar kickar mot sitt grid).
-LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100', 'LOTUS_GRID_PHASE': '1'}   # + gridfas sedan 09-20 12:42 (LOTUS_PHASE_FOLLOW ar motorns flagga, syns ej i banken)
+LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100', 'LOTUS_GRID_PHASE': '1',
+        'LOTUS_TEMPO_UP43': '1'}   # + gridfas sedan 09-20 12:42 (LOTUS_PHASE_FOLLOW ar motorns flagga, syns ej i banken); UP43 (drop-in tempo-up43.conf, LIVE sedan 09-24) saknades har till 10-05
+# FRYST LATLISTA (10-05): tempovarianterna kors bara pa bench-manifest.txt (bench_manifest.py) - jamforbara dygn. Sektionsbanken kor utan.
+MANIFEST = os.path.join(HERE, 'bench-manifest.txt')
 VARIANTS = {'standard': {}, 'live': LIVE, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'},
             'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120')}
 GRID = {'BENCH_GRID': '1'}
@@ -50,8 +53,13 @@ def run_bench(env_extra):
         mf = re.match(r'^korpus fas mot Beat This!: on-beat-andel median (\S+), motfas (\d+), i fas (\d+), mellan (\d+) \(n=(\d+)', line)
         if mf: res['phaseBt'] = {'median': float(mf.group(1)), 'motfas': int(mf.group(2)), 'ifas': int(mf.group(3)), 'mellan': int(mf.group(4)), 'n': int(mf.group(5))}; continue
         elif line.startswith(('korpus ', 'synt   ')):
-            parts = line.split()
-            try: res['rows'].append({'set': parts[0], 'namn': line[7:49].strip(), 'facit': float(parts[-6]), 'analys': float(parts[-5]), 'ra': float(parts[-4]), 'klass': parts[-2], 'kvot': float(parts[-1])})
+            # kolumnerna efter namnet (fast bredd 7+42): facit analys ra-med spann conf klass kvot [fas x] [a1 x] [bt x] - raknas framifran
+            # (10-05: bakifran forskots de av fas/bt-suffixen sedan 09-20 -> benchRows var tomma)
+            parts = line[49:].split()
+            try:
+                row = {'set': line[:7].strip(), 'namn': line[7:49].strip(), 'facit': float(parts[0]), 'analys': float(parts[1]), 'ra': float(parts[2]), 'klass': parts[5], 'kvot': float(parts[6])}
+                for k, v in zip(parts[7::2], parts[8::2]): row[k] = float(v)
+                res['rows'].append(row)
             except Exception: pass
     return res
 
@@ -176,7 +184,8 @@ def main():
     if already_done(): print('redan kort i dag'); return
     t0 = time.time()
     sections = sections_step()
-    bench = {name: run_bench(env) for name, env in VARIANTS.items()}
+    man = {'BENCH_MANIFEST': MANIFEST} if os.path.exists(MANIFEST) else {}
+    bench = {name: run_bench(dict(env, **man)) for name, env in VARIANTS.items()}
     sektionsbank = section_bench()
     pi = pi_stats()
     pi_h = pi_health()
