@@ -61,3 +61,6 @@ Ingen PUT. smoothS kvar 15 (spann 61/38,5/54 – inte tre dygn i rad, och 61 kom
 
 ## 2026-10-05 förmiddag (huvudsessionen) — bänken lagad (1af893d)
 Tempovarianterna körs nu på FRYST LÅTLISTA bench-manifest.txt (503 musiksnuttar, Beat This! röstat) — ny baslinje live 389/503 (Pi:ns faktiska med UP43: 388/503). Jämför inte mot /572-siffror. Bänkens "live" har nu LOTUS_TEMPO_UP43=1 (= Pi:n sedan 09-24). benchRows i daily-filen fylls igen (sämsta låtar finns där). Nästa: 5/4-fantomprov (16 låtar i kvot 1,25/0,80) som opt-in.
+
+## Från kvällen 2026-10-05 (ÄGARENS BESLUT – ändrar uppdraget "två morgnar" ovan)
+Felsökningen är AV sedan 18:0x och slås BARA på under faktisk felsökning, alltid av efteråt (`PUT /api/debug/verbose {"enabled":false}` + GET-kontroll). Den slår på Deezer-katalogen vid låtbyte (120–145 ms stall) och inlärningen. Uppdraget 10-06 (räkna '[synk] sen tick' efter första mic-start) UTGÅR — slå INTE på felsökning för det. Uppvärmningens nytta är obevisad; rapportera bara '[warmup] klar …' efter 05:00 och /api/live sync om musik spelas. FIVE4 (5/4-fantomprov) LIVE sedan 17:53 (drop-in five4.conf) – följ live-five4 och ok-andel; återgång = ta bort five4.conf.
