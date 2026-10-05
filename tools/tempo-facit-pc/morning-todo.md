@@ -58,3 +58,6 @@ Katalogslagningen (Deezer) ligger sedan 10-04 18:50 bakom felsökning: 'inget ka
 ## Morgonen 2026-10-05 — kalibrering + uppvärmning dag 1
 KLART 2026-10-05 (dag 1 av uppvärmningsuppdraget): '[warmup] klar: 74 s ljud, 27750 hop pa 16.6 s' 05:01:19; ingen musik ⇒ PUT /api/debug/verbose {"enabled":true} 07:05 (record:false), LÄMNAD PÅ. Dag 2 (10-06) kvar: sena tickar första 120 s efter dygnets första mic-start, jämför med kallstarter, slå AV felsökningen.
 Ingen PUT. smoothS kvar 15 (spann 61/38,5/54 – inte tre dygn i rad, och 61 kommer från ljudböcker). Oktavregeln false (1/1). Inga återgångar/varianter (evidence 395 < live 400, cd80 +0,01). Bänken 451/567 → 400/572 = korpusbyte: 202 snuttar från 10-04 roterade in, 61 Alfons Åberg-ljudböcker (tal). Drops edgeAgo 10-04: n 411, median 0, p75 75 ms. Drift: drop-ins = repo, dist = main utom kända analyser.js/heartbeat/contract.js (configServer.js/protocol.js bara CRLF).
+
+## 2026-10-05 förmiddag (huvudsessionen) — bänken lagad (1af893d)
+Tempovarianterna körs nu på FRYST LÅTLISTA bench-manifest.txt (503 musiksnuttar, Beat This! röstat) — ny baslinje live 389/503 (Pi:ns faktiska med UP43: 388/503). Jämför inte mot /572-siffror. Bänkens "live" har nu LOTUS_TEMPO_UP43=1 (= Pi:n sedan 09-24). benchRows i daily-filen fylls igen (sämsta låtar finns där). Nästa: 5/4-fantomprov (16 låtar i kvot 1,25/0,80) som opt-in.
