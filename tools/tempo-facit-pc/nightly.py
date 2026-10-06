@@ -10,12 +10,12 @@ TODAY = time.strftime('%Y-%m-%d')
 # 'live' = det som kor pa Pi:n (tempo-variant.conf: evidensval + 10 s ring + kickgrind av + cooldown 100, sedan 2026-09-20 10:23).
 # 'standard' = gamla vagen utan flaggor. BENCH_GRID=1 pa alla = som motorn (analysatorn grindar kickar mot sitt grid).
 LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100', 'LOTUS_GRID_PHASE': '1',
-        'LOTUS_TEMPO_UP43': '1'}   # + gridfas sedan 09-20 12:42 (LOTUS_PHASE_FOLLOW ar motorns flagga, syns ej i banken); UP43 (drop-in tempo-up43.conf, LIVE sedan 09-24) saknades har till 10-05
+        'LOTUS_TEMPO_UP43': '1', 'LOTUS_TEMPO_FIVE4': '1'}   # FIVE4 (five4.conf) LIVE sedan 10-05 17:53, med har fran 10-06 (live 388 -> 395/503 = Pi:ns faktiska); + gridfas sedan 09-20 12:42 (LOTUS_PHASE_FOLLOW ar motorns flagga, syns ej i banken); UP43 (drop-in tempo-up43.conf, LIVE sedan 09-24) saknades har till 10-05
 # FRYST LATLISTA (10-05): tempovarianterna kors bara pa bench-manifest.txt (bench_manifest.py) - jamforbara dygn. Sektionsbanken kor utan.
 MANIFEST = os.path.join(HERE, 'bench-manifest.txt')
 VARIANTS = {'standard': {}, 'live': LIVE, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'},
             'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120'),
-            'live-five4': dict(LIVE, LOTUS_TEMPO_FIVE4='1')}   # 10-05: 5/4-fantomprov (opt-in 9a7f5e0), bank 388 -> 395/503 - folj ett par dygn innan deploy
+            'live-utan-five4': {k: v for k, v in LIVE.items() if k != 'LOTUS_TEMPO_FIVE4'}}   # referens: live fore 10-05 17:53 (388/503) - aterganget om FIVE4 skulle tappa
 GRID = {'BENCH_GRID': '1'}
 SB = os.path.join(HERE, 'scoreboard.jsonl'); MD = os.path.join(HERE, 'scoreboard.md'); DAILY = os.path.join(HERE, 'daily')
 
