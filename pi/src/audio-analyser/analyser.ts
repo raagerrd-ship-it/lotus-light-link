@@ -724,6 +724,14 @@ export class Analyser {
   evidRelockVotes = 0; private evidRelockBpm = 0;
   /** TEMPOVAXLING INOM LAT (opt-in <prefix>TEMPO_SHIFT=1, 10-09): se shiftDetect(). Av = ingen kod kors (bit-identiskt). */
   private static readonly TEMPO_SHIFT = sysEnv('TEMPO_SHIFT') === '1';
+  /** TAKTEN HALLS OVER EN PAUS (opt-in <prefix>TEMPO_HOLD=1, ladan 2026-10-09: "fran att lamporna slacks tar det tid innan de kommer
+   *  igang, kanns inte synkat"). MATT (dynBench --steg, samma lat med 1-4 s tystnad): 350 ms-flanken nollade konfidens, onsetring-fyllnad,
+   *  rost-historik och fas -> lasets konfidens 0 i 6-8 s efter aterkomsten och laset kom ofta pa FEL tempo (118 -> 93/133), och under
+   *  tystnaden fortsatte tempoberakningen pa nollor (118 -> 130). Med TEMPO_HOLD: kort tystnad (0,35-10 s) ror inte laset - tempo,
+   *  konfidens, fas och historik behalls och tempoberakningen VILAR medan det ar tyst (holdSilent). 10 s-regeln (ny lat) ar oforandrad.
+   *  Ljuset ar slackt under tystnaden anda (DMX: hard ingangsgrans). Av = ingen kod kors (bit-identiskt). */
+  private static readonly TEMPO_HOLD = sysEnv('TEMPO_HOLD') === '1';
+  private holdSilent = false; private holdGrace = 0;   // holdGrace: env-sampel kvar da laset halls efter pausen (onsetringen fylls pa nytt)
   private static readonly SHIFT_S = Math.max(2, Math.min(8, Number(sysEnv('TEMPO_SHIFT_S')) || 4));
   private static readonly SHIFT_N = Number(sysEnv('TEMPO_SHIFT_N')) || 6;
   private static readonly SHIFT_K = Number(sysEnv('TEMPO_SHIFT_K')) || 1.3;   // 1,15 gav 394/503 (falska uppat 1,06/1,17); 1,3 gav 396/503, 0 forluster
@@ -1735,6 +1743,12 @@ export class Analyser {
 
   /** Env-steget (100 Hz): tempo pa stride + gridfas. Kors i 'all' direkt och i 'slow' per record. */
   private envStep(): void {
+    if (this.holdSilent) return;   // TEMPO_HOLD: tempo/fas beraknas inte pa tystnad (holdSilent satts bara med flaggan)
+    if (this.holdGrace > 0) {   // TEMPO_HOLD: efter pausen halls laset tills onsetringen ar fylld med ny musik; fasen foljer kickarna
+      this.holdGrace--; if (this.localBpm <= 0) this.holdGrace = 0;
+      if (++this.bpmCounter >= Analyser.ENV_HZ / 4) { this.bpmCounter = 0; if (Analyser.GRID_PHASE_ON && this.localBpm > 0) this.computeGridPhase(); }
+      return;
+    }
     // Innan lås: räkna på varje ny envelope-sample (100 Hz) för snabbast första estimat.
     // Efter lås: 4 Hz räcker gott — sparar CPU och förfinar med median. (Mätt 2026-08-09: computeBpm ~470 µs,
     // scoreEnv 201 µs x 2; 20 Hz olast = ~10 % av en Zero 2 W-karna -> 10 Hz efter 1,5 s utan las.)
@@ -1868,20 +1882,22 @@ export class Analyser {
     if (flags & F_RESET_TEMPO) this.resetTempo();
     if (flags & F_HINT) this.hintTrackChange(hintMs);
     if (flags & F_RESET_BAR) this.resetBar();
-    if (flags & F_SIL350) {
+    if (flags & F_SIL350 && Analyser.TEMPO_HOLD) this.holdSilent = true;   // TEMPO_HOLD: bara vila (se TEMPO_HOLD)
+    else if (flags & F_SIL350) {
       this.localBpmConfidence = 0; this.clearLockVotes();
       this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; this.phaseTrimN = 0;
       this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
       for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
       this.barAcc.fill(0); this.barCount = 0;
     }
-    if (flags & F_SIL10) { this.localBpm = 0; this.tempoGram.fill(0); }
+    if (flags & F_SIL10) { this.localBpm = 0; this.tempoGram.fill(0); this.holdGrace = 0; }
   }
   /** Ett record = ett env-sampel: flaggor i ordning, ringvardena, snabba sidans fakta, env-steget, sektionsblocket. */
   private slowStep(o: number): void {
     const r = this.splitRing!;
     this.applyFlags(r[o + R_FLAGS], r[o + R_HINT_MS], r[o + R_VCLOCK]);
     this.virtualMs = r[o + R_PERF]; this.virtualOn = true;   // perfNow() = snabba tradens tid vid sampeln (deterministiskt)
+    if (this.holdSilent && r[o + R_ENV] > 1e-6) { this.holdSilent = false; if (this.localBpm > 0) this.holdGrace = Analyser.ENV_LEN; }   // TEMPO_HOLD: ljudet ar tillbaka
     this.envRing[this.envPos] = r[o + R_ENV]; this.envBassRing[this.envPos] = r[o + R_BASS];
     if (HIGH_ON) this.envHighRing[this.envPos] = r[o + R_HIGH];
     this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
@@ -3111,7 +3127,10 @@ export class Analyser {
       // halveras i stället för att nollas, konfidensen nollas så beat-effekter inte
       // fortsätter i fantom-takt. Full släppning först efter 10 s tystnad — då är
       // det en ny låt/nytt set och historiken är värdelös.
-      if (this.silentMs > 350 && !this.silenceArmed) {
+      if (Analyser.TEMPO_HOLD && this.silentMs > 350 && !this.silenceArmed) {   // TEMPO_HOLD: laset ror inte, berakningen vilar
+        this.silenceArmed = true; this.holdSilent = true;
+        if (this.role === 'fast') this.flagSlow(F_SIL350);
+      } else if (this.silentMs > 350 && !this.silenceArmed) {
         if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} SILENCE bpm=${this.localBpm}`);
         this.silenceArmed = true;
         this.localBpmConfidence = 0;
@@ -3131,6 +3150,8 @@ export class Analyser {
     } else {
       this.silentMs = 0;
       this.silenceArmed = false;
+      if (this.holdSilent && this.localBpm > 0) this.holdGrace = Analyser.ENV_LEN;
+      this.holdSilent = false;
     }
   }
 
