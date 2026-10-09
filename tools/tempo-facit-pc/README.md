@@ -287,3 +287,19 @@ duger, motorn är felet. 15:55 (287bf01): PI-reglering (bpm följer fasdriften, 
 samma offline-mått (phase_verdict-logiken) på nästa låtar; mål |offset| ≤ 30 ms och on-beat ≥ 0,8 på de flesta.
 **Beat This! på svensk partypop:** fel tempo i 4/10 (184 mot 102, 120 mot 138) — trerösten höll (molnet avgjorde), men
 fasreferensen faller då tillbaka på PC-slag. Kvalitetsgrinden (brus) fångade 14:13–14:36.
+
+## Tempoväxling inom låt (`tempoShift.mjs`, opt-in `LOTUS_TEMPO_SHIFT=1`, 2026-10-09)
+
+`node tempoShift.mjs [--neg] [--v]` matar DMX-nattagentens syntetfacit (`pi-dmx/engine/tools/tempo-facit`, 12 klipp +8/+12/+15 % vid 20 s)
+genom analysatorn med Pi:ns flaggor; träff = låset inom 3 % av 'till' senast 10 s efter och kvar; `--neg` = frozen6-klippen med oktavhopp
+(falska byten > 5 %). Orsak till sen omlåsning: råestimatet bygger på 10 s-ringen och vänder först 6–7 s efter växlingen, låset följer
+1,5–4 s senare (+8 % ligger i glidbandet och går via 5 s-medianen). Opt-in: 4 s-fönster av basringen, slagpoäng för lagar 3,5–19 % SNABBARE
+än låset (5/4, 4/3, 3/2, oktav utanför) mot låsets egen; ≥ 1,3× i 6 anrop i rad (1,5 s) och låset stabilt ≥ 8 s → flytta låset, commit/oktavvakt
+orörda, övriga låsvägar vilar tills råestimatet hunnit ikapp (max 10 s). Nedåt (`TEMPO_SHIFT_DOWN=1`) förkastat: 5/6-fantomer.
+
+| | träff/12 | omlåsning median | +8 % | neg falska (oktav) | fryst 503 | syntet |
+|---|---|---|---|---|---|---|
+| live | 7 | 8,3 s | 0/4 | 9 (3) | 395 | 6/8 |
+| live + TEMPO_SHIFT | 10 | 4,8 s | 3/4 | 9 (3) | 396 (+1, 0 förluster) | 6/8 |
+
+Flagga av: `analyserParity.mjs` 0 avvikande hop (13 filer, med/utan grid), `splitProof.mjs` 0 (av på korpus, på på facitklippen).

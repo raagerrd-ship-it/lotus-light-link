@@ -722,6 +722,19 @@ export class Analyser {
   /** Evidensomlasning: sa manga computeBpm-anrop i rad (4 Hz lasta = ~2 s) med tydlig, sammanhallen evidens for annat tempo. */
   private static readonly EVID_RELOCK_N = 8;
   evidRelockVotes = 0; private evidRelockBpm = 0;
+  /** TEMPOVAXLING INOM LAT (opt-in <prefix>TEMPO_SHIFT=1, 10-09): se shiftDetect(). Av = ingen kod kors (bit-identiskt). */
+  private static readonly TEMPO_SHIFT = sysEnv('TEMPO_SHIFT') === '1';
+  private static readonly SHIFT_S = Math.max(2, Math.min(8, Number(sysEnv('TEMPO_SHIFT_S')) || 4));
+  private static readonly SHIFT_N = Number(sysEnv('TEMPO_SHIFT_N')) || 6;
+  private static readonly SHIFT_K = Number(sysEnv('TEMPO_SHIFT_K')) || 1.3;   // 1,15 gav 394/503 (falska uppat 1,06/1,17); 1,3 gav 396/503, 0 forluster
+  private static readonly SHIFT_MAX = Number(sysEnv('TEMPO_SHIFT_MAX')) || 1.19;
+  /** Aven nedat (TEMPO_SHIFT_DOWN=1). Standard bara UPPAT: bank 10-09 pa 503 med bada hallen 395 -> 387, forlusterna var nastan alla
+   *  falska nedatvaxlingar till ~0,83-0,86 x laset (116->96, 127->108, 134->124) - en 5/6-fantom i det korta fonstret. */
+  private static readonly SHIFT_DOWN = sysEnv('TEMPO_SHIFT_DOWN') === '1';
+  private static readonly SHIFT_STABLE_MS = (Number(sysEnv('TEMPO_SHIFT_STABLE_S')) || 8) * 1000;   // laset ska ha legat inom 3 % sa lange innan en vaxling far tas
+  private shiftLag = 0; private shiftVotes = 0; private shiftHoldBpm = 0; private shiftHoldUntilMs = 0; private shiftAgree = 0; private shiftRefBpm = 0; private shiftSinceMs = 0;
+  /** Telemetri: antal tempovaxlingar (TEMPO_SHIFT). */
+  tempoShifts = 0;
   /** EVIDENSLAS: egen rostring (250 ms, 12 = 3 s) av evidensestimatet; laset ar dess median. */
   private evidHist = new Float32Array(12); private evidSort2 = new Float32Array(12); private evidHistPos = 0; private evidHistLen = 0; private evidLastVoteMs = 0;
   private evidChangeBpm = 0; private evidChangeVotes = 0; private localBpmF = 0; private evidLastLocal = 0;
@@ -1206,6 +1219,49 @@ export class Analyser {
     let hs = 0, nh = 0; for (let i = bestPh + (L >> 1); i < N; i += L) { hs += at(i); nh++; }
     const half = nh ? hs / nh : 0;
     return { score: (on / mean) * (0.5 + hit), half: on > 0 ? half / on : 0, hit };
+  }
+
+  /** TEMPOVAXLING INOM LAT (opt-in <prefix>TEMPO_SHIFT=1, 2026-10-09). Agaren: tempookningar ska synas i showen. Bank (tempoShift.mjs,
+   *  12 syntetklipp +8/+12/+15 %): ra-estimatet bygger pa den 10 s langa onset-ringen och vander forst 6-7 s efter vaxlingen, laset
+   *  foljer 1,5-4 s senare (+8 % glider via 5 s-medianen) -> omlasning 7-11 s, +8 % aldrig inom 10 s. Har: KORT fonster (SHIFT_S = 4 s
+   *  av basringen) slagpoang (alignScore) for lagar 3,5-19 % fran laset (SHIFT_MAX 1,19 haller 5/4, 4/3, 3/2 och oktaven UTANFOR) mot
+   *  lasets egen poang; samma utmanare (+-1 lag) SHIFT_N anrop i rad (4 Hz) med poang >= SHIFT_K (1,3) x lasets och minst lika hog
+   *  traffandel -> laset flyttas dit. bpmStable/commit behalls (oktavvakten oforandrad); median-/evidens-/latbytesvagarna vilar tills
+   *  ra-estimatet hunnit ikapp (4 anrop inom 3 %) eller hogst 10 s, sa den gamla ringen inte drar tillbaka laset. */
+  private shiftDetect(N: number, bpm: number, now: number): boolean {
+    if (this.localBpm <= 0) { this.shiftVotes = 0; this.shiftLag = 0; this.shiftHoldBpm = 0; this.shiftRefBpm = 0; return false; }
+    if (this.shiftHoldBpm > 0) {
+      let end = this.localBpm !== this.shiftHoldBpm || now >= this.shiftHoldUntilMs;
+      if (!end && Math.abs(bpm / this.localBpm - 1) <= 0.03) end = ++this.shiftAgree >= 4; else if (!end) this.shiftAgree = 0;
+      if (!end) return true;
+      this.shiftHoldBpm = 0; this.bpmHistLen = 0; this.bpmHistPos = 0;
+    }
+    if (this.shiftRefBpm <= 0 || Math.abs(this.localBpm / this.shiftRefBpm - 1) > 0.03) { this.shiftRefBpm = this.localBpm; this.shiftSinceMs = now; }
+    if (now - this.shiftSinceMs < Analyser.SHIFT_STABLE_MS) { this.shiftVotes = 0; this.shiftLag = 0; return false; }   // nytt/osakert las: oktav-/grannrattningen ager det
+    const HZ = Analyser.ENV_HZ; const Ns = Math.min(N, Analyser.SHIFT_S * HZ);
+    const lockLag = Math.round((HZ * 60) / this.localBpm);
+    let ls = 0, lHit = 0;
+    for (let d = -1; d <= 1; d++) { const r = this.alignScore(this.envBassRing, Ns, lockLag + d); if (r.score > ls) { ls = r.score; lHit = r.hit; } }
+    let bs = 0, bL = 0, bHit = 0;
+    const lo = Math.max(2, Math.round(lockLag / Analyser.SHIFT_MAX)), hi = Analyser.SHIFT_DOWN ? Math.round(lockLag * Analyser.SHIFT_MAX) : lockLag;
+    for (let L = lo; L <= hi; L++) {
+      if (Math.abs(L - lockLag) <= 1 || Math.abs(L / lockLag - 1) < 0.035) continue;
+      const r = this.alignScore(this.envBassRing, Ns, L); if (r.score > bs) { bs = r.score; bL = L; bHit = r.hit; }
+    }
+    if (bL > 0 && ls > 0 && bs >= ls * Analyser.SHIFT_K && bHit >= lHit) {
+      if (this.shiftLag > 0 && Math.abs(bL - this.shiftLag) <= 1) this.shiftVotes++; else { this.shiftLag = bL; this.shiftVotes = 1; }
+    } else { this.shiftVotes = 0; this.shiftLag = 0; }
+    if (this.shiftVotes < Analyser.SHIFT_N) return false;
+    const sm = this.alignScore(this.envBassRing, Ns, bL - 1).score, sp = this.alignScore(this.envBassRing, Ns, bL + 1).score;
+    const den = sm - 2 * bs + sp; let Lf = bL; if (den < 0) { const dd = 0.5 * (sm - sp) / den; if (Math.abs(dd) < 1) Lf = bL + dd; }
+    const nb = (HZ * 60) / Lf; this.shiftVotes = 0; this.shiftLag = 0;
+    if (nb < Analyser.BPM_MIN || nb >= Analyser.BPM_MAX) return false;   // vikningen skulle byta oktav - inte en tempovaxling
+    this._why = "SHIFT";
+    this.localBpm = Math.round(nb);
+    this.bpmHistLen = 0; this.bpmHistPos = 0;
+    this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.newSongVote = 0; this.challengerBpm = 0; this.evidRelockVotes = 0; this.evidRelockBpm = 0;
+    this.shiftHoldBpm = this.localBpm; this.shiftHoldUntilMs = now + 10000; this.shiftAgree = 0; this.tempoShifts++;
+    return true;
   }
 
   /** SEKTION (2026-09-20). Realtidens sektionstillstand ur latens EGEN historik - inget latminne, ingen PC, inget moln
@@ -2079,6 +2135,7 @@ export class Analyser {
     // Kostar 240 ms laslatens (499 -> 739 ms). Syntetsviten oforandrad 7/10.
     if (!Analyser.EVIDLOCK_ON && !Analyser.HMM_ON) {   // ── LASAPPARATEN (rost-median, glid, oktavroster, grannrattning, latbytesvakt) ──
     if (this.localBpm === 0 && this.warmCalls++ < Analyser.WARM_N) return;
+    const shiftHold = Analyser.TEMPO_SHIFT && this.shiftDetect(N, bpm, voteNow);   // TEMPO_SHIFT: vaxling tagen/vilar -> ovriga lasvagar vilar
     // ── EVIDENSOMLASNING (2026-09-19) ─────────────────────────────────────────
     // Korbanken visade ra-estimatet RATT i 8/8 med evidensvalet (92,3 for 92, 122,4 for 123 ...) medan det
     // LASTA vardet satt kvar pa det forsta felet (133 vid t=5 s): commiten stanger oktav-/grannrattningen
@@ -2086,7 +2143,7 @@ export class Analyser {
     // sammanhallen (inom 4 %) och tydlig (poang >= 1,15 x tvaan) evidens for ett annat tempo (> 11 % fran
     // laset) laser om - aven efter commit. Flat basring (breakdown, inga kickar) ger ingen marginal -> ingen
     // omlasning; lasets egen historik toms sa medianen inte drar tillbaka.
-    if (Analyser.EVIDENCE_ON && this.localBpm > 0 && this.evidenceCands >= 1) {
+    if (!shiftHold && Analyser.EVIDENCE_ON && this.localBpm > 0 && this.evidenceCands >= 1) {
       // Kandidaterna ar oftast GRANNAR till ratt tempo (89-107 med poang 2,0-2,5), sa marginalen mellan dem
       // sager lite. Jamfor i stallet vinnaren med LASETS egen slagpoang: ar laset en fantom (133 mot 92)
       // traffar dess slag kickarna tva ganger av tre och far klart lagre poang.
@@ -2114,7 +2171,7 @@ export class Analyser {
       this.localBpm = Math.round(med);
       this.octaveVote = 0;
       this.bpmStable = 0;
-    } else {
+    } else if (!shiftHold) {
       // SJÄLVRÄTTANDE OKTAV: håll nuvarande takt för stabilitet, MEN om estimaten
       // ihållande pekar på en annan oktav (½× eller 2×) → byt efter ~2s bevis, så
       // en halvtempo-låsning "ökar" till rätt takt istället för att fastna. Ett
