@@ -432,6 +432,10 @@ export class Analyser {
    *  och det ar orsaken till agarens "falska drops vid latbyte/intro/outro".
    *  Tempot ror vi INTE: hinten ar fortfarande mjuk dar, av de skal som star i hintTrackChange. */
   private static readonly SECTION_ON_HINT = sysEnv('SECTION_ON_HINT') === '1';
+  /** BLOCK OVER LATGRANSEN (opt-in <prefix>SECTION_CARRY=N, 2026-10-14, DMX-fyndet 'intro 17 % av ladans tid'): hintTrackChange
+   *  nollar sektionerna och etiketten star 'intro' tills 20 nya block finns - en FALSK latgrans ger 20 s intro mitt i refrangen.
+   *  N > 0: de senaste N blocken (niva/tathet/klang) bars over nollningen, sa rangen fortsatter direkt. 0 = som forr. */
+  private static readonly SECTION_CARRY = Analyser.secEnv('SECTION_CARRY', 0);
   /** Forutsagelsens kallor (bitmask): 1 = minne (tidigare sektion med samma etikett), 2 = fras (stigande energi -> 8-taktsgrans). Bank-A/B. */
   private static readonly PREDICT_SRC = sysEnv('PREDICT_SRC') !== undefined ? Number(sysEnv('PREDICT_SRC')) : 2;   // standard 2 sedan frasgittret: minnet gav +1,6 falska/min utan traffar (09-21 kvall)
   /** Frasregel: LOS (standard): 2 stigande block ELLER energi, horisont 16 takter; LOTUS_PREDICT_STRICT=1: 3 block OCH energi, 8 takter.
@@ -2569,7 +2573,17 @@ export class Analyser {
     // NY LAT = NY STRUKTUR. Tempot bars over (se ovan), men sektionshistoriken tillhor forra laten och maste bort:
     // annars rangordnas nya laten mot gamla block och 'intro' intraffar aldrig. sectionReset() ar samma nollning
     // som 10 s tystnad redan gor - enda skillnaden ar att vi nu ocksa litar pa latbytes-signalen.
-    if (Analyser.SECTION_ON_HINT && sections) this.sectionReset();
+    if (Analyser.SECTION_ON_HINT && sections) {
+      const N = Analyser.SECTION_CARRY;
+      if (N > 0) {
+        const keep = <T>(x: T[]) => x.slice(Math.max(0, x.length - N)); const H = this.secBlkH;
+        const c = [keep(this.secBlkDb), keep(this.secBlkDens), keep(this.secBlkCentH), keep(this.secBlkHighH), keep(this.secBlkT), keep(this.secBlkFeat), keep(this.secBlkHi), keep(H.bon), keep(H.bpk), keep(H.high), keep(H.flat), keep(H.flux), keep(H.dyn)];
+        this.sectionReset();
+        const put = <T>(x: T[], v: T[]) => { x.length = 0; for (const e of v) x.push(e); };
+        put(this.secBlkDb, c[0] as number[]); put(this.secBlkDens, c[1] as number[]); put(this.secBlkCentH, c[2] as number[]); put(this.secBlkHighH, c[3] as number[]); put(this.secBlkT, c[4] as number[]); put(this.secBlkFeat, c[5] as Float32Array[]); put(this.secBlkHi, c[6] as number[]);
+        put(H.bon, c[7] as number[]); put(H.bpk, c[8] as number[]); put(H.high, c[9] as number[]); put(H.flat, c[10] as number[]); put(H.flux, c[11] as number[]); put(H.dyn, c[12] as number[]);
+      } else this.sectionReset();
+    }
   }
 
   /** Nollställ lås-/röst-ackumulatorerna — gemensam kärna för resetTempo/hintTrackChange/
