@@ -17,6 +17,7 @@
 
 import { SongClock } from './songClock.js';
 import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
+import { BASS_BODY, BassBodyWindow } from './bassBody.js';
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
@@ -971,6 +972,7 @@ export class PiLightEngine {
   }
   private _anchorSaved?: number;
   private _anchorFastUntil = 0; private _clipRunMs = 0; private _lastShape?: number;   // ankaret foljer med tau/10 fram till denna tid (play-start/anslutning)
+  private _bassBody = new BassBodyWindow();   // BASKROPPEN SOM NIVÅ (bassBody.ts, LOTUS_BASS_BODY=1)
 
   getPalette(): [number, number, number][] { return this._palette; }
   setVolume(vol: number | undefined) { this.volume = vol; }
@@ -3080,7 +3082,12 @@ export class PiLightEngine {
       // topp-boosten nedan — aldrig som form-källa.
       const level = Math.max(0, Math.min(1, bands.totalRms));   // behålls: silence-gate + diagnostik
       let shape: number;
-      if (cal.dbWindow !== false) {
+      if (BASS_BODY) {
+        // BASKROPPEN SOM NIVÅ (se bassBody.ts, opt-in LOTUS_BASS_BODY=1): DMX:s basenergi ersätter dB-fönstret nedan.
+        const floorB = cal.tickEnergyFloor ?? 0;
+        shape = this._bassBody.step((getLatestFrame() as any)?.bodyDb ?? -90, TICK_PERIOD_MS, floorB > 0 && level < floorB);
+        this._lastShape = shape;
+      } else if (cal.dbWindow !== false) {
         // FREKVENSVIKTAD dB-MAPPNING: bredbandssignalen är i praktiken en basmätare
         // (3.9 dB dynamik) — mid/diskant bär ~3× mer. Vikta dit så dynamiken finns
         // i mätsignalen innan mappningen.
