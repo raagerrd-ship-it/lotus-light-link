@@ -1,15 +1,15 @@
 """PROV LOTUS_BASS_BODY i kallaren (2026-10-15, a5e972d): nivan foljer baskroppen som DMX (pi/src/bassBody.ts).
-  PA:  PI_PASS=... python pi/scripts/bass-body-prov.py        deployar bassBody.js + analyser.js + piEngine.js (deploy-dist-files.py,
+  PA:  PI_PASS=... python pi/scripts/bass-body-prov.py        (LOTUS_BASS_BODY=2 = sub+kick 20-120 Hz, agarens val 10-15) deployar bassBody.js + analyser.js + piEngine.js (deploy-dist-files.py,
                                                                md5-diff, backup .bak-<ts>, node --check, importtest), lagger drop-in
                                                                lotus-light-engine.service.d/bass-body.conf, daemon-reload, EN omstart
-  SUB: PI_PASS=... python pi/scripts/bass-body-prov.py --sub  som PA men LOTUS_BASS_BODY=2: bara sub+kick 20-120 Hz (utan 120-250 Hz)
+  BAS: PI_PASS=... python pi/scripts/bass-body-prov.py --bodydb  som PA men LOTUS_BASS_BODY=1: hela baskroppen 20-250 Hz
   AV:  PI_PASS=... python pi/scripts/bass-body-prov.py --av   tar bort drop-in:en, daemon-reload, omstart - koden ligger kvar men ar
                                                                av (= exakt dagens vag; bara opt-in-grenen ar ny)
 Verifierar efterat: tjanstens Environment, md5 for de tre filerna mot lokala pi/dist, och att API:t svarar. Inga hemligheter i repot."""
 import hashlib, json, os, subprocess, sys, time, urllib.request, paramiko
 HOST = os.environ.get('PI_HOST', '192.168.1.174'); PW = os.environ.get('PI_PASS')
 if not PW: sys.exit('PI_PASS saknas')
-AV = '--av' in sys.argv; SUB = '--sub' in sys.argv
+AV = '--av' in sys.argv; BODY = '--bodydb' in sys.argv; SUB = not BODY
 HERE = os.path.dirname(os.path.abspath(__file__)); DIST = os.path.normpath(os.path.join(HERE, '..', 'dist'))
 FILES = ['bassBody.js', 'audio-analyser/analyser.js', 'piEngine.js']   # bassBody.js forst: piEngine.js importerar den
 DROPIN_SRC = os.path.normpath(os.path.join(HERE, '..', 'system', 'systemd', 'lotus-light-engine.d.bass-body.conf'))
@@ -29,6 +29,7 @@ if AV:
     rc, _ = sudo(f'rm -f {DROPIN} && systemctl daemon-reload && systemctl restart lotus-light-engine')
 else:
     data = open(DROPIN_SRC, 'rb').read().replace(b'\r\n', b'\n')
+    if BODY: data = data.replace(b'LOTUS_BASS_BODY=2', b'LOTUS_BASS_BODY=1')
     sf = c.open_sftp()
     with sf.open('/tmp/bass-body.conf', 'wb') as fh: fh.write(data)
     rc, _ = sudo(f'mkdir -p $(dirname {DROPIN}) && cp /tmp/bass-body.conf {DROPIN} && chmod 644 {DROPIN} && systemctl daemon-reload && systemctl restart lotus-light-engine')
