@@ -17,7 +17,7 @@
 
 import { SongClock } from './songClock.js';
 import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
-import { BASS_BODY, BassBodyWindow } from './bassBody.js';
+import { BASS_BODY, BASS_SUBKICK, BassBodyWindow, subKickDb } from './bassBody.js';
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
@@ -3083,9 +3083,10 @@ export class PiLightEngine {
       const level = Math.max(0, Math.min(1, bands.totalRms));   // behålls: silence-gate + diagnostik
       let shape: number;
       if (BASS_BODY) {
-        // BASKROPPEN SOM NIVÅ (se bassBody.ts, opt-in LOTUS_BASS_BODY=1): DMX:s basenergi ersätter dB-fönstret nedan.
+        // BASKROPPEN SOM NIVÅ (se bassBody.ts, opt-in LOTUS_BASS_BODY=1, =2 bara sub+kick): DMX:s basenergi ersätter dB-fönstret nedan.
         const floorB = cal.tickEnergyFloor ?? 0;
-        shape = this._bassBody.step((getLatestFrame() as any)?.bodyDb ?? -90, TICK_PERIOD_MS, floorB > 0 && level < floorB);
+        const _fb = getLatestFrame() as any;
+        shape = this._bassBody.step(BASS_SUBKICK ? subKickDb(_fb?.specAbs) : (_fb?.bodyDb ?? -90), TICK_PERIOD_MS, floorB > 0 && level < floorB);
         this._lastShape = shape;
       } else if (cal.dbWindow !== false) {
         // FREKVENSVIKTAD dB-MAPPNING: bredbandssignalen är i praktiken en basmätare

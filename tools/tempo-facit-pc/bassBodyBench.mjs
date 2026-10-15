@@ -26,14 +26,14 @@ for (const path of process.argv.slice(2)) {
     const t = h * HOP / rate * 1000; an.setAudioClockMs?.(t); if (h === 0) an.setVirtualClock?.(0); else an.advanceVirtualClock?.(HOP / rate * 1000);
     f = an.process(buf); const r = Math.sqrt(s2 / HOP); ema = ema === 0 ? r : ema + (r - ema) * (1 - Math.exp(-(HOP / rate) / 0.13));
     if (t >= nextTick) { nextTick += TICK; const a = f.specAbs; const lo = a.sub + a.kick + a.bass, tot = lo + a.lowMid + a.mid + a.highMid + a.treble + a.air + 1e-9;
-      T.push([t, ema, lo / tot, f.bodyDb ?? -90, 20 * Math.log10(a.treble + a.air + 1e-7), f.section ?? '']); }
+      T.push([t, ema, lo / tot, f.bodyDb ?? -90, 20 * Math.log10(a.treble + a.air + 1e-7), f.section ?? '', (20 * Math.log10(a.sub + 1e-7) + 20 * Math.log10(a.kick + 1e-7)) / 2, 20 * Math.log10(a.lowMid + a.mid + 1e-7), f.levelVsHighDb ?? 0]); }
   }
   const G = 0.15 / Math.max(1e-6, pct(T.map((x) => x[1]), 0.5));
   // DAGENS
-  let wsm, wslow, fastUntil = 20000, clip = 0, lastShape = 0.5, smA, smB; const bb = new BassBodyWindow(); const A = [], B = [];
+  let wsm, wslow, fastUntil = 20000, clip = 0, lastShape = 0.5, smA, smB; const bb = new BassBodyWindow(), bb2 = new BassBodyWindow(); const A = [], B = [], C = [], D = []; let smC;
   const smooth = (prev, x) => prev === undefined ? x : prev + (x - prev) * (1 - Math.exp(-TICK / (x > prev ? 25 : 250)));
   // TVÅ VARV (live överlever ankaret och fönstret mellan låtar): första varvet värmer upp båda vägarna, bara andra varvet mäts.
-  for (let pass = 0; pass < 2; pass++) for (const [t0, rms, lowFrac, bdb] of T) {
+  for (let pass = 0; pass < 2; pass++) for (const [t0, rms, lowFrac, bdb, , , skDb, , lvh] of T) {
     const t = t0 + pass * 1e9;
     if (pass === 0 && lowFrac <= 0) continue;   // tomma rutor före första analysen sår inte ankaret
     const amp = Math.min(1, rms * G), silent = amp < 0.025;
@@ -48,13 +48,14 @@ for (const path of process.argv.slice(2)) {
     }
     const anchor = (wslow ?? wdb) + 4; let sh = (wdb - (anchor - 6)) / 6; sh = sh < 0 ? 0 : sh > 1 ? 1 : sh; lastShape = sh; if (silent) sh = 0;
     let shB = bb.step(bdb, TICK, silent); if (silent) shB = 0;
-    smA = smooth(smA, sh); smB = smooth(smB, shB); if (pass === 1) { A.push(smA); B.push(smB); }
+    let shC = bb2.step(skDb, TICK, silent); if (silent) shC = 0;
+    smA = smooth(smA, sh); smB = smooth(smB, shB); smC = smooth(smC, shC); if (pass === 1) { A.push(smA); B.push(smB); C.push(smC); const g = lvh < 0 ? Math.max(0.45, 1 + lvh / 12) : 1; D.push(smB * g); }
   }
-  const k0 = T.findIndex((x) => x[0] >= 15000), body = T.slice(k0).map((x) => x[3]), treb = T.slice(k0).map((x) => x[4]), sec = T.slice(k0).map((x) => x[5]);
+  const k0 = T.findIndex((x) => x[0] >= 15000), body = T.slice(k0).map((x) => x[3]), treb = T.slice(k0).map((x) => x[4]), sec = T.slice(k0).map((x) => x[5]), subk = T.slice(k0).map((x) => x[6]), mid = T.slice(k0).map((x) => x[7]);
   // bastrycken = baskroppen minus sitt eget 2 s-medel (100 ticks), trenden = 2 s-medlet
   const ma = (v, w) => { const o = new Array(v.length); let acc = 0; for (let i = 0; i < v.length; i++) { acc += v[i]; if (i >= w) acc -= v[i - w]; o[i] = acc / Math.min(i + 1, w); } return o; };
-  const bodyMa = ma(body, 100), bodyFast = body.map((x, i) => x - bodyMa[i]);
+  const midMa = ma(mid, 100), skMa = ma(subk, 100), bodyMa = ma(body, 100), bodyFast = body.map((x, i) => x - bodyMa[i]);
   const row = (S) => { const s = S.slice(k0); const sMa = ma(s, 100); const m = (lab) => { const v = s.filter((_, i) => sec[i] === lab); return v.length ? v.reduce((p, q) => p + q, 0) / v.length : NaN; };
-    return { rBas: pear(s, body), rTryck: pear(s.map((x, i) => x - sMa[i]), bodyFast), rTrend: pear(sMa, bodyMa), rDisk: pear(s, treb), sving: pct(s, 0.9) - pct(s, 0.1), tak: s.filter((x) => x >= 0.98).length / s.length, botten: s.filter((x) => x <= 0.02).length / s.length, high: m('high'), low: m('low'), medel: s.reduce((p, q) => p + q, 0) / s.length }; };
-  console.log(JSON.stringify({ fil: basename(path), min: +(T.at(-1)[0] / 60000).toFixed(1), dagens: row(A), bas: row(B) }));
+    return { rBas: pear(s, body), rTryck: pear(s.map((x, i) => x - sMa[i]), bodyFast), rTrend: pear(sMa, bodyMa), rDisk: pear(s, treb), rMid: pear(s, mid), rSubkick: pear(s, subk), rMidTryck: pear(s.map((x, i) => x - sMa[i]), mid.map((x, i) => x - midMa[i])), rSkTryck: pear(s.map((x, i) => x - sMa[i]), subk.map((x, i) => x - skMa[i])), sving: pct(s, 0.9) - pct(s, 0.1), tak: s.filter((x) => x >= 0.98).length / s.length, botten: s.filter((x) => x <= 0.02).length / s.length, high: m('high'), low: m('low'), medel: s.reduce((p, q) => p + q, 0) / s.length }; };
+  console.log(JSON.stringify({ fil: basename(path), min: +(T.at(-1)[0] / 60000).toFixed(1), dagens: row(A), bas: row(B), subkick: row(C), basSekt: row(D), sektTak: (() => { const g = T.slice(k0).map((x) => (x[8] < 0 ? Math.max(0.45, 1 + x[8] / 12) : 1)); return { p10: pct(g, 0.1), medel: g.reduce((p, q) => p + q, 0) / g.length, rMid: pear(g, mid), rSubkick: pear(g, subk), rDisk: pear(g, treb) }; })() }));
 }
