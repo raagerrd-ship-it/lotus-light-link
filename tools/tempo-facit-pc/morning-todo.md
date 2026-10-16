@@ -92,3 +92,6 @@ Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false};
 
 ## Morgonen 2026-10-15 — kalibrering
 Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Ingen musik 10-14 (0 MOTOR_ON i engine.log/.1). Warmup 05:00:37 10,8 s. Nattjobbet för hand 07:05–07:55 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 20 aktiva drop-ins = repo (innehålls-md5); Pi:ns analyser.js ≠ main = SECTION_CARRY (opt-in, ej deployad, paritet 0), övriga dist/audio-analyser = main. DMX-fynd 10-15 (miniDropCount i skurar) = DMX-PROFIL: spärren MINI_SPACING_MS finns, profilen sätter '1' (dmx-control 1a30394).
+
+## Morgonen 2026-10-16 — kalibrering
+Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Musik 10-15 17:23–18:50, drops edgeAgo n 87 median 0 ms. Warmup 05:01 10,7 s. Nattjobbet för hand 07:05–07:58 (Sonos PAUSED): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 20 drop-ins = repo (verksamma rader), men repots bass-body.conf (BASS_BODY=2) finns INTE på Pi:n och dist är från 10-10 ⇒ ägaren: kör bass-body-prov.py om =2 ska vara live. Inga nya DMX-fynd.
