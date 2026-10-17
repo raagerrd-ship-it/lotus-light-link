@@ -1,12 +1,11 @@
 # Resultattavla — analysatorns tempoval mot facit
 
-Uppdaterad 2026-10-16 07:58. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
+Uppdaterad 2026-10-17 13:03. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
 
 Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).
 
 | datum | standard | live | evidence | ring10 | live-cd80 | live-cd120 | live: dygnets låtar | ok-andel | grid-släp | onset recall | onset precision | nivå r |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-10-01 | 314/474 · 6/8 · slag 0.55 p 0.85 | 387/474 · 6/8 · slag 0.85 p 0.84 · fas 190/347 | 383/474 · 6/8 · slag 0.58 p 0.85 | 334/474 · 6/8 · slag 0.55 p 0.85 | 387/474 · 6/8 · slag 0.86 p 0.84 · fas 190/347 | 387/474 · 6/8 · slag 0.81 p 0.85 · fas 190/347 | 21 (17 facit) | 0.93 | None ms | 0.9 | 0.9 | 0.6 |
 | 2026-10-02 | 358/541 · 6/8 · slag 0.55 p 0.85 | 444/541 · 6/8 · slag 0.85 p 0.85 · fas 228/404 | 438/541 · 6/8 · slag 0.57 p 0.85 | 383/541 · 6/8 · slag 0.55 p 0.85 | 444/541 · 6/8 · slag 0.86 p 0.85 · fas 228/404 | 444/541 · 6/8 · slag 0.80 p 0.85 · fas 228/404 | 20 (20 facit) | 0.9 | None ms | 0.9 | 0.9 | 0.6 |
 | 2026-10-03 | 332/548 · 6/8 · slag 0.54 p 0.87 | 435/548 · 6/8 · slag 0.84 p 0.86 · fas 222/395 | 429/548 · 6/8 · slag 0.57 p 0.87 | 359/548 · 6/8 · slag 0.54 p 0.86 | 435/548 · 6/8 · slag 0.85 p 0.86 · fas 222/395 | 435/548 · 6/8 · slag 0.79 p 0.86 · fas 222/395 | 90 (76 facit) | 0.61 | None ms | 1.0 | 0.9 | 0.6 |
 | 2026-10-04 | 343/567 · 6/8 · slag 0.54 p 0.87 | 451/567 · 6/8 · slag 0.84 p 0.86 · fas 228/406 | 448/567 · 6/8 · slag 0.57 p 0.87 | 374/567 · 6/8 · slag 0.54 p 0.86 | 451/567 · 6/8 · slag 0.85 p 0.86 · fas 228/406 | 451/567 · 6/8 · slag 0.79 p 0.87 · fas 228/406 | 6 (5 facit) | 0.6 | None ms | 0.9 | 0.9 | 0.6 |
@@ -20,6 +19,7 @@ Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med ana
 | 2026-10-14 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-15 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-16 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
+| 2026-10-17 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 
 Senaste dygnet: domar {}; kick-bias None ms; nivå-lag None ms; tak-r None lag None ms None %/dB klipp None; analysatorns spann inom låt None BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 614 {"ratt": 82, "falsk": 129, "osaker": 401}.
 
