@@ -1,3 +1,9 @@
+## Från kvällen 2026-10-17 (INFO) - DMX-NATTAGENTEN SKRIVER OM LOTUS-MOTORNS SKRÄP I NATT
+Ägaren gav natten till 10-18 åt skräpjakten: DMX-nattagenten (02:38) får, som engångsundantag, skriva lotus-motorns egna filer
+(pi/src/piEngine.ts, alsaMic.ts, bassBody.ts, heartbeat/*.ts), bara bevisat byte-identiskt (tools/skrap/engineReplay.mjs) och pushar
+före 07:00. Den delade analysatorn rörs inte. Inget deployas. Morgonagenten: läs nattens lotus-commit(s) och rapport, bänka som vanligt,
+rör inte samma filer samma morgon. 10-17 LIVE på lotus: analysatorn 14:04 (4e264e9), v8Tiering + micvägen 14:45 (1a0365a).
+
 ## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BORT MED ALLT LÖPANDE SKRÄP (går före allt utom hälsan)
 KLART 2026-10-17 kväll (DMX-sessionen, ägaren bad om det direkt): kodfixen gjord i analyser.ts i båda repona (md5 656c093a), bevisad
 (paritet 0 i 4 varianter, bänken live 396/503, syntet 6/8, on-beat 0,84; DMX 24/24 byte-identiska) - se Status i analysator-fynd.md.
