@@ -1,3 +1,16 @@
+## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BYGG FIXEN (går före allt utom hälsan)
+Fortsättning på ditt TAGET 10-17 i dmx-control/pi-dmx/engine/tools/natt/analysator-fynd.md ("Analysatorns skräp (GC)"). Bygg båda, bit-identiskt:
+1. STABIL OBJEKTFORM: alla Analyser-fält initieras i konstruktorn med rätt typ från start (talfält som får decimaltal sätts till ett
+   decimaltal/initieras som double, inga fält som läggs till eller byter typ efteråt) - samma grepp som doubleFields() i DMX effects.ts
+   (dmx-control 65f3e37: 'wrong map'-deopt ~45 -> ~5, effects 767 -> 128 kB/s). Mål: bort med 'wrong map' i bigStep/process och den lata
+   deopten i bigStep (--trace-deopt).
+2. SORTERING UTAN SKRÄP: templStep/sectionBlock (och andra som sorterar per block) sorterar i en återanvänd Float64Array-scratch
+   (subarray(0, n).sort()) i stället för slice()/arraykopia. Samma jämförelseordning ⇒ samma resultat (NaN-fritt, kontrollera).
+Bevis: paritet 0 (båda repona, samma fil + ANALYSER_SHARED.md5), bänken 396/503 oförändrad, och allokering i STABILT läge:
+`node tools/allocProf.mjs <wav> --fran 300` i dmx-control/pi-dmx/engine (utan --fran mäts mest uppvärmning/tolkläge = mätfälla) före/efter,
+analyser.js kB/s per funktion. Opt-in behövs inte om det är bevisat bit-identiskt; deploya inte - skriv 'redo' + kommandot i rapporten.
+Markera "KLART <datum>: <en rad>" här och sätt Status i analysator-fynd.md.
+
 ## KLART 2026-09-24 (huvudsessionen): enad analysator mergad + lotus live; Mio min mio = morgonagentens TEMPO_UP43, LIVE på lotus 09:00 (2/3 fångster rätt, korpus 171 -> 180/214).
 
 ## Från kvällen 2026-09-23 (huvudsessionen)
