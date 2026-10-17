@@ -7,4 +7,6 @@
  * följer med deployen (dist/) utan att unit-filen eller heap.conf på Pi:n behöver ändras.
  */
 import { setFlagsFromString } from "node:v8";
-setFlagsFromString("--invocation-count-for-turbofan=100");
+// Flaggan finns bara i V8 >= 12 (Node 22, PC:n). Pi:erna kör Node 18 (V8 10.2): där är tieringen budgetbaserad (--interrupt-budget,
+// --ticks-before-optimization), flaggan okänd ("Error: unrecognized flag", 10-17 i ladan) och regeln om 3000 anrop finns inte - ingen effekt.
+if (Number(process.versions.v8.split(".")[0]) >= 12) setFlagsFromString("--invocation-count-for-turbofan=100");
