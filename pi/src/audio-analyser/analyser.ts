@@ -588,7 +588,7 @@ export class Analyser {
   private secFp2T = new Float64Array(Analyser.FP2_MAX); private secFp2Db = new Float32Array(Analyser.FP2_MAX); private secFp2Dens = new Float32Array(Analyser.FP2_MAX); private secFp2Lab: string[] = [];
   private secFp2N = 0; private secFp2Pos = 0; private secFp2Acc = new Float32Array(Analyser.FP2_DIM); private secFp2AccN = 0; private secFp2AccDb = 0; private secFp2AccDens = 0;
   private secFp2Mu = new Float32Array(Analyser.FP2_DIM); private secFp2Sd = new Float32Array(Analyser.FP2_DIM);
-  private secBlkT: number[] = []; private secRank = { md: 0, sd: 1, mk: 0, sk: 1 }; private secScoreSorted: number[] = [];
+  private secBlkT: number[] = []; private secRank = { md: 0, sd: 1, mk: 0, sk: 1 }; private secScoreSorted = new Float64Array(601);   // 2026-10-17: typad scratch, sorteras på plats (var number[] + sort((a, b) => a - b): ~10 kB skräp per block)
   /** KLANGMALL (09-22, REPEAT bit 256/512; bank agent 'refrang 2'): refrang 2 later som refrang 1. I stallet for W rutor mot EN punkt
    *  (bit 2: avtryck var 2 s, sekvens 2 rutor = nuet syns forst 4-6 s in i refrangen, och st >= 1 kravde rangens 3-blocks-hysteres) matchas
    *  VARJE 1 s-block (glidande medel TEMPL_SM block) mot MEDELAVTRYCKET av alla block som hittills varit refrang (TEMPL_SRC 'lab' = egna
@@ -614,6 +614,7 @@ export class Analyser {
   private static readonly TEMPL_WV: Float32Array = (() => { const w = sysEnv('SECTION_TEMPL_W') || 'full';
     const t: Record<string, number[]> = { full: [1,1,1,1,1,1,1,1,1,1,1,1], nobass: [0,0,0,1,1,1,1,1,1,1,1,1], timbre: [1,1,1,1,1,1,1,1,1,0,0,0], nolvl: [1,1,1,1,1,1,1,1,1,1,1,0], halfbass: [0.5,0.5,0.5,1,1,1,1,1,1,1,1,1] };
     return new Float32Array(t[w] || t.full); })();
+  private secFeatSpare: Float32Array | null = null;   // 2026-10-17: vektorn som föll ur historiken återanvänds (alla FP2_DIM värden skrivs om)
   private secBlkFeat: Float32Array[] = []; private secBlkHi: number[] = []; private secPct = 0; private templLoRun = 0;
   private templMu = new Float32Array(Analyser.FP2_DIM); private templSd = new Float32Array(Analyser.FP2_DIM); private templHi = new Float32Array(Analyser.FP2_DIM); private templLo = new Float32Array(Analyser.FP2_DIM); private templZ = new Float32Array(Analyser.FP2_DIM);
   /** Klangmallens likhet for senaste blocket: mot refrangmallen / mot icke-refrangmallen (-1..1; 0 utan mall), antal mallblock. Bank-telemetri. */
@@ -643,6 +644,14 @@ export class Analyser {
   private slowGap = false;         // slow: records tappade sedan senast behandlade -> kontrollera forlorade flaggor
   private slowLostFlags = 0;       // slow: antal flaggor som aterskapats ur raknarna efter tapp (statistik)
   splitRestarts = 0;               // fast: antal omstarter av workern (satts av index.ts)
+  /** HOPPETS VÄRDEN (2026-10-17, skräpjakten): decimaltal som skickas som argument till, eller returneras från, en metod som V8 inte
+   *  inlinar blir ett nytt HeapNumber per anrop (process 47 -> 6 kB/s skräp när de gick via fält). De heta stegen läser därför hoppets
+   *  värden ur fält som process() skriver. Alla initieras som decimaltal (0,5) så fälten har Double-form från start. */
+  private hRms = 0.5; private hNow = 0.5; private hDt = 0.5; private hKickFlux = 0.5; private hEnergy = 0.5; private hHopMs = 0.5;
+  private hIntensity = 0.5; private hNowWall = 0.5; private hBody = 0.5; private hKick = false; private hLevel = 0.5; private hFlux = 0.5;
+  private hInZone = false; private hBreaking = false; private hInRiser = false; private hKickAt = 0.5; private hBarShift = 0.5;
+  /** sectionHop:s summor (samma skäl): anroparen fyller, sectionHop läser. */
+  private shIn = { hops: 0.5, intSum: 0.5, kicks: 0.5, breaking: false, nowMs: 0.5, dtMs: 0.5, rms2Sum: 0.5, centSum: 0.5, specOff: 0.5, bonSum: 0.5, bpk: 0.5, fluxSum: 0.5, rms4Sum: 0.5 };
   private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, drops: 0, active: 0, build: 0, spec: new Float64Array(8), bon: 0, bpk: 0, flux: 0, rms4: 0 };
   private inlinePeer: Analyser | null = null;
   private slowBusyEmaUs = 0; private slowBusyMaxUs = 0; private slowLagMaxMs = 0; private slowSkipped = 0; private slowProcessed = 0;
@@ -1206,14 +1215,9 @@ export class Analyser {
   private alignScore(ring: Float32Array, N: number, L: number): { score: number; half: number; hit: number } {
     const LEN = Analyser.ENV_LEN;
     const start = (this.envPos - N + LEN) % LEN;
-    const at = (i: number): number => {
-      const c = ring[(start + i) % LEN]; const a = i > 0 ? ring[(start + i - 1) % LEN] : c; const b = i + 1 < N ? ring[(start + i + 1) % LEN] : c;
-      const m = c > a ? (c > b ? c : b) : (a > b ? a : b);
-      return m > 0 ? m : 0;
-    };
     let tot = 0; for (let i = 0; i < N; i++) { const v = ring[(start + i) % LEN]; if (v > 0) tot += v; }
     const mean = tot / N;
-    if (mean <= 0 || L < 2) return { score: 0, half: 0, hit: 0 };
+    if (mean <= 0 || L < 2) { const o = this.asRing[this.asI = (this.asI + 1) & 3]; o.score = 0; o.half = 0; o.hit = 0; return o; }
     // TRAFFANDEL: andel slag dar en onset verkligen finns (>= 30 % av fonstrets 95-percentil). Medelpoangen
     // ensam var for snall mot fantomer (3/2 fick 1,8-2,1 mot ratt 2,2-2,5): med bastafas och +-1 sampel
     // fangar den anda tva av tre kickar. Traffandelen ar 1,0 for ratt tempo, ~0,67 for 3/2, ~0,75 for 4/3.
@@ -1224,14 +1228,16 @@ export class Analyser {
     const th = this.evidThresh;
     let bestPh = 0, bestSum = -1, bestHits = 0;
     for (let ph = 0; ph < L; ph++) {
-      let sum = 0, hits = 0; for (let i = ph; i < N; i += L) { const v = at(i); sum += v; if (v >= th) hits++; }
+      let sum = 0, hits = 0; for (let i = ph; i < N; i += L) { const v = alignAt(ring, start, LEN, N, i); sum += v; if (v >= th) hits++; }
       if (sum > bestSum) { bestSum = sum; bestPh = ph; bestHits = hits; }
     }
     const nOn = Math.floor((N - 1 - bestPh) / L) + 1; const on = bestSum / nOn; const hit = bestHits / nOn;
-    let hs = 0, nh = 0; for (let i = bestPh + (L >> 1); i < N; i += L) { hs += at(i); nh++; }
+    let hs = 0, nh = 0; for (let i = bestPh + (L >> 1); i < N; i += L) { hs += alignAt(ring, start, LEN, N, i); nh++; }
     const half = nh ? hs / nh : 0;
-    return { score: (on / mean) * (0.5 + hit), half: on > 0 ? half / on : 0, hit };
+    const o = this.asRing[this.asI = (this.asI + 1) & 3]; o.score = (on / mean) * (0.5 + hit); o.half = on > 0 ? half / on : 0; o.hit = hit; return o;
   }
+  /** alignScore:s resultat (2026-10-17): ring av 4 återanvända objekt - anroparna läser direkt, högst två samtidigt. */
+  private asRing = [0, 1, 2, 3].map(() => ({ score: 0.5, half: 0.5, hit: 0.5 })); private asI = 0;
 
   /** TEMPOVAXLING INOM LAT (opt-in <prefix>TEMPO_SHIFT=1, 2026-10-09). Agaren: tempookningar ska synas i showen. Bank (tempoShift.mjs,
    *  12 syntetklipp +8/+12/+15 %): ra-estimatet bygger pa den 10 s langa onset-ringen och vander forst 6-7 s efter vaxlingen, laset
@@ -1292,7 +1298,7 @@ export class Analyser {
     this.lastHighDens = NaN; this.secLvlInRun = 0; this.secLvlOutRun = 0; this.secLvlOutRef = NaN; this.secPeakRun = 0;
     this.secHiStartMs = 0; this.secDipExpMs = 0; this.secInDip = false; this.secPct = 0;
     this.secFp2N = 0; this.secFp2Pos = 0; this.secFp2Lab.length = 0; this.secFp2Acc.fill(0); this.secFp2AccN = 0; this.secFp2AccDb = 0; this.secFp2AccDens = 0;
-    this.secBlkT.length = 0; this.secScoreSorted.length = 0; this.secRank.md = 0; this.secRank.sd = 1; this.secRank.mk = 0; this.secRank.sk = 1; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0; this.repeatHighRun = 0; this.secHighRunMs = 0;
+    this.secBlkT.length = 0; this.secRank.md = 0; this.secRank.sd = 1; this.secRank.mk = 0; this.secRank.sk = 1; this.repeatTier = -1; this.repeatHighAtMs = 0; this.repeatHighEndAtMs = 0; this.repeatHighRun = 0; this.secHighRunMs = 0;
     this.secBlkFeat.length = 0; this.secBlkHi.length = 0; this.secPct = 0; this.templLoRun = 0; this.templSimHi = 0; this.templSimLo = 0; this.templN = 0;
 
     this.secBlkHighH.length = 0; this.bndRefN = 0; this.bndRef.fill(0); this.boundaryNov = 0;
@@ -1300,7 +1306,9 @@ export class Analyser {
 
   /** Tar BLOCKSUMMOR (n hop): i roll 'all' anropas den per hop med n = 1, i workern en gang per env-sampel med summorna
    *  for de ~4 hoppen (split.ts). Samma matematik - medelvardena delas med secBlkN i bada fallen. */
-  private sectionHop(hops: number, intSum: number, kicks: number, breaking: boolean, nowMs: number, dtMs: number, rms2Sum: number, centSum: number, spec: ArrayLike<number>, specOff = 0, bonSum = 0, bpk = 0, fluxSum = 0, rms4Sum = 0): void {
+  private sectionHop(spec: ArrayLike<number>): void {
+    const I = this.shIn, hops = I.hops, intSum = I.intSum, kicks = I.kicks, breaking = I.breaking, nowMs = I.nowMs, dtMs = I.dtMs, rms2Sum = I.rms2Sum, centSum = I.centSum,
+      specOff = I.specOff, bonSum = I.bonSum, bpk = I.bpk, fluxSum = I.fluxSum, rms4Sum = I.rms4Sum;
     if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount; }
     this.secBlkMs += dtMs; this.secBlkN += hops; this.secBlkInt += intSum; this.secBlkKicks += kicks; this.secBlkCent += centSum; this.secBlkRms2 += rms2Sum;
     this.secBlkBon += bonSum; this.secBlkBpk += bpk; this.secBlkFlux += fluxSum; this.secBlkRms4 += rms4Sum;
@@ -1328,35 +1336,11 @@ export class Analyser {
       // hittills i laten, 4 s-fonstrets medelpoang rangordnas mot alla blockpoang hittills. Minst 20 s historik; innan dess 'intro'.
       const db = 10 * Math.log10(this.secBlkRms2 / n + 1e-10); this.secBlkDb.push(db); this.secBlkDens.push(bKicks); this.secBlkCentH.push(bCent); this.secBlkHighH.push(bHigh); if (Analyser.REPEAT & 769) this.secBlkT.push(nowMs);
       if (Analyser.RANK_W_NEW) { const H = this.secBlkH; H.bon.push(bBon); H.bpk.push(bBpk); H.high.push(bHigh); H.flat.push(bFlat); H.flux.push(bFlux); H.dyn.push(bDyn); }
-      if (Analyser.REPEAT & 768) { const ft = new Float32Array(Analyser.FP2_DIM); let ssum = 0; for (let i = 0; i < 8; i++) ssum += this.secBlkSpec[i]; for (let i = 0; i < 8; i++) ft[i] = ssum > 0 ? this.secBlkSpec[i] / ssum : 0; ft[8] = bCent; ft[9] = Math.min(1, bKicks / 4); ft[10] = bInt; ft[11] = db / 10; this.secBlkFeat.push(ft); this.secBlkHi.push(0); }
-      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); this.secBlkHighH.shift(); if (Analyser.RANK_W_NEW) { const H = this.secBlkH; H.bon.shift(); H.bpk.shift(); H.high.shift(); H.flat.shift(); H.flux.shift(); H.dyn.shift(); } if (Analyser.REPEAT & 769) this.secBlkT.shift(); if (Analyser.REPEAT & 768) { this.secBlkFeat.shift(); this.secBlkHi.shift(); } }
+      if (Analyser.REPEAT & 768) { const ft = this.secFeatSpare ?? new Float32Array(Analyser.FP2_DIM); this.secFeatSpare = null; let ssum = 0; for (let i = 0; i < 8; i++) ssum += this.secBlkSpec[i]; for (let i = 0; i < 8; i++) ft[i] = ssum > 0 ? this.secBlkSpec[i] / ssum : 0; ft[8] = bCent; ft[9] = Math.min(1, bKicks / 4); ft[10] = bInt; ft[11] = db / 10; this.secBlkFeat.push(ft); this.secBlkHi.push(0); }
+      if (this.secBlkDb.length > 600) { this.secBlkDb.shift(); this.secBlkDens.shift(); this.secBlkCentH.shift(); this.secBlkHighH.shift(); if (Analyser.RANK_W_NEW) { const H = this.secBlkH; H.bon.shift(); H.bpk.shift(); H.high.shift(); H.flat.shift(); H.flux.shift(); H.dyn.shift(); } if (Analyser.REPEAT & 769) this.secBlkT.shift(); if (Analyser.REPEAT & 768) { this.secFeatSpare = this.secBlkFeat.shift() ?? null; this.secBlkHi.shift(); } }
       const nb = this.secBlkDb.length;
       if (nb >= 20) {
-        const D = this.secBlkDb, K = this.secBlkDens, C = this.secBlkCentH, wk = Analyser.RANK_W_DENS, wc = Analyser.RANK_W_CENT;
-        let md = 0, mk = 0, mc = 0; for (let i = 0; i < nb; i++) { md += D[i]; mk += K[i]; mc += C[i]; } md /= nb; mk /= nb; mc /= nb;
-        let sd = 0, sk = 0, sc = 0; for (let i = 0; i < nb; i++) { sd += (D[i] - md) ** 2; sk += (K[i] - mk) ** 2; sc += (C[i] - mc) ** 2; }
-        sd = Math.max(1.0, Math.sqrt(sd / nb)); sk = Math.max(0.3, Math.sqrt(sk / nb)); sc = Math.max(0.02, Math.sqrt(sc / nb));
-        this.secRank.md = md; this.secRank.sd = sd; this.secRank.mk = mk; this.secRank.sk = sk;
-        // Nya sardrag (RANK_W_*): z mot latens historik med sd-golv (skala per sardrag), viktade in i samma poang i fast
-        // ordning. Poangen summeras i 64 bitar och lagras en gang (SECTION_SCORE_F32 avrundar da en gang, som aldre vagen).
-        const terms: Array<{ X: number[]; w: number; m: number; s: number }> = [];
-        if (Analyser.RANK_W_NEW) {
-          const H = this.secBlkH;
-          const add = (X: number[], w: number, floor: number) => { if (w === 0) return; let m = 0; for (let i = 0; i < nb; i++) m += X[i]; m /= nb; let s = 0; for (let i = 0; i < nb; i++) s += (X[i] - m) ** 2; s = Math.max(floor, Math.sqrt(s / nb)); terms.push({ X, w, m, s }); };
-          add(H.bpk, Analyser.RANK_W_BASSON, 0.5); add(H.bon, Analyser.RANK_W_BASSENV, 0.02); add(this.secBlkHighH, Analyser.RANK_W_HIGH, 1.0); add(H.flat, Analyser.RANK_W_FLAT, 0.02); add(H.flux, Analyser.RANK_W_FLUX, 0.01); add(H.dyn, Analyser.RANK_W_DYN, 0.05);
-        }
-        const S = this.secScoreBuf, nt = terms.length;
-        for (let i = 0; i < nb; i++) {
-          let v = (D[i] - md) / sd + wk * (K[i] - mk) / sk + wc * (C[i] - mc) / sc;
-          for (let t = 0; t < nt; t++) { const T = terms[t]; v += T.w * (T.X[i] - T.m) / T.s; }
-          S[i] = v;
-        }
-        let win = 0; const W = Math.min(Analyser.RANK_WIN, nb); for (let i = nb - W; i < nb; i++) win += S[i]; win /= W;
-        let below = 0, cnt = 0;
-        if (Analyser.RANK_VS_WIN) { let acc = 0; for (let e = 1; e <= nb; e++) { acc += S[e - 1]; if (e > W) acc -= S[e - 1 - W]; if (e >= W) { cnt++; if (acc / W < win) below++; } } }
-        else { cnt = nb; for (let i = 0; i < nb; i++) if (S[i] < win) below++; }
-        const pct = below / cnt; const cur = this.sectionTier, h = Analyser.RANK_HYST; this.secPct = pct;
-        tier = pct >= Analyser.RANK_HI - (cur === 2 ? h : 0) ? 2 : pct <= Analyser.RANK_LO + (cur === 0 ? h : 0) ? 0 : 1;
+        tier = this.rankTier(nb);
       } else { tier = 1; this.secPct = 0; }
       if (Analyser.REPEAT & 768) this.templStep(nowMs);
     }
@@ -1519,6 +1503,45 @@ export class Analyser {
   /** KLANGMALL (se TEMPL_*). Kors per sektionsblock i rank-laget nar bit 256/512 ar pa, efter att blockets sardrag lagts i secBlkFeat.
    *  Mallar: medel av z-normerade sardrag over block >= 8 s gamla som var refrang (secBlkHi, eller omrankade high vid TEMPL_SRC 'rank')
    *  resp. inte. Nuet = glidande medel over TEMPL_SM block. Kostnad: ~nb x 12 x 3 flops per sekund (nb <= 600). */
+  /** RANGBERÄKNINGEN (2026-10-17, skräpjakten): utbruten ur sectionBlock. sectionBlock körs 1 gång/s och deoptas; V8 optimerar om
+   *  först efter tusentals anrop, så looparna här över hela låtens block (~600) gick otolkade och boxade varje flyttal (~21 kB per
+   *  block). Som egen metod med tunga loopar optimeras den på loopbudgeten. Samma räkning i samma ordning; returnerar tiern. */
+  private rankTier(nb: number): number {
+    const D = this.secBlkDb, K = this.secBlkDens, C = this.secBlkCentH, wk = Analyser.RANK_W_DENS, wc = Analyser.RANK_W_CENT;
+    let md = 0, mk = 0, mc = 0; for (let i = 0; i < nb; i++) { md += D[i]; mk += K[i]; mc += C[i]; } md /= nb; mk /= nb; mc /= nb;
+    let sd = 0, sk = 0, sc = 0; for (let i = 0; i < nb; i++) { sd += (D[i] - md) ** 2; sk += (K[i] - mk) ** 2; sc += (C[i] - mc) ** 2; }
+    sd = Math.max(1.0, Math.sqrt(sd / nb)); sk = Math.max(0.3, Math.sqrt(sk / nb)); sc = Math.max(0.02, Math.sqrt(sc / nb));
+    this.secRank.md = md; this.secRank.sd = sd; this.secRank.mk = mk; this.secRank.sk = sk;
+    // Nya sardrag (RANK_W_*): z mot latens historik med sd-golv (skala per sardrag), viktade in i samma poang i fast
+    // ordning. Poangen summeras i 64 bitar och lagras en gang (SECTION_SCORE_F32 avrundar da en gang, som aldre vagen).
+    const terms = this.secTerms; let nt = 0;
+    if (Analyser.RANK_W_NEW) {
+      const H = this.secBlkH;
+      nt = this.rankTerm(nt, H.bpk, Analyser.RANK_W_BASSON, 0.5, nb); nt = this.rankTerm(nt, H.bon, Analyser.RANK_W_BASSENV, 0.02, nb); nt = this.rankTerm(nt, this.secBlkHighH, Analyser.RANK_W_HIGH, 1.0, nb);
+      nt = this.rankTerm(nt, H.flat, Analyser.RANK_W_FLAT, 0.02, nb); nt = this.rankTerm(nt, H.flux, Analyser.RANK_W_FLUX, 0.01, nb); nt = this.rankTerm(nt, H.dyn, Analyser.RANK_W_DYN, 0.05, nb);
+    }
+    const S = this.secScoreBuf;
+    for (let i = 0; i < nb; i++) {
+      let v = (D[i] - md) / sd + wk * (K[i] - mk) / sk + wc * (C[i] - mc) / sc;
+      for (let t = 0; t < nt; t++) { const T = terms[t]; v += T.w * (T.X[i] - T.m) / T.s; }
+      S[i] = v;
+    }
+    let win = 0; const W = Math.min(Analyser.RANK_WIN, nb); for (let i = nb - W; i < nb; i++) win += S[i]; win /= W;
+    let below = 0, cnt = 0;
+    if (Analyser.RANK_VS_WIN) { let acc = 0; for (let e = 1; e <= nb; e++) { acc += S[e - 1]; if (e > W) acc -= S[e - 1 - W]; if (e >= W) { cnt++; if (acc / W < win) below++; } } }
+    else { cnt = nb; for (let i = 0; i < nb; i++) if (S[i] < win) below++; }
+    const pct = below / cnt; const cur = this.sectionTier, h = Analyser.RANK_HYST; this.secPct = pct;
+    return pct >= Analyser.RANK_HI - (cur === 2 ? h : 0) ? 2 : pct <= Analyser.RANK_LO + (cur === 0 ? h : 0) ? 0 : 1;
+  }
+
+  /** En RANK_W_*-term (2026-10-17: fasta objekt i secTerms i st f en ny array + objekt + closure per block). Samma räkning som förr. */
+  private rankTerm(nt: number, X: number[], w: number, floor: number, nb: number): number {
+    if (w === 0) return nt;
+    let m = 0; for (let i = 0; i < nb; i++) m += X[i]; m /= nb; let s = 0; for (let i = 0; i < nb; i++) s += (X[i] - m) ** 2; s = Math.max(floor, Math.sqrt(s / nb));
+    const T = this.secTerms[nt]; T.X = X; T.w = w; T.m = m; T.s = s; return nt + 1;
+  }
+  private secTerms = [0, 1, 2, 3, 4, 5].map(() => ({ X: [] as number[], w: 0.5, m: 0.5, s: 0.5 }));
+
   private templStep(nowMs: number): void {
     const D = Analyser.FP2_DIM, F = this.secBlkFeat, nb = F.length, w = Analyser.TEMPL_WV;
     this.templSimHi = 0; this.templSimLo = 0; this.templN = 0;
@@ -1532,7 +1555,7 @@ export class Analyser {
     let isHi: (j: number) => boolean;
     if (Analyser.TEMPL_SRC === 'rank') {
       const R = this.secRank; const score = (j: number) => (this.secBlkDb[j] - R.md) / R.sd + (this.secBlkDens[j] - R.mk) / R.sk;
-      const ss = this.secScoreSorted; ss.length = nb; for (let j = 0; j < nb; j++) ss[j] = score(j); ss.sort((a, b) => a - b);
+      const ss = this.secScoreSorted; for (let j = 0; j < nb; j++) ss[j] = score(j); ss.subarray(0, nb).sort();
       const thr = ss[Math.min(nb - 1, Math.floor(Analyser.RANK_HI * nb))];
       isHi = (j) => score(j) >= thr;
     } else isHi = (j) => this.secBlkHi[j] === 1;
@@ -1582,7 +1605,7 @@ export class Analyser {
     // omrankning med dagens kunskap: blockpoang sorterade -> percentil for det matchade partiet (medel over W rutor) och for blocken efter det
     const nb = this.secBlkDb.length; if (nb < 20) { this.repeatAgoMs = 0; this.repeatSection = ''; return; }
     const R = this.secRank; const score = (db: number, dens: number) => (db - R.md) / R.sd + (dens - R.mk) / R.sk;
-    const ss = this.secScoreSorted; ss.length = nb; for (let i = 0; i < nb; i++) ss[i] = score(this.secBlkDb[i], this.secBlkDens[i]); ss.sort((a, b) => a - b);
+    const ss = this.secScoreSorted; for (let i = 0; i < nb; i++) ss[i] = score(this.secBlkDb[i], this.secBlkDens[i]); ss.subarray(0, nb).sort();
     const pct = (v: number) => { let lo = 0, hi = nb; while (lo < hi) { const mid = (lo + hi) >> 1; if (ss[mid] < v) lo = mid + 1; else hi = mid; } return lo / nb; };
     // MINNE OM LANGD (bit 16): langsta high-korningen (omrankad, luckor <= 2 block) fore nuvarande sektion -> sa lange varar high
     if (Analyser.REPEAT & 16) {
@@ -1785,7 +1808,9 @@ export class Analyser {
   /** Roll 'all': sektionsblocket ur samma aggregat som workern far (se secAgg). */
   private sectionFlushAgg(): void {
     const g = this.secAgg; if (!Analyser.SECTION_ON || g.n === 0) return;
-    this.sectionHop(g.n, g.int, g.kicks, g.breaking > 0, g.wall, g.dt, g.rms2, g.cent, g.spec, 0, g.bon, g.bpk, g.flux, g.rms4);
+    { const I = this.shIn; I.hops = g.n; I.intSum = g.int; I.kicks = g.kicks; I.breaking = g.breaking > 0; I.nowMs = g.wall; I.dtMs = g.dt; I.rms2Sum = g.rms2; I.centSum = g.cent;
+      I.specOff = 0; I.bonSum = g.bon; I.bpk = g.bpk; I.fluxSum = g.flux; I.rms4Sum = g.rms4; }
+    this.sectionHop(g.spec);
     g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
   }
 
@@ -1911,12 +1936,57 @@ export class Analyser {
     if (!SECTION_AGG_HOP || secN) { this.dropCount = r[o + R_DROPS]; this.activeMs = r[o + R_ACTIVE]; this.buildUp = r[o + R_BUILD]; }
     this.envStep();
     if (secN)
-      this.sectionHop(r[o + R_SEC_N], r[o + R_SEC_INT], r[o + R_SEC_KICKS], r[o + R_SEC_BREAK] > 0, r[o + R_SEC_WALL], r[o + R_SEC_DT], r[o + R_SEC_RMS2], r[o + R_SEC_CENT], r, o + R_SEC_SPEC0, r[o + R_SEC_BON], r[o + R_SEC_BPK], r[o + R_SEC_FLUX], r[o + R_SEC_RMS4]);
+    { const I = this.shIn; I.hops = r[o + R_SEC_N]; I.intSum = r[o + R_SEC_INT]; I.kicks = r[o + R_SEC_KICKS]; I.breaking = r[o + R_SEC_BREAK] > 0; I.nowMs = r[o + R_SEC_WALL];
+      I.dtMs = r[o + R_SEC_DT]; I.rms2Sum = r[o + R_SEC_RMS2]; I.centSum = r[o + R_SEC_CENT]; I.specOff = o + R_SEC_SPEC0; I.bonSum = r[o + R_SEC_BON]; I.bpk = r[o + R_SEC_BPK];
+      I.fluxSum = r[o + R_SEC_FLUX]; I.rms4Sum = r[o + R_SEC_RMS4];
+      this.sectionHop(r); }
   }
 
   /** Sparets tid (s sedan den virtuella epoken) och VETO_WIN-fonstret (diagnostik, bara med sparflaggor). */
   private traceT(): number { return (this.wallNow() - 1700000000000) / 1000; }
   private traceWin(): boolean { if (!VETO_WIN) return false; const [wa, wb] = VETO_WIN.split(',').map(Number); const tt = this.traceT(); return tt >= wa && tt <= wb; }
+  /** TEMPOGRAMMETS LOOP (2026-10-17, skräpjakten): utbruten ur computeBpm. computeBpm körs 4 ggr/s och deoptas på sällsynta grenar;
+   *  V8 optimerar om först efter tusentals anrop, och under tiden boxade looparna här varje flyttal (8,4 kB/anrop). Som egen liten
+   *  metod förblir loopen optimerad. Samma räkning i samma ordning. Resultatet i tg*-fälten. */
+  private tempoGramStep(tg: Float32Array, lagMin: number, lagMax: number, mixN: boolean, wF: number, wB: number, wH: number, wNorm: number, wFull: number, wBass: number, a: number): void {
+    let bestLag = 0, bestVal = 0, scoreSum = 0, scoreCount = 0;
+    for (let lag = lagMin; lag <= lagMax; lag++) {
+      const s = mixN ? (wF * this.scoreFull[lag] + wB * this.scoreBass[lag] + wH * this.scoreHigh[lag]) / wNorm : wFull * this.scoreFull[lag] + wBass * this.scoreBass[lag];
+      const v = tg[lag] + (s - tg[lag]) * a;
+      tg[lag] = v;
+      scoreSum += v; scoreCount++;
+      if (v > bestVal) { bestVal = v; bestLag = lag; }
+    }
+    this.tgBestLag = bestLag; this.tgBestVal = bestVal; this.tgScoreSum = scoreSum; this.tgScoreCount = scoreCount;
+  }
+  private tgBestLag = 0.5; private tgBestVal = 0.5; private tgScoreSum = 0.5; private tgScoreCount = 0.5;
+
+  /** TEMPOHISTORIKEN SORTERAD (2026-10-17, samma skäl som tempoGramStep: 2,4 kB/anrop otolkat). Insättningssortering, n ≤ 20. */
+  private bpmHistSort(scratch: Float64Array, n: number, HN: number): void {
+    for (let i = 0; i < n; i++) scratch[i] = this.bpmHist[(this.bpmHistPos - n + i + HN) % HN];
+    for (let i = 1; i < n; i++) {           // insertion sort (n ≤ 20, redan nästan sorterad)
+      const v = scratch[i]; let j = i - 1;
+      while (j >= 0 && scratch[j] > v) { scratch[j + 1] = scratch[j]; j--; }
+      scratch[j + 1] = v;
+    }
+  }
+
+  /** OFF-BEAT-TESTETS LOOPAR (2026-10-17, samma skäl som tempoGramStep, 10,8 kB/anrop otolkat). Resultatet i ob*-fälten. */
+  private offBeatStep(envPos: Float32Array, P: number, bestLag: number, N: number): void {
+    let bestPhase = 0, bestPhaseSum = -1;
+    for (let ph = 0; ph < P; ph++) {
+      let s = 0; for (let i = ph; i < N; i += P) s += envPos[i];
+      if (s > bestPhaseSum) { bestPhaseSum = s; bestPhase = ph; }
+    }
+    let onE = 0, offE = 0, offC = 0;
+    const offPh = (bestPhase + bestLag) % P;
+    for (let i = bestPhase; i < N; i += P) onE += envPos[i];
+    for (let i = offPh;    i < N; i += P) { offE += envPos[i]; offC++; }
+    let posMean = 0; for (let i = 0; i < N; i++) posMean += envPos[i]; posMean /= N;
+    this.obOnE = onE; this.obOffE = offE; this.obOffAvg = offC > 0 ? offE / offC : 0; this.obPosMean = posMean;
+  }
+  private obOnE = 0.5; private obOffE = 0.5; private obOffAvg = 0.5; private obPosMean = 0.5;
+
   private computeBpm() {
     const _b0 = this.localBpm; this._why = "";
     if (this.envFilled < 50) return;   // ~0.5s → snabbt första grovestimat (täcker ≥~122 BPM;
@@ -1977,14 +2047,8 @@ export class Analyser {
     const a = this.localBpm === 0 ? 0.30 : (underChallenge ? TG_ADAPT_A : 0.15);
     const tg = this.tempoGram;
     this.diagLagMin = lagMin; this.diagLagMax = lagMax;
-    let bestLag = 0, bestVal = 0, scoreSum = 0, scoreCount = 0;
-    for (let lag = lagMin; lag <= lagMax; lag++) {
-      const s = mixN ? (wF * this.scoreFull[lag] + wB * this.scoreBass[lag] + wH * this.scoreHigh[lag]) / wNorm : wFull * this.scoreFull[lag] + wBass * this.scoreBass[lag];
-      const v = tg[lag] + (s - tg[lag]) * a;
-      tg[lag] = v;
-      scoreSum += v; scoreCount++;
-      if (v > bestVal) { bestVal = v; bestLag = lag; }
-    }
+    this.tempoGramStep(tg, lagMin, lagMax, mixN, wF, wB, wH, wNorm, wFull, wBass, a);
+    let bestLag = this.tgBestLag, bestVal = this.tgBestVal; const scoreSum = this.tgScoreSum, scoreCount = this.tgScoreCount;
     const envPos = this.envPosScratch;   // helbandets rektifierade envelope (scoreEnv körde sist)
     this.dbgBestLag = bestLag; this.dbgLagMin = lagMin; this.dbgLagMax = lagMax;
 
@@ -2074,17 +2138,8 @@ export class Analyser {
     // Svaga mellanslag → sanna takten är halva; starka → behåll snabb takt.
     const P = bestLag * 2;
     if (P <= lagMax) {
-      let bestPhase = 0, bestPhaseSum = -1;
-      for (let ph = 0; ph < P; ph++) {
-        let s = 0; for (let i = ph; i < N; i += P) s += envPos[i];
-        if (s > bestPhaseSum) { bestPhaseSum = s; bestPhase = ph; }
-      }
-      let onE = 0, offE = 0, offC = 0;
-      const offPh = (bestPhase + bestLag) % P;
-      for (let i = bestPhase; i < N; i += P) onE += envPos[i];
-      for (let i = offPh;    i < N; i += P) { offE += envPos[i]; offC++; }
-      let posMean = 0; for (let i = 0; i < N; i++) posMean += envPos[i]; posMean /= N;
-      const offAvg = offC > 0 ? offE / offC : 0;
+      this.offBeatStep(envPos, P, bestLag, N);
+      const onE = this.obOnE, offE = this.obOffE, offAvg = this.obOffAvg, posMean = this.obPosMean;
       // Halvera bara om mellanslagen (a) är mycket svagare än slagen OCH (b) inte
       // har ett EGET onset (ligger nära baslinjen, offAvg < ~1.2× medel). (b)
       // skiljer en ballad (tomma mellanslag → halvera) från en danslåt med
@@ -2136,12 +2191,7 @@ export class Analyser {
     }
     const n = this.bpmHistLen;
     const scratch = this.bpmSortScratch;
-    for (let i = 0; i < n; i++) scratch[i] = this.bpmHist[(this.bpmHistPos - n + i + HN) % HN];
-    for (let i = 1; i < n; i++) {           // insertion sort (n ≤ 20, redan nästan sorterad)
-      const v = scratch[i]; let j = i - 1;
-      while (j >= 0 && scratch[j] > v) { scratch[j + 1] = scratch[j]; j--; }
-      scratch[j + 1] = v;
-    }
+    this.bpmHistSort(scratch, n, HN);
     const med = scratch[n >> 1];
     // UPPVARMNING FORE FORSTA LASET. Tidigare togs laset pa det ALLRA forsta
     // estimatet, nar tempogrammet sett ~0.5 s och ar omoget -- och sedan stanger
@@ -2918,18 +2968,21 @@ export class Analyser {
     // topparna. Långsam attack (tauUp×2) så uppbyggnader får höras, snabb retreat
     // (tauDown×0.25) eftersom AGC:n inte kan ta bort redan inbränd klippning.
     this.dbgRms = rms;
-    if (!this.gainLocked && rms > d.noiseFloor) this.agcStep(rms, now, dt);
+    this.hRms = rms; this.hNow = now; this.hDt = dt;
+    if (!this.gainLocked && rms > d.noiseFloor) this.agcStep();
 
     const level = Math.min(1, rms * this.gain);
 
-    const kick = this.kickStep(kickFlux, energy, now);
+    this.hKickFlux = kickFlux; this.hEnergy = energy;
+    const kick = this.kickStep();
 
     // Hoppets längd i ms. (Tva stallen nedan raknar fortfarande `dtHop * 1000`
     // for hand i stallet for att lasa den har — numeriskt identiskt, men
     // pastaendet "en enda forberaknad konstant" var inte sant.)
     const hopMs = this.hopMs;
     // Tystnad → nollställ BPM-klockan så beat-effekter inte fortsätter i fantom-takt.
-    this.silenceStep(rms, hopMs);
+    this.hHopMs = hopMs;
+    this.silenceStep();
     // --- Onset-envelope → lokal BPM (nedsamplad till 100 Hz) ---
 
     this.envAccum = Math.max(this.envAccum, fluxNorm);
@@ -2946,7 +2999,7 @@ export class Analyser {
     let kickAtMs = 0;
     let barShift = -1;
 
-    if (this.pendingKickMs > 0) { kickAtMs = this.kickRefine(kickFlux, hopMs); barShift = this.barShiftOut; }
+    if (this.pendingKickMs > 0) { this.kickRefine(); kickAtMs = this.hKickAt; barShift = this.barShiftOut; }
     if (kick) {
       this.beatAnchorMs = this.wallNow();
       this.pendingKickMs = this.beatAnchorMs;
@@ -2971,7 +3024,8 @@ export class Analyser {
 
 
 
-    const intensity = this.intensityStep(rms);
+    this.intensityStep();
+    const intensity = this.hIntensity;
 
     // --- DUBBEL-FFT: hög-upplöst log-spektrum för effekterna ---
     // Egen glidande 2048-buffert, matas samma hop. Ger 23 Hz/bin i botten så
@@ -2984,7 +3038,7 @@ export class Analyser {
     // inte 375Hz. MÄTT: analysen tog 3.8ms/hop mot 2.67ms budget → ljud droppades och
     // ljuset låg 40–140ms efter. Decimeringen får den att rymmas i realtid.
     // Tidssteget skalas (bigDt) så smoothing-tidskonstanterna blir oförändrade.
-    if (++this.bigCounter >= Analyser.BIG_EVERY) this.bigStep(rms);
+    if (++this.bigCounter >= Analyser.BIG_EVERY) this.bigStep();
     // TRUM-KIT peak-hold-envelopes PÅ HOP-TAKT (var 2.7ms) → fångar varje anslag,
     // aldrig missat mellan två render-frames (100Hz). tau bevarade från effects.ts:
     // hat 60ms (treble+air-onset O[6]/O[7]) / snare 110ms (highMid-onset O[5]) / kick 150ms
@@ -3024,15 +3078,19 @@ export class Analyser {
     // `inZone` lämnas orörd: effektlagret använder den som "musiken ligger högt".
 
     const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;   // ra dB
-    this.dropStep(kick, nowWallA, bodyNow);
+    this.hKick = kick; this.hNowWall = nowWallA; this.hBody = bodyNow;
+    this.dropStep();
 
-    const inRiser = this.riserStep(nowWallA);
+    const inRiser = this.riserStep();
     this.profileStep();
-    return this.fillFrame(level, fluxNorm, kick, intensity, bodyNow, inZone, breaking, inRiser, kickAtMs, barShift, rms, nowWallA);
+    this.hLevel = level; this.hFlux = fluxNorm; this.hIntensity = intensity; this.hInZone = inZone; this.hBreaking = breaking; this.hInRiser = inRiser;
+    this.hKickAt = kickAtMs; this.hBarShift = barShift;
+    return this.fillFrame();
   }
 
   /** AGC (bara mic): utbruten ur process() 2026-09-27 — anropas nar gainen ar olast och signalen over golvet. */
-  private agcStep(rms: number, now: number, dt: number): void {
+  private agcStep(): void {
+    const rms = this.hRms, now = this.hNow, dt = this.hDt;
     const d = this.cfg.detection;
       const env = this.agcEnvelope(rms, now);
       if (env > 0) {
@@ -3047,7 +3105,8 @@ export class Analyser {
   }
 
   /** Kick-detektorn (median/MAD-troskel, taktgrind, flank + cooldown). Het varje hop; egen funktion sa att process() ar kompakt. */
-  private kickStep(kickFlux: number, energy: number, now: number): boolean {
+  private kickStep(): boolean {
+    const kickFlux = this.hKickFlux, energy = this.hEnergy, now = this.hNow;
     // KICK-DETEKTION v2: onset i kick-bandet (sub-bas ~0–280 Hz) mot en ADAPTIV
     // baslinje (långsam EMA av kick-fluxen). En kick = flux tydligt över
     // baslinjen; tröskeln skalar med signalen → fyrar pålitligt även på
@@ -3130,7 +3189,8 @@ export class Analyser {
   }
 
   /** Tystnadsflanken (350 ms / 10 s). Sallan korda grenar: i egen funktion sa att en forsta korning inte deoptimerar hetslingan. */
-  private silenceStep(rms: number, hopMs: number): void {
+  private silenceStep(): void {
+    const rms = this.hRms, hopMs = this.hHopMs;
     if (rms < this.cfg.detection.noiseFloor * 1.5) {
       this.silentMs += hopMs;
       // FLANKTRIGGAT: hela reseten kördes förut VARJE tyst hop efter 350 ms —
@@ -3212,7 +3272,8 @@ export class Analyser {
   }
 
   /** Forfinar forra kickens fas (parabel) och bokfor taktfasen. Returnerar kickAtMs; taktfas-forslaget laggs i barShiftOut (-1 = inget). */
-  private kickRefine(kickFlux: number, hopMs: number): number {
+  private kickRefine(): void {
+    const kickFlux = this.hKickFlux, hopMs = this.hHopMs;
     let kickAtMs = 0; let barShift = -1;
       const ym1 = this.kfPrev2, y0 = this.kfPrev, yp1 = kickFlux;
       const denom = ym1 - 2 * y0 + yp1;
@@ -3257,11 +3318,12 @@ export class Analyser {
         if (this.barCount >= 16 && best > second * 1.35) barShift = bi;
       }
     this.barShiftOut = barShift;
-    return kickAtMs;
+    this.hKickAt = kickAtMs;
   }
 
   /** Sektionsenergi 0..1 (aktiv tid, EMA, sjalvkalibrerande golv och spann). Returnerar intensity. */
-  private intensityStep(rms: number): number {
+  private intensityStep(): void {
+    const rms = this.hRms;
     const dtHop = this.dtHop;
     // SEKTIONSENERGI (0..1) — hur energiskt partiet är RELATIVT låtens eget snitt.
     // Ren analys av nivån över tid → hör hemma här, inte i show-orkestreringen.
@@ -3298,11 +3360,12 @@ export class Analyser {
     this.intensitySpread += (Math.abs(dev) - this.intensitySpread) * (iWarm ? dtHop / 3 : dtHop / 60);
     const scale = Math.max(0.015, this.intensitySpread) * 4;
     const intensity = Math.max(0, Math.min(1, 0.5 + dev / scale));
-    return intensity;
+    this.hIntensity = intensity;
   }
 
   /** Decimerad stor-FFT (var BIG_EVERY:e hop): 2048-magnitud, latminnets spec-sink, basonset-envelope, 8 band (niva/AGC/onset) + swap. */
-  private bigStep(rms: number): void {
+  private bigStep(): void {
+    const rms = this.hRms;
     this.bigCounter = 0;
     for (let i = 0; i < this.bufferBig.length; i++) this.windowedBig[i] = this.bufferBig[i] * this.windowBig[i];
     this.fftBig.realTransform(this.specBig, this.windowedBig);
@@ -3424,7 +3487,8 @@ export class Analyser {
   }
 
   /** Drop-detektionen (baskropp, franvaro, stigning, armering, minidrop, lugn-grind, kick-las, fyrning). Manga kalla grenar: egen funktion sa att en deopt bara kostar den har, inte hetslingan. */
-  private dropStep(kick: boolean, nowWallA: number, bodyNow: number): void {
+  private dropStep(): void {
+    const kick = this.hKick, nowWallA = this.hNowWall, bodyNow = this.hBody;
     const dtHop = this.dtHop;
     this.bodyEnv += (bodyNow - this.bodyEnv) * Math.min(1, dtHop / 0.35);
     this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / BODY_FAST_S);
@@ -3629,7 +3693,8 @@ export class Analyser {
   }
 
   /** Uppbyggnad/riser (spektral novelty + klang/niva). Returnerar inRiser och uppdaterar buildUp. */
-  private riserStep(nowWallA: number): boolean {
+  private riserStep(): boolean {
+    const nowWallA = this.hNowWall;
     const dtHop = this.dtHop;
     // ── UPPBYGGNAD / RISER (flyttad hit) ──
     // Spektral NOVELTY = summan av bandens POSITIVA avvikelse från en ~2s baslinje,
@@ -3691,7 +3756,8 @@ export class Analyser {
   }
 
   /** Sektionens blocksummor per hop (SECTION_AGG 'env': ackumulator; 'hop': sectionHop direkt / snabba sidans aggregat). */
-  private sectionAggStep(intensity: number, kick: boolean, breaking: boolean, rms: number, fluxNorm: number, nowWallA: number): void {
+  private sectionAggStep(): void {
+    const intensity = this.hIntensity, kick = this.hKick, breaking = this.hBreaking, rms = this.hRms, fluxNorm = this.hFlux, nowWallA = this.hNowWall;
     const dtHop = this.dtHop;
       if (SECTION_AGG_HOP) {
         // Aldre vagen: bandens magnitud ur band-dB; odelad analysator kor sectionHop per hop, snabba sidan aggregerar.
@@ -3700,7 +3766,8 @@ export class Analyser {
           const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += this.dtHop * 1000;
           g.breaking = breaking ? 1 : 0; g.wall = this.wallNow(); g.drops = this.dropCount; g.active = this.activeMs; g.build = this.buildUp;
           for (let i = 0; i < 8; i++) g.spec[i] += sp[i];
-        } else this.sectionHop(1, intensity, kick ? 1 : 0, breaking, this.wallNow(), this.dtHop * 1000, rms * rms, this.centSmooth, sp);
+        } else { const I = this.shIn; I.hops = 1; I.intSum = intensity; I.kicks = kick ? 1 : 0; I.breaking = breaking; I.nowMs = this.wallNow(); I.dtMs = this.dtHop * 1000;
+          I.rms2Sum = rms * rms; I.centSum = this.centSmooth; I.specOff = 0; I.bonSum = 0; I.bpk = 0; I.fluxSum = 0; I.rms4Sum = 0; this.sectionHop(sp); }
       } else {
         const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
         for (let i = 0; i < 8; i++) g.spec[i] += this.bandAbs[i];
@@ -3709,7 +3776,9 @@ export class Analyser {
   }
 
   /** Muterar det ateranvanda Frame:t (spec/onset/drum + alla skalarer) och kor sektionsaggregatet. Bara skalarer in: ingen allokering per hop. */
-  private fillFrame(level: number, fluxNorm: number, kick: boolean, intensity: number, bodyNow: number, inZone: boolean, breaking: boolean, inRiser: boolean, kickAtMs: number, barShift: number, rms: number, nowWallA: number): Frame {
+  private fillFrame(): Frame {
+    const level = this.hLevel, fluxNorm = this.hFlux, kick = this.hKick, intensity = this.hIntensity, bodyNow = this.hBody, inZone = this.hInZone, breaking = this.hBreaking,
+      inRiser = this.hInRiser, kickAtMs = this.hKickAt, barShift = this.hBarShift, rms = this.hRms, nowWallA = this.hNowWall;
     const L = this.bandLvl, A = this.bandAbs, O = this.bandOn;
     const spec = this.outSpec, specAbs = this.outSpecAbs, onset = this.outOnset;
     spec.sub = L[0]; spec.kick = L[1]; spec.bass = L[2]; spec.lowMid = L[3]; spec.mid = L[4]; spec.highMid = L[5]; spec.treble = L[6]; spec.air = L[7];
@@ -3731,7 +3800,7 @@ export class Analyser {
     // Gridfasen ut: konstant offset (detektorns slap) och/eller trim. Bada 0/av som standard => oforandrad fas.
     f.beatPhaseMs = this.beatPhaseMs > 0 ? this.beatPhaseMs - Analyser.GRID_PHASE_OFFSET_MS + (Analyser.GRID_PHASE_TRIM_ON ? this.phaseTrimMs() : 0) : this.beatPhaseMs;
     f.beatPhaseConf = this.beatPhaseConf;
-    if (Analyser.SECTION_ON) this.sectionAggStep(intensity, kick, breaking, rms, fluxNorm, nowWallA);
+    if (Analyser.SECTION_ON) this.sectionAggStep();
     const nowS = SECTION_AGG_HOP ? this.wallNow() : nowWallA;
     f.section = this.section; f.sectionAgeMs = this.sectionStartMs > 0 ? nowS - this.sectionStartMs : 0; f.sectionIndex = this.sectionIndex; f.sectionTier = this.sectionTier;
     f.repeatSim = this.repeatSim; f.repeatAgoMs = this.repeatAgoMs; f.repeatSection = this.repeatSection;
@@ -3746,6 +3815,13 @@ export class Analyser {
  *  inte allokerar en closure per hop. */
 function ema(prev: number, x: number, aUp: number, aDown: number): number {
   return prev + (x - prev) * (x > prev ? aUp : aDown);
+}
+
+/** alignScore:s toppvärde runt sampel i (max av i-1, i, i+1 i fönstret, golv 0) - modulnivå i st f closure per anrop (2026-10-17). */
+function alignAt(ring: Float32Array, start: number, LEN: number, N: number, i: number): number {
+  const c = ring[(start + i) % LEN]; const a = i > 0 ? ring[(start + i - 1) % LEN] : c; const b = i + 1 < N ? ring[(start + i + 1) % LEN] : c;
+  const m = c > a ? (c > b ? c : b) : (a > b ? a : b);
+  return m > 0 ? m : 0;
 }
 
 function cl01(x: number): number { return x < 0 ? 0 : x > 1 ? 1 : x; }

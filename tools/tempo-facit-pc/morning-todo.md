@@ -1,4 +1,8 @@
 ## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BORT MED ALLT LÖPANDE SKRÄP (går före allt utom hälsan)
+KLART 2026-10-17 kväll (DMX-sessionen, ägaren bad om det direkt): kodfixen gjord i analyser.ts i båda repona (md5 656c093a), bevisad
+(paritet 0 i 4 varianter, bänken live 396/503, syntet 6/8, on-beat 0,84; DMX 24/24 byte-identiska) - se Status i analysator-fynd.md.
+Lotus 72 -> 18 kB/s skräp. EJ DEPLOYAT: kräver deploy-analyser-dir.py (md5-spärren) - ägarens beslut. Morgonagenten: bara RESTEN
+nedan (riserStep/agcStep i mic-läge, ~12 kB/s, orsak okänd) och överväg samma V8-flagga för lotus (src/v8Tiering.ts i DMX).
 Ägarens mål: få bort ALLT skräp analysatorn skapar löpande. Orsakerna är nu hittade och bevisade - läs dmx-control/pi-dmx/engine/tools/natt/
 analysator-fynd.md avsnittet "ÖPPET 2026-10-17 kväll SKRÄPET HITTAT" (det ersätter morgonens gissningar). Kort:
 1. computeBpm/dropStep deoptas på sällsynta grenar och V8 optimerar om först efter 3000 anrop (4 Hz ⇒ ~12 min otolkat, allt boxas):
