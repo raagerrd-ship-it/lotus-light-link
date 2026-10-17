@@ -10,6 +10,7 @@
  *   - Sonos:      POST /api/subsystem/sonos/start
  */
 
+import './v8Tiering.js';   // FORST: V8 optimerar om efter 100 anrop i st f 3000 (skrapet halveras, se filen)
 import { installLocalStorageShim } from './storage.js';
 installLocalStorageShim();
 

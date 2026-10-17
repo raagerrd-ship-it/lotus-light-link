@@ -62,7 +62,8 @@ function stateHash(o) {
   const mix = (x) => { h ^= x; h = Math.imul(h, 16777619) >>> 0; };
   for (const k of Object.keys(o).sort()) {
     const v = o[k];
-    if (typeof v === 'number') { f64[0] = v; mix(u32[0]); mix(u32[1]); }
+    if (typeof v === 'number' && Number.isNaN(v)) mix(3);   // NaN = 'inte satt' (skrapjakten 10-17) = undefined
+    else if (typeof v === 'number') { f64[0] = v; mix(u32[0]); mix(u32[1]); }
     else if (typeof v === 'boolean') mix(v ? 1 : 2);
     else if (v === undefined) mix(3); else if (v === null) mix(4);
     else if (ArrayBuffer.isView(v) && v.length < 4096) { for (let i = 0; i < v.length; i++) { f64[0] = v[i]; mix(u32[0]); mix(u32[1]); } }

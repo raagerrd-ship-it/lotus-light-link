@@ -1288,6 +1288,9 @@ export function getMicHealth(): MicHealth {
 }
 
 
+/** onAudioData:s återanvända periodbuffert (se SKRÄPJAKTEN i funktionen). */
+let _cbBytes = new Uint8Array(4096), _cbI32 = new Int32Array(_cbBytes.buffer), _cbI16 = new Int16Array(_cbBytes.buffer);
+
 function onAudioData(buf: Buffer): void {
   const _cbT0 = performance.now();
   _lastAudioCbAt = _cbT0;
@@ -1329,9 +1332,13 @@ function onAudioData(buf: Buffer): void {
   const recBuf = _recScratch;
 
 
+  // SKRÄPJAKTEN 2026-10-17: en ny Int32Array/Int16Array-vy per ljudperiod (~190/s) var micvägens skräp (39 kB/s). Bytena kopieras i
+  // stället till en återanvänd buffert med fasta vyer (2 kB memcpy per period); samma tal läses.
+  if (_cbBytes.length < buf.byteLength) { _cbBytes = new Uint8Array(buf.byteLength); _cbI32 = new Int32Array(_cbBytes.buffer); _cbI16 = new Int16Array(_cbBytes.buffer); }
+  _cbBytes.set(buf);
   if (currentFormat === 'S32_LE') {
-    const samples = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength >> 2);
-    frameCount = samples.length >> 1;
+    const samples = _cbI32;
+    frameCount = (buf.byteLength >> 2) >> 1;
     const INV_S32 = 1 / 2147483648;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S32;
@@ -1352,8 +1359,8 @@ function onAudioData(buf: Buffer): void {
       pos = (pos + 1) & mask;
     }
   } else {
-    const samples = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1);
-    frameCount = samples.length >> 1;
+    const samples = _cbI16;
+    frameCount = (buf.byteLength >> 1) >> 1;
     const INV_S16 = 1 / 32768;
     for (let i = 0; i < frameCount; i++) {
       const rawPre = samples[i << 1] * INV_S16;
