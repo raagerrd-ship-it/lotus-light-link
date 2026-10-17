@@ -1,15 +1,19 @@
-## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BYGG FIXEN (går före allt utom hälsan)
-Fortsättning på ditt TAGET 10-17 i dmx-control/pi-dmx/engine/tools/natt/analysator-fynd.md ("Analysatorns skräp (GC)"). Bygg båda, bit-identiskt:
-1. STABIL OBJEKTFORM: alla Analyser-fält initieras i konstruktorn med rätt typ från start (talfält som får decimaltal sätts till ett
-   decimaltal/initieras som double, inga fält som läggs till eller byter typ efteråt) - samma grepp som doubleFields() i DMX effects.ts
-   (dmx-control 65f3e37: 'wrong map'-deopt ~45 -> ~5, effects 767 -> 128 kB/s). Mål: bort med 'wrong map' i bigStep/process och den lata
-   deopten i bigStep (--trace-deopt).
-2. SORTERING UTAN SKRÄP: templStep/sectionBlock (och andra som sorterar per block) sorterar i en återanvänd Float64Array-scratch
-   (subarray(0, n).sort()) i stället för slice()/arraykopia. Samma jämförelseordning ⇒ samma resultat (NaN-fritt, kontrollera).
-Bevis: paritet 0 (båda repona, samma fil + ANALYSER_SHARED.md5), bänken 396/503 oförändrad, och allokering i STABILT läge:
-`node tools/allocProf.mjs <wav> --fran 300` i dmx-control/pi-dmx/engine (utan --fran mäts mest uppvärmning/tolkläge = mätfälla) före/efter,
-analyser.js kB/s per funktion. Opt-in behövs inte om det är bevisat bit-identiskt; deploya inte - skriv 'redo' + kommandot i rapporten.
-Markera "KLART <datum>: <en rad>" här och sätt Status i analysator-fynd.md.
+## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BORT MED ALLT LÖPANDE SKRÄP (går före allt utom hälsan)
+Ägarens mål: få bort ALLT skräp analysatorn skapar löpande. Orsakerna är nu hittade och bevisade - läs dmx-control/pi-dmx/engine/tools/natt/
+analysator-fynd.md avsnittet "ÖPPET 2026-10-17 kväll SKRÄPET HITTAT" (det ersätter morgonens gissningar). Kort:
+1. computeBpm/dropStep deoptas på sällsynta grenar och V8 optimerar om först efter 3000 anrop (4 Hz ⇒ ~12 min otolkat, allt boxas):
+   flytta de sällsynta grenarna till egna små metoder (dist-rader i fyndet). Flaggan --invocation-count-for-turbofan=100 bevisar det
+   (computeBpm 66 -> 16-23 kB/s) men är processens val; lotus kan pröva samma flagga i sin unit.
+2. Decimaltal som argument/returvärde till metoder som inte inlinas boxas per anrop: för dem via fält (initierade i konstruktorn).
+   Recept + bevis: dmx-control/pi-dmx/engine/tools/skrap/skrapPatch1.py + skrapPatch2.py (på en dist-kopia: process 47 -> 6 kB/s,
+   fillFrame 22 -> 0, intensityStep 5 -> 0, byte-identiskt).
+3. Explicita allokeringar i sectionBlock och alignScore (listan i fyndet): scratch-buffertar och metoder i stället för slice/sort-kopior,
+   objekt och closurer per block.
+INTE: doubleFields på hela Analyser-objektet (prövat: dropStep 14 -> 72 kB/s).
+Bevis: paritet 0 (båda repona, ANALYSER_SHARED.md5), bänken 396/503, och i dmx-control/pi-dmx/engine:
+`node tools/allocProf.mjs tools/ladan-2026-10-14/lang-20261014T161434.wav --fran 300 [--dist <kopia>]` (UTAN --fran mäts uppvärmningen)
++ `node --allow-natives-syntax tools/skrap/optStat.mjs <wav> 600 --fran 300` (andel TurboFan). Mål: analysatorn i stabilt läge från
+183 kB/s mot ~0. Deploya inte - skriv 'redo' + kommandot i rapporten. Markera "KLART <datum>: <en rad>" här och Status i fyndet.
 
 ## KLART 2026-09-24 (huvudsessionen): enad analysator mergad + lotus live; Mio min mio = morgonagentens TEMPO_UP43, LIVE på lotus 09:00 (2/3 fångster rätt, korpus 171 -> 180/214).
 
