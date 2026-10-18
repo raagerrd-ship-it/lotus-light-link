@@ -27,7 +27,7 @@ import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { nextRasterEventAt, getRasterStats, resetRasterWindow, NOMINAL_PERIOD_MS } from './ble-driver/raster.js';
-import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, trustRaw, trustSmooth, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams, PULSE_NOMINAL } from './heartbeat/heartbeat.js';
+import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, trustRaw, trustSmooth, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams, type PulseSplitOut, PULSE_NOMINAL } from './heartbeat/heartbeat.js';
 
 /**
  * TICK-SYNK (2026-09-21, opt-in LOTUS_TICK_SYNC=1): motorn tickar i fas med radions
@@ -1464,12 +1464,17 @@ export class PiLightEngine {
   // HEART-BEAT (2026-09-23): pulsringen och pulsens form bor i heartbeat/heartbeat.ts (PulseTrack, pulseEnvelope, pulseAmpFor) —
   // utbrutet VERBATIM, bevisat bit-identiskt i pi/scripts/heartbeatProof.mjs. Motorn äger bara tidsbaserna och kalibreringen.
   private _pp = new PulseTrack();
+  private _psOut: PulseSplitOut = { p: 0, pn: 0, one: 0 };
   private _ppLastIdxTick = -1e9; private _ppOut = 0;
   private ppPush(idxKey: number, tMs: number, amp: number): void { this._pp.push(idxKey, tMs, amp); }
+  // Samma objekt varje gang (skrapjakten 10-18: forr ett nytt objekt med tio tal per tick); lases direkt av pulseEnvelope, sparas aldrig.
+  private _ppPar: PulseShapeParams = { riseMs: 0, riseHoldK: 0, fadeMode: 0, pulseIntervalMs: 0, shapeRel: 0, fadeEnergyCalm: 0, fadeEnergyIntense: 0, fadeTauMin: 0, fadeTauMax: 0, fadeIntervalK: 0 };
   private pulseParams(): PulseShapeParams {
-    return { riseMs: this.cal.onsetRiseMs ?? 0, riseHoldK: this.cal.onsetRiseHoldK ?? 2.0, fadeMode: this.cal.fadeMode ?? 0, pulseIntervalMs: this._pulseIntervalMs,
-      shapeRel: this._shapeRel ?? 1, fadeEnergyCalm: this.cal.fadeEnergyCalm ?? 1.0, fadeEnergyIntense: this.cal.fadeEnergyIntense ?? 1.0,
-      fadeTauMin: this.cal.fadeTauMin ?? 0.12, fadeTauMax: this.cal.fadeTauMax ?? 1.2, fadeIntervalK: this.cal.fadeIntervalK ?? 0.35 };
+    const q = this._ppPar;
+    q.riseMs = this.cal.onsetRiseMs ?? 0; q.riseHoldK = this.cal.onsetRiseHoldK ?? 2.0; q.fadeMode = this.cal.fadeMode ?? 0; q.pulseIntervalMs = this._pulseIntervalMs;
+    q.shapeRel = this._shapeRel ?? 1; q.fadeEnergyCalm = this.cal.fadeEnergyCalm ?? 1.0; q.fadeEnergyIntense = this.cal.fadeEnergyIntense ?? 1.0;
+    q.fadeTauMin = this.cal.fadeTauMin ?? 0.12; q.fadeTauMax = this.cal.fadeTauMax ?? 1.2; q.fadeIntervalK = this.cal.fadeIntervalK ?? 0.35;
+    return q;
   }
   // KLAPP-LAGE (2026-09-21, matning ljud->ljus): bredbands-onset (flux) -> vit 100 % i 150 ms, annars 5 %. Inga grindar,
   // ingen takt, ingen nivakanal. Slow-mo-video av en klapp ger da: hander mots (bild) vs ljudspik (A/V-offset) vs lampans blixt.
@@ -3046,6 +3051,216 @@ export class PiLightEngine {
 
 
   /** Hot path — zero-allocation, precomputed constants, event-driven from FFT */
+  /** Steg 6 i tickInner (takten, tilliten, taket, kompositionen) - ordagrant flyttat 10-18, se anropet. */
+  private _es = { shapeSm: 0, floorN: 0, energyForm: 0, outN: 0 };   // in/ut (ett objekt: falten skrivs pa plats och ingar inte i motorns tillstand)
+  private energyStep(cal: LightCalibration, tc: TickConstants, inSilence: boolean): void {
+    const es = this._es, shapeSm = es.shapeSm, floorN = es.floorN;
+    // ── 6. BRIGHTNESS — TAKTEN ÄR GRUNDEN, ENERGIN SÄTTER TAKET (multiplikativ).
+    // Pulsen normaliseras mot sitt NOMINELLA mål (0.45) i stället för att klampas:
+    // additivt klampade både vanligt slag och ettan till ~1.0 och accenten försvann.
+    // (heartbeat.ts) pulsen normeras mot sitt nominella mål 0,45: pn = djupet inom taket, one = ettans överskott
+    if (PULSE_PREDICT) { if (inSilence) this.ppClear(); else this.ppTick(); }
+    const { p, pn, one } = pulseSplit(this.onsetBoost, this._ppOut, cal.barAccent ?? 1, this._psOut);   // ut-objektet ateranvands (skrapjakten 10-18)
+    void p;
+
+    // buildUp OCH ettan höjer TAKET (adderas inte ovanpå — då klampar de bort pulsen)
+    const _f = getLatestFrame();
+    let bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
+    // FORVARNING (2026-09-21, workerns sektionsminne): expectHighInMs = ms tills nasta refrang vantas (frasgitter fran senaste
+    // high-starten + stigande energi; bank 11/22 inom +-2 s, 2,8 falska/min). De sista EXPECT_LIFT_MS lyfts taket som en riser
+    // (samma vag som buildUp, max av de tva) sa ljuset "gasar" IN i refrangen i stallet for 1-2 s efter den. LOTUS_EXPECT_LIFT_MS=0 = av.
+    const _ex = _f ? ((_f as any).expectHighInMs ?? -1) : -1;
+    if (EXPECT_LIFT_MS > 0 && _ex > 0 && _ex <= EXPECT_LIFT_MS) { const l = 1 - _ex / EXPECT_LIFT_MS; if (l > bu) bu = l; }
+    // ── UPPSPELNING: taket ur latens egen energikurva ────────────────────
+    // Ersatter micens `shapeSm` helt nar bade kurvan och positionen finns.
+    // Faller tillbaka pa micen sa fort klockan tappar — aldrig ett svart hopp.
+    let shapeUse = shapeSm;
+    if (this._pbEnergy) {
+      const _p = this._clock.state(Date.now()).positionMs;
+      if (_p != null && _p >= 0) {
+        // INTERPOLERA MELLAN FACKEN. Kurvan har 100 ms upplosning; utan
+        // interpolation hoppar ljuset i TRAPPSTEG tio ganger i sekunden, och
+        // genom ett 10 dB-fonster syns varje steg. Det var fladdret.
+        // (Utjamningen ensam raddade det inte: med tickMs 18 och
+        // shapeSmoothUpMs 25 blir EMA-alfan 0.72, alltsa nastan ingen
+        // utjamning alls — den slapper igenom hela steget pa en ram.)
+        const fi = _p / 100;
+        const i = Math.floor(fi);
+        if (i >= 0 && i + 1 < this._pbEnergy.length) {
+          const fr = fi - i;
+          const e0 = this._pbEnergy[i], e1 = this._pbEnergy[i + 1];
+          const v = (e0 + (e1 - e0) * fr) / this._pbRef;
+          const db = 20 * Math.log10(Math.max(v, 1e-4));
+          const win = Math.max(1, cal.windowDb ?? 10);
+          let sh = (db + win) / win;
+          if (sh < 0) sh = 0; else if (sh > 1) sh = 1;
+          // Egen tidskonstant, inte micens. Micens 25 ms ar satt for att folja
+          // en RA signal snabbt; har ar signalen redan slat och interpolerad,
+          // sa 80 ms tar bort resterande kantighet utan att gora ljuset trogt.
+          const a2 = Math.min(1, (this.tickMs || 18) / 80);
+          this._pbShape += (sh - this._pbShape) * a2;
+          shapeUse = this._pbShape;
+        }
+      }
+    }
+    // TAKET (heartbeat.ts ceilingFrom): nivåform × uppbyggnad, ettan lyfter, sedan SEKTIONSDYNAMIK (2026-09-21): levelVsHighDb =
+    // blockets dB mot senaste refrangens medel — LATENS EGEN referens, inte dB-ankaret (som sjunker i lugna partier; agaren i ladan:
+    // "lyser mycket aven om laten blir tystare"). Tystare an refrangen -> taket × (1 + dB/SECTION_DYN_DB), golv SECTION_DYN_FLOOR. 0 = av.
+    const _lv = _f ? ((_f as any).levelVsHighDb ?? 0) : 0;
+    const ceil = ceilingFrom(shapeUse, bu, cal.buildUpGain ?? 0, one, cal.barAccentLift ?? 0.30, _lv, SECTION_DYN_DB, SECTION_DYN_FLOOR);
+
+    // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
+    // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
+    // av/på när konfidensen vandrade kring tröskeln (locked flippade 4×/3 min).
+    // Golvet låter modulationen leva på FAKTISKA transienter när takten är otydlig.
+    const _c = this._beat?.confidence ?? 0;
+    const _lo = this.cal.beatTrustLoConf ?? 0.30;
+    const _hi = this.cal.beatTrustHiConf ?? 0.70;
+    let _tRaw = trustRaw(_c, hasBeat(this._beat), _lo, _hi);
+    // OSYNK -> ENERGI: fasfel over gransen eller ateratagning efter latbyte drar ner den raa tilliten (smoothingen ger 0,8 s ner / 0,4 s upp).
+    const _syncLim = Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12), _syncErr = Math.abs(this._beatErr);
+    const _syncMul = Date.now() < this._reacqUntil ? 0 : _syncErr <= _syncLim ? 1 : Math.max(0, 1 - (_syncErr - _syncLim) / _syncLim);
+    _tRaw *= _syncMul; this._syncMul = _syncMul;
+    { const _nowR = Date.now(), _relock = this.cal.beatRelockAfterMs ?? 1500;
+      if (_tRaw < 0.2) { if (this._trustLowSince === 0) this._trustLowSince = _nowR; else if (_nowR - this._trustLowSince >= _relock) { this._bpmStableSince = _nowR; this._lockGood = 0; } }
+      else this._trustLowSince = 0; }
+    // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
+    // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
+    // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
+    const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
+    this._trustSm = trustSmooth(_tRaw, this._trustSm, TICK_PERIOD_MS, _up, _down);
+    // BEVISTID (beatLockHoldS): tempot maste ha legat stabilt (+-3 %) sa lange innan tilliten (och transientgolvet) ar full.
+    const _lockBeats = this.cal.beatLockBeats ?? 8;
+    const _hold = this.cal.beatLockHoldS ?? 0; let _ramp = 1;
+    if (_lockBeats > 0) {
+      // per SLAG: rent slag = +1, smutsigt = -2 (golv 0); tempot bytt/borta = 0. ramp = rena slag / beatLockBeats.
+      const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
+      if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; this._lockGood = 0; this._lockBeatIdx = -1e9; }
+      else {
+        if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; this._lockGood = 0; }
+        const _idx = beatIndex(this._beat!, _nowMs);
+        if (_idx !== this._lockBeatIdx) {
+          this._lockBeatIdx = _idx;
+          const _clean = _c >= _hi && Math.abs(this._beatErr) <= Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12) / 2 && _nowMs >= this._reacqUntil;
+          this._lockGood = _clean ? this._lockGood + 1 : Math.max(0, this._lockGood - 2);
+        }
+      }
+      _ramp = Math.min(1, this._lockGood / _lockBeats);
+    } else if (_hold > 0) {
+      const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
+      if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; }
+      else if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; }
+      _ramp = this._bpmStableSince > 0 ? Math.min(1, (_nowMs - this._bpmStableSince) / (_hold * 1000)) : 0;
+    }
+    this._lockRamp = _ramp;
+    // Golvet (modulation pa FAKTISKA transienter = 'reagerar pa allt ljud') rampas INTE - bara rasterpulsens tillit (agaren 18:50).
+    const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm * _ramp);
+
+    // ── SEKTIONSBETEENDE ────────────────────────────────────────────────
+    // Kraver att vi VET var i laten vi ar. Klockan sager null tills den har
+    // underlag (tre Sonos-flankar), och da galler tabellens neutrala 1/1 —
+    // alltsa exakt samma ljus som forr. Sektioner ar ett TILLAGG.
+    let _tgtScale = 1, _tgtPulse = 1;
+    const _parts = this._songEntry?.parts;
+    if (_parts && _parts.length) {
+      const _pos = this._clock.state(Date.now()).positionMs;
+      if (_pos != null) {
+        let _lab = '';
+        for (let i = _parts.length - 1; i >= 0; i--) {
+          if (_pos >= _parts[i].t) { _lab = _parts[i].label; break; }
+        }
+        const _sp = PiLightEngine.SECTION[_lab];
+        if (_sp) {
+          _tgtScale = Math.min(1, _sp.scale * this._secNormS);
+          _tgtPulse = Math.min(1, _sp.pulse * this._secNormP);
+        }
+      }
+    }
+    // Glid, hoppa inte: ett steg i ljusstyrka vid en sektionsgrans laser som
+    // ett fel aven nar tidpunkten ar ratt. ~2 s = ungefar en fras.
+    const _secA = Math.min(1, (this.tickMs || 18) / 2000);
+    this._secScale += (_tgtScale - this._secScale) * _secA;
+    this._secPulse += (_tgtPulse - this._secPulse) * _secA;
+
+    // ── DROPS UR MINNET ─────────────────────────────────────────────────
+    // Fyras DROP_PRE_MS fore sin tidpunkt. Index gar bara framat; hoppar
+    // positionen bakat (seek) sokas det om, annars skulle en spolning
+    // antingen missa alla drops eller fyra dem i klump.
+    const _drops = this._songEntry?.drops;
+    if (_drops && _drops.length) {
+      const _pos = this._clock.state(Date.now()).positionMs;
+      if (_pos != null) {
+        if (this._dropIdx > 0 && _drops[this._dropIdx - 1] && _pos < _drops[this._dropIdx - 1].t - 2000) {
+          this._dropIdx = 0;                       // spolat bakat
+          while (this._dropIdx < _drops.length && _drops[this._dropIdx].t + PiLightEngine.DROP_PRE_MS < _pos) this._dropIdx++;
+        }
+        while (this._dropIdx < _drops.length && _pos >= _drops[this._dropIdx].t - PiLightEngine.DROP_PRE_MS) {
+          const _d = _drops[this._dropIdx++];
+          // Bara om vi ar NARA i tiden. En klocka som just hittat ratt far
+          // inte spela upp hela latens drops pa en gang.
+          if (Math.abs(_pos - _d.t) < 1500) this._dropBoost = Math.max(this._dropBoost, _d.s ?? 0.5);
+        }
+      }
+    }
+    // ── FORVANTAN: bygg upp mot nasta drop ──────────────────────────────
+    // Kraver inget nytt tillstand — nasta drop ar helt enkelt `_dropIdx`.
+    let _build = 1;
+    if (_drops && this._dropIdx < _drops.length) {
+      const _p2 = this._clock.state(Date.now()).positionMs;
+      if (_p2 != null) {
+        const _dt = _drops[this._dropIdx].t - _p2;
+        if (_dt > 0 && _dt < PiLightEngine.BUILD_MS) {
+          const _u = 1 - _dt / PiLightEngine.BUILD_MS;      // 0 vid start, 1 vid dropen
+          // Dipp forst, stigning sedan: ljuset ger plats at det som kommer.
+          const _sh = _drops[this._dropIdx].s ?? 0.5;
+          _build = 1 - PiLightEngine.BUILD_DIP * _sh * (1 - _u)
+                     + PiLightEngine.BUILD_TOP * _sh * (_u * _u);
+        }
+      }
+    }
+
+    // Avklingning: ~350 ms till halva. Kort nog att kannas som en traff,
+    // langt nog att inte bli ett flimmer.
+    if (this._dropBoost > 0) {
+      this._dropBoost *= Math.exp(-(this.tickMs || 18) / 500);
+      if (this._dropBoost < 0.01) this._dropBoost = 0;
+    }
+
+    // TVA VAGAR, TVA DJUP: transienterna (onsetBoost) med energyDepth oavsett tillit; rastret (_ppOut) med beatDepth x rampad tillit
+    // (utan golv - golvets jobb, 'transienterna ska synas', gors nu av onset-vagen sjalv). pn = max av de tva, normerade mot 0,45.
+    const trustGrid = (this._trustSm ?? 0) * this._lockRamp;
+    const pnOnset = Math.min(1, this.onsetBoost / PULSE_NOMINAL);
+    // INGEN DUBBELPULS I ENERGILAGET (agaren 19:22: 'nagot far den att fladdra - krock med leadms?'): rasterpulsen ligger 72 ms FORE
+    // slaget (lead), anslagspulsen kommer EFTER - med bada aktiva blev det tva pulser per slag. Rastret ar 0 under (energyGridTrust - 0,15)
+    // och fullt fran energyGridTrust + 0,15; anslagen viktas ner i samma takt (ner till energyLockedMul).
+    const _gt = this.cal.energyGridTrust ?? 0.5;
+    const gridW = Math.max(0, Math.min(1, (trustGrid - (_gt - 0.15)) / 0.3));
+    const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * gridW;
+    this._gridW = gridW;
+    const eDepthMax = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
+    { const _a = Math.min(1, (this.tickMs || 18) / 1500); this._onsetAct += (pnOnset - this._onsetAct) * _a; }
+    const _actRef = Math.max(0.02, this.cal.energyActRef ?? 0.25);
+    const eDepth = eDepthMax * Math.min(1, this._onsetAct / _actRef);
+    // HORD TAKT: inga slag pa beatQuietBeats slag -> pulsen tonas ut (ren energi, inget blink i break/lugnt parti)
+    { const _qb = this.cal.beatQuietBeats ?? 4; const _bms = hasBeat(this._beat) ? 60000 / this._beat!.bpm : 500;
+      const _quiet = _qb > 0 && Date.now() - this._lastHeardMs > Math.max(2000, _qb * _bms);   // trogt in (glesa kickar ar inte tystnad)
+      this._heardW += ((_quiet ? 0 : 1) - this._heardW) * Math.min(1, (this.tickMs || 18) / (_quiet ? 800 : 200)); }   // ut 0,8 s, in 0,2 s
+    const bd    = Math.max(tc.beatDepth * gridW * this._heardW, eDepth) * this._secPulse;   // pausen tar bara RASTRET (anslagen pulsar kvar = energilaget)
+    const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - gridW);   // energi -> heart-beat: renare
+    const pnEff = Math.max(pnOnset * Math.max(onsetW, 1 - this._heardW), pnGrid * this._heardW);   // utan hord takt: rastret av, anslagen fullt
+    void trust;
+
+    // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
+    // i stället för att adderas — kan aldrig klippa och betyder mest när ljuset är lågt. toNormalized = golv..1 (output-lagrets steg).
+    // ENERGI DIREKT: stigande tak = omedelbar puls (se energyRiseK)
+    { const _tau = Math.max(50, this.cal.energyRiseTauMs ?? 400); this._ceilSlow = this._ceilSlow <= 0 ? ceil : this._ceilSlow + (ceil - this._ceilSlow) * Math.min(1, (this.tickMs || 18) / _tau); }
+    const _riseK = this.cal.energyRiseK ?? 3;
+    const pnRise = _riseK > 0 && this._ceilSlow > 0.02 ? Math.max(0, Math.min(1, (ceil / this._ceilSlow - 1) * _riseK)) : 0;
+    const energyForm = composeEnergy(ceil, this._secScale, _build, bd, Math.max(pnEff, pnRise), this._dropBoost);
+    const outN = toNormalized(energyForm, floorN);
+    es.energyForm = energyForm; es.outN = outN;
+  }
+
   tickInner(): void {
     // Liveness, inte leverans: en stängd playing/BLE-grind är korrekt vila och
     // får inte tolkas som en wedgad motor av Playback-Watchdog.
@@ -3247,209 +3462,11 @@ export class PiLightEngine {
       }
 
 
-      // ── 6. BRIGHTNESS — TAKTEN ÄR GRUNDEN, ENERGIN SÄTTER TAKET (multiplikativ).
-      // Pulsen normaliseras mot sitt NOMINELLA mål (0.45) i stället för att klampas:
-      // additivt klampade både vanligt slag och ettan till ~1.0 och accenten försvann.
-      // (heartbeat.ts) pulsen normeras mot sitt nominella mål 0,45: pn = djupet inom taket, one = ettans överskott
-      if (PULSE_PREDICT) { if (inSilence) this.ppClear(); else this.ppTick(); }
-      const { p, pn, one } = pulseSplit(this.onsetBoost, this._ppOut, cal.barAccent ?? 1);
-      void p;
-
-      // buildUp OCH ettan höjer TAKET (adderas inte ovanpå — då klampar de bort pulsen)
-      const _f = getLatestFrame();
-      let bu = (_f && (_f as any).buildUp) ? (_f as any).buildUp : 0;
-      // FORVARNING (2026-09-21, workerns sektionsminne): expectHighInMs = ms tills nasta refrang vantas (frasgitter fran senaste
-      // high-starten + stigande energi; bank 11/22 inom +-2 s, 2,8 falska/min). De sista EXPECT_LIFT_MS lyfts taket som en riser
-      // (samma vag som buildUp, max av de tva) sa ljuset "gasar" IN i refrangen i stallet for 1-2 s efter den. LOTUS_EXPECT_LIFT_MS=0 = av.
-      const _ex = _f ? ((_f as any).expectHighInMs ?? -1) : -1;
-      if (EXPECT_LIFT_MS > 0 && _ex > 0 && _ex <= EXPECT_LIFT_MS) { const l = 1 - _ex / EXPECT_LIFT_MS; if (l > bu) bu = l; }
-      // ── UPPSPELNING: taket ur latens egen energikurva ────────────────────
-      // Ersatter micens `shapeSm` helt nar bade kurvan och positionen finns.
-      // Faller tillbaka pa micen sa fort klockan tappar — aldrig ett svart hopp.
-      let shapeUse = shapeSm;
-      if (this._pbEnergy) {
-        const _p = this._clock.state(Date.now()).positionMs;
-        if (_p != null && _p >= 0) {
-          // INTERPOLERA MELLAN FACKEN. Kurvan har 100 ms upplosning; utan
-          // interpolation hoppar ljuset i TRAPPSTEG tio ganger i sekunden, och
-          // genom ett 10 dB-fonster syns varje steg. Det var fladdret.
-          // (Utjamningen ensam raddade det inte: med tickMs 18 och
-          // shapeSmoothUpMs 25 blir EMA-alfan 0.72, alltsa nastan ingen
-          // utjamning alls — den slapper igenom hela steget pa en ram.)
-          const fi = _p / 100;
-          const i = Math.floor(fi);
-          if (i >= 0 && i + 1 < this._pbEnergy.length) {
-            const fr = fi - i;
-            const e0 = this._pbEnergy[i], e1 = this._pbEnergy[i + 1];
-            const v = (e0 + (e1 - e0) * fr) / this._pbRef;
-            const db = 20 * Math.log10(Math.max(v, 1e-4));
-            const win = Math.max(1, cal.windowDb ?? 10);
-            let sh = (db + win) / win;
-            if (sh < 0) sh = 0; else if (sh > 1) sh = 1;
-            // Egen tidskonstant, inte micens. Micens 25 ms ar satt for att folja
-            // en RA signal snabbt; har ar signalen redan slat och interpolerad,
-            // sa 80 ms tar bort resterande kantighet utan att gora ljuset trogt.
-            const a2 = Math.min(1, (this.tickMs || 18) / 80);
-            this._pbShape += (sh - this._pbShape) * a2;
-            shapeUse = this._pbShape;
-          }
-        }
-      }
-      // TAKET (heartbeat.ts ceilingFrom): nivåform × uppbyggnad, ettan lyfter, sedan SEKTIONSDYNAMIK (2026-09-21): levelVsHighDb =
-      // blockets dB mot senaste refrangens medel — LATENS EGEN referens, inte dB-ankaret (som sjunker i lugna partier; agaren i ladan:
-      // "lyser mycket aven om laten blir tystare"). Tystare an refrangen -> taket × (1 + dB/SECTION_DYN_DB), golv SECTION_DYN_FLOOR. 0 = av.
-      const _lv = _f ? ((_f as any).levelVsHighDb ?? 0) : 0;
-      const ceil = ceilingFrom(shapeUse, bu, cal.buildUpGain ?? 0, one, cal.barAccentLift ?? 0.30, _lv, SECTION_DYN_DB, SECTION_DYN_FLOOR);
-
-      // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
-      // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
-      // av/på när konfidensen vandrade kring tröskeln (locked flippade 4×/3 min).
-      // Golvet låter modulationen leva på FAKTISKA transienter när takten är otydlig.
-      const _c = this._beat?.confidence ?? 0;
-      const _lo = this.cal.beatTrustLoConf ?? 0.30;
-      const _hi = this.cal.beatTrustHiConf ?? 0.70;
-      let _tRaw = trustRaw(_c, hasBeat(this._beat), _lo, _hi);
-      // OSYNK -> ENERGI: fasfel over gransen eller ateratagning efter latbyte drar ner den raa tilliten (smoothingen ger 0,8 s ner / 0,4 s upp).
-      const _syncLim = Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12), _syncErr = Math.abs(this._beatErr);
-      const _syncMul = Date.now() < this._reacqUntil ? 0 : _syncErr <= _syncLim ? 1 : Math.max(0, 1 - (_syncErr - _syncLim) / _syncLim);
-      _tRaw *= _syncMul; this._syncMul = _syncMul;
-      { const _nowR = Date.now(), _relock = this.cal.beatRelockAfterMs ?? 1500;
-        if (_tRaw < 0.2) { if (this._trustLowSince === 0) this._trustLowSince = _nowR; else if (_nowR - this._trustLowSince >= _relock) { this._bpmStableSince = _nowR; this._lockGood = 0; } }
-        else this._trustLowSince = 0; }
-      // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
-      // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
-      // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
-      const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
-      this._trustSm = trustSmooth(_tRaw, this._trustSm, TICK_PERIOD_MS, _up, _down);
-      // BEVISTID (beatLockHoldS): tempot maste ha legat stabilt (+-3 %) sa lange innan tilliten (och transientgolvet) ar full.
-      const _lockBeats = this.cal.beatLockBeats ?? 8;
-      const _hold = this.cal.beatLockHoldS ?? 0; let _ramp = 1;
-      if (_lockBeats > 0) {
-        // per SLAG: rent slag = +1, smutsigt = -2 (golv 0); tempot bytt/borta = 0. ramp = rena slag / beatLockBeats.
-        const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
-        if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; this._lockGood = 0; this._lockBeatIdx = -1e9; }
-        else {
-          if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; this._lockGood = 0; }
-          const _idx = beatIndex(this._beat!, _nowMs);
-          if (_idx !== this._lockBeatIdx) {
-            this._lockBeatIdx = _idx;
-            const _clean = _c >= _hi && Math.abs(this._beatErr) <= Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12) / 2 && _nowMs >= this._reacqUntil;
-            this._lockGood = _clean ? this._lockGood + 1 : Math.max(0, this._lockGood - 2);
-          }
-        }
-        _ramp = Math.min(1, this._lockGood / _lockBeats);
-      } else if (_hold > 0) {
-        const _bpmNow = hasBeat(this._beat) ? (this._beat!.bpm || 0) : 0; const _nowMs = Date.now();
-        if (_bpmNow <= 0) { this._bpmRef = 0; this._bpmStableSince = 0; }
-        else if (this._bpmRef <= 0 || Math.abs(_bpmNow - this._bpmRef) > this._bpmRef * 0.03) { this._bpmRef = _bpmNow; this._bpmStableSince = _nowMs; }
-        _ramp = this._bpmStableSince > 0 ? Math.min(1, (_nowMs - this._bpmStableSince) / (_hold * 1000)) : 0;
-      }
-      this._lockRamp = _ramp;
-      // Golvet (modulation pa FAKTISKA transienter = 'reagerar pa allt ljud') rampas INTE - bara rasterpulsens tillit (agaren 18:50).
-      const trust = Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm * _ramp);
-
-      // ── SEKTIONSBETEENDE ────────────────────────────────────────────────
-      // Kraver att vi VET var i laten vi ar. Klockan sager null tills den har
-      // underlag (tre Sonos-flankar), och da galler tabellens neutrala 1/1 —
-      // alltsa exakt samma ljus som forr. Sektioner ar ett TILLAGG.
-      let _tgtScale = 1, _tgtPulse = 1;
-      const _parts = this._songEntry?.parts;
-      if (_parts && _parts.length) {
-        const _pos = this._clock.state(Date.now()).positionMs;
-        if (_pos != null) {
-          let _lab = '';
-          for (let i = _parts.length - 1; i >= 0; i--) {
-            if (_pos >= _parts[i].t) { _lab = _parts[i].label; break; }
-          }
-          const _sp = PiLightEngine.SECTION[_lab];
-          if (_sp) {
-            _tgtScale = Math.min(1, _sp.scale * this._secNormS);
-            _tgtPulse = Math.min(1, _sp.pulse * this._secNormP);
-          }
-        }
-      }
-      // Glid, hoppa inte: ett steg i ljusstyrka vid en sektionsgrans laser som
-      // ett fel aven nar tidpunkten ar ratt. ~2 s = ungefar en fras.
-      const _secA = Math.min(1, (this.tickMs || 18) / 2000);
-      this._secScale += (_tgtScale - this._secScale) * _secA;
-      this._secPulse += (_tgtPulse - this._secPulse) * _secA;
-
-      // ── DROPS UR MINNET ─────────────────────────────────────────────────
-      // Fyras DROP_PRE_MS fore sin tidpunkt. Index gar bara framat; hoppar
-      // positionen bakat (seek) sokas det om, annars skulle en spolning
-      // antingen missa alla drops eller fyra dem i klump.
-      const _drops = this._songEntry?.drops;
-      if (_drops && _drops.length) {
-        const _pos = this._clock.state(Date.now()).positionMs;
-        if (_pos != null) {
-          if (this._dropIdx > 0 && _drops[this._dropIdx - 1] && _pos < _drops[this._dropIdx - 1].t - 2000) {
-            this._dropIdx = 0;                       // spolat bakat
-            while (this._dropIdx < _drops.length && _drops[this._dropIdx].t + PiLightEngine.DROP_PRE_MS < _pos) this._dropIdx++;
-          }
-          while (this._dropIdx < _drops.length && _pos >= _drops[this._dropIdx].t - PiLightEngine.DROP_PRE_MS) {
-            const _d = _drops[this._dropIdx++];
-            // Bara om vi ar NARA i tiden. En klocka som just hittat ratt far
-            // inte spela upp hela latens drops pa en gang.
-            if (Math.abs(_pos - _d.t) < 1500) this._dropBoost = Math.max(this._dropBoost, _d.s ?? 0.5);
-          }
-        }
-      }
-      // ── FORVANTAN: bygg upp mot nasta drop ──────────────────────────────
-      // Kraver inget nytt tillstand — nasta drop ar helt enkelt `_dropIdx`.
-      let _build = 1;
-      if (_drops && this._dropIdx < _drops.length) {
-        const _p2 = this._clock.state(Date.now()).positionMs;
-        if (_p2 != null) {
-          const _dt = _drops[this._dropIdx].t - _p2;
-          if (_dt > 0 && _dt < PiLightEngine.BUILD_MS) {
-            const _u = 1 - _dt / PiLightEngine.BUILD_MS;      // 0 vid start, 1 vid dropen
-            // Dipp forst, stigning sedan: ljuset ger plats at det som kommer.
-            const _sh = _drops[this._dropIdx].s ?? 0.5;
-            _build = 1 - PiLightEngine.BUILD_DIP * _sh * (1 - _u)
-                       + PiLightEngine.BUILD_TOP * _sh * (_u * _u);
-          }
-        }
-      }
-
-      // Avklingning: ~350 ms till halva. Kort nog att kannas som en traff,
-      // langt nog att inte bli ett flimmer.
-      if (this._dropBoost > 0) {
-        this._dropBoost *= Math.exp(-(this.tickMs || 18) / 500);
-        if (this._dropBoost < 0.01) this._dropBoost = 0;
-      }
-
-      // TVA VAGAR, TVA DJUP: transienterna (onsetBoost) med energyDepth oavsett tillit; rastret (_ppOut) med beatDepth x rampad tillit
-      // (utan golv - golvets jobb, 'transienterna ska synas', gors nu av onset-vagen sjalv). pn = max av de tva, normerade mot 0,45.
-      const trustGrid = (this._trustSm ?? 0) * this._lockRamp;
-      const pnOnset = Math.min(1, this.onsetBoost / PULSE_NOMINAL);
-      // INGEN DUBBELPULS I ENERGILAGET (agaren 19:22: 'nagot far den att fladdra - krock med leadms?'): rasterpulsen ligger 72 ms FORE
-      // slaget (lead), anslagspulsen kommer EFTER - med bada aktiva blev det tva pulser per slag. Rastret ar 0 under (energyGridTrust - 0,15)
-      // och fullt fran energyGridTrust + 0,15; anslagen viktas ner i samma takt (ner till energyLockedMul).
-      const _gt = this.cal.energyGridTrust ?? 0.5;
-      const gridW = Math.max(0, Math.min(1, (trustGrid - (_gt - 0.15)) / 0.3));
-      const pnGrid = Math.min(1, this._ppOut / PULSE_NOMINAL) * gridW;
-      this._gridW = gridW;
-      const eDepthMax = Math.max(0, Math.min(1, this.cal.energyDepth ?? tc.beatDepth));
-      { const _a = Math.min(1, (this.tickMs || 18) / 1500); this._onsetAct += (pnOnset - this._onsetAct) * _a; }
-      const _actRef = Math.max(0.02, this.cal.energyActRef ?? 0.25);
-      const eDepth = eDepthMax * Math.min(1, this._onsetAct / _actRef);
-      // HORD TAKT: inga slag pa beatQuietBeats slag -> pulsen tonas ut (ren energi, inget blink i break/lugnt parti)
-      { const _qb = this.cal.beatQuietBeats ?? 4; const _bms = hasBeat(this._beat) ? 60000 / this._beat!.bpm : 500;
-        const _quiet = _qb > 0 && Date.now() - this._lastHeardMs > Math.max(2000, _qb * _bms);   // trogt in (glesa kickar ar inte tystnad)
-        this._heardW += ((_quiet ? 0 : 1) - this._heardW) * Math.min(1, (this.tickMs || 18) / (_quiet ? 800 : 200)); }   // ut 0,8 s, in 0,2 s
-      const bd    = Math.max(tc.beatDepth * gridW * this._heardW, eDepth) * this._secPulse;   // pausen tar bara RASTRET (anslagen pulsar kvar = energilaget)
-      const onsetW = Math.max(Math.max(0, Math.min(1, this.cal.energyLockedMul ?? 0.35)), 1 - gridW);   // energi -> heart-beat: renare
-      const pnEff = Math.max(pnOnset * Math.max(onsetW, 1 - this._heardW), pnGrid * this._heardW);   // utan hord takt: rastret av, anslagen fullt
-      void trust;
-
-      // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
-      // i stället för att adderas — kan aldrig klippa och betyder mest när ljuset är lågt. toNormalized = golv..1 (output-lagrets steg).
-      // ENERGI DIREKT: stigande tak = omedelbar puls (se energyRiseK)
-      { const _tau = Math.max(50, this.cal.energyRiseTauMs ?? 400); this._ceilSlow = this._ceilSlow <= 0 ? ceil : this._ceilSlow + (ceil - this._ceilSlow) * Math.min(1, (this.tickMs || 18) / _tau); }
-      const _riseK = this.cal.energyRiseK ?? 3;
-      const pnRise = _riseK > 0 && this._ceilSlow > 0.02 ? Math.max(0, Math.min(1, (ceil / this._ceilSlow - 1) * _riseK)) : 0;
-      const energyForm = composeEnergy(ceil, this._secScale, _build, bd, Math.max(pnEff, pnRise), this._dropBoost);
-      const outN = toNormalized(energyForm, floorN);
+      // ── 6. BRIGHTNESS: ordagrant flyttat till energyStep() (skrapjakten 10-18) - tickInner ar for stor for att V8 ska inlina
+      // heartbeat-hjalparna har, sa varje tal till/fran dem boxades per tick. In/ut via falt (dubbelfalt skrivs pa plats).
+      const es = this._es; es.shapeSm = shapeSm; es.floorN = floorN;
+      this.energyStep(cal, tc, inSilence);
+      const energyForm = es.energyForm, outN = es.outN;
 
       _diag.energyNorm = outN;
       let pct = outN * 100;

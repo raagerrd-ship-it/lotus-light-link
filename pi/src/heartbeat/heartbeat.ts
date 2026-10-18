@@ -65,12 +65,15 @@ export class PulseTrack {
 export const PULSE_NOMINAL = 0.45;
 
 /** Pulsen delad i djup INOM taket (pn 0..1) och ettans överskott (one 0..1). (= gamla p/pn/acc/one) */
-export function pulseSplit(onsetBoost: number, predicted: number, barAccent: number): { p: number; pn: number; one: number } {
+export type PulseSplitOut = { p: number; pn: number; one: number };
+/** out: ateranvant ut-objekt (motorn skickar samma varje tick - inget nytt objekt per tick, skrapjakten 10-18). */
+export function pulseSplit(onsetBoost: number, predicted: number, barAccent: number, out: PulseSplitOut = { p: 0, pn: 0, one: 0 }): PulseSplitOut {
   const p = Math.max(onsetBoost, predicted) / PULSE_NOMINAL;
   const pn = p < 1 ? p : 1;
   const acc = Math.max(1, barAccent);
   const one = acc > 1 ? Math.min(1, Math.max(0, p - 1) / (acc - 1)) : 0;
-  return { p, pn, one };
+  out.p = p; out.pn = pn; out.one = one;
+  return out;
 }
 
 /** Rå tillit ur taktens konfidens (mjuk ramp lo..hi), 0 utan takt. */

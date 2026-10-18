@@ -34,6 +34,7 @@ perf.now = () => vnow - EPOCH + 1000;
 if (!process.env.NOHOOKS) register('./hooksManual.mjs', import.meta.url);
 const mic = await import(pathToFileURL(DIST + '/alsaMic.js').href);
 const E = await import(pathToFileURL(DIST + '/piEngine.js').href);
+globalThis.__winPatch?.(E.PiLightEngine);   // dmx tools/skrap/winAlloc.mjs (allokerat i fönstret, fungerar på Node 18)
 const logs = [];
 console.log = (...a) => { logs.push(a.join(' ')); }; console.warn = console.log; console.error = console.log;
 
@@ -103,6 +104,8 @@ for (let p = 0; p < totalPeriods; p++) {
   feed(buf);
   while (vnow >= nextTick) {
     eng.tickInner(); ticks++;
+    if (process.env.DPTICK && (ticks === +process.env.DPTICK || ticks === +process.env.DPTICK + 1)) { globalThis.__dp ??= new Function('o', '%DebugPrint(o)'); process.stdout.write(`#DP ${ticks}
+`); globalThis.__dp(eng); globalThis.__dp(eng.getDiagnostics()); globalThis.__dp(eng.color); globalThis.__dp(eng.colorTarget); }   // faltrepresentation: HeapNumber-adress som byts mellan tva tick = taggat falt (ny box per skrivning)
     if (process.env.OPTSTAT && ticks % 500 === 0) { globalThis.__os ??= new Function('f', 'return %GetOptimizationStatus(f)'); const st = globalThis.__os(E.PiLightEngine.prototype.tickInner); const st2 = globalThis.__os(globalThis.__onAudio ?? feed); process.stdout.write(`opt t=${(t/1000).toFixed(0)} tickInner=${st.toString(2)} onAudio=${st2.toString(2)}
 `); }
     if (REC && td.v) {
