@@ -224,7 +224,7 @@ const hsState = new Float64Array(1);
 // emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
 // TAL SOM SKRIVS PER LJUDPERIOD/HOP (skrapjakten 10-18): en modulvariabel (let) som far ett decimaltal far en ny HeapNumber
 // vid varje skrivning i V8 10 (Node 18 = Pi:ns version); falt i ett objekt skrivs pa plats. Samma varden som forr.
-const _mn = { lightRawRms: 0, lastLightSum: -1, lastFFTTimestamp: 0, latestFrameAt: 0, lastAudioCbAt: 0, stableRmsSince: 0, stableRmsValue: 0, blockRms: 0, blockSec: 0 };
+const _mn = { lightRawRms: 0, lastLightSum: -1, lastFFTTimestamp: 0, latestFrameAt: 0, lastAudioCbAt: 0, stableRmsSince: 0, stableRmsValue: 0, blockRms: 0, blockSec: 0, audioCbBytes: 0 };
 /**
  * RA, O-GAINAD block-RMS -- samma storhet som refinern lagrar i energikurvan.
  *
@@ -540,6 +540,14 @@ const _kickRing = new Float64Array(KICK_RING);
 let _kickPos = 0, _kickLast = 0;
 export function getRecentKicks(): number[] {
   return Array.from(_kickRing).filter((v) => v > 0).sort((x, y) => x - y);
+}
+/** Som getRecentKicks men utan allokering (skrapjakten 10-18; motorn laser ringen flera ganger per sekund): de positiva
+ *  kicktiderna stigande i out (minst KICK_RING lang), returnerar antalet. Samma tal i samma ordning. */
+export function getRecentKicksInto(out: Float64Array): number {
+  let n = 0;
+  for (let i = 0; i < KICK_RING; i++) { const v = _kickRing[i]; if (v > 0) out[n++] = v; }
+  for (let i = 1; i < n; i++) { const v = out[i]; let j = i - 1; while (j >= 0 && out[j] > v) { out[j + 1] = out[j]; j--; } out[j + 1] = v; }
+  return n;
 }
 /** Senaste slagets kickAtMs (0 = inget an). Allokeringsfri - PLL:en laser den varje tick. */
 export function getLatestKickAt(): number { return _kickLast; }
@@ -1187,7 +1195,7 @@ export function startMic(): void {
   _captureOpenedAt = performance.now();   // C2: baseline för first-audio-stall
   micStartError = null;
   _audioCbCount = 0;
-  _audioCbBytes = 0;
+  _mn.audioCbBytes = 0;
   _audioCbFirstAt = 0;
   _mn.lastFFTTimestamp = 0;
   _fftFrameCount = 0;
@@ -1242,10 +1250,10 @@ export function startMic(): void {
 
 /** Shared audio data handler for both native and fallback paths */
 let _audioCbCount = 0;
-let _audioCbBytes = 0;
+// (_audioCbBytes bor i _mn.audioCbBytes: passerar Smi-gransen 2^31 efter ~1,5 h ljud och gav sedan en ny HeapNumber per callback)
 let _audioCbFirstAt = 0;
 export function getAudioCbStats() {
-  return { count: _audioCbCount, bytes: _audioCbBytes, firstAt: _audioCbFirstAt };
+  return { count: _audioCbCount, bytes: _mn.audioCbBytes, firstAt: _audioCbFirstAt };
 }
 
 /** True om ALSA-capture är aktiv just nu. Används av idle-disconnect-pathen. */
@@ -1293,14 +1301,14 @@ function onAudioData(buf: Buffer): void {
   const _cbT0 = performance.now();
   _mn.lastAudioCbAt = _cbT0;
   _audioCbCount++;
-  _audioCbBytes += buf.byteLength;
+  _mn.audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
     _audioCbFirstAt = performance.now();
     dlog(`[ALSA] FIRST audio callback fired at t=${_audioCbFirstAt.toFixed(1)}ms, ${buf.byteLength} bytes`);
     resolveMicReadyWaiters();
   }
   if (_audioCbCount === 50 || _audioCbCount === 200 || (DEBUG_ENABLED && _audioCbCount % 1000 === 0)) {
-    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_audioCbBytes}, analyserHops=${analyserHopCount}`);
+    dlog(`[ALSA] audio cb count=${_audioCbCount}, totalBytes=${_mn.audioCbBytes}, analyserHops=${analyserHopCount}`);
   }
   // Stereo interleaved → ta bara vänster kanal.
   // INMP441 har ett mic-element; L/R är samma signal duplicerad eller R tyst.
@@ -1595,7 +1603,7 @@ export function stopMic(): void {
   latestBands.bassFlux = 0;
   latestBands.shape = 0;
   _audioCbCount = 0;
-  _audioCbBytes = 0;
+  _mn.audioCbBytes = 0;
   _audioCbFirstAt = 0;
   
   _mn.lastFFTTimestamp = 0;

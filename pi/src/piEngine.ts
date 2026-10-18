@@ -18,7 +18,7 @@
 import { SongClock } from './songClock.js';
 import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
 import { BASS_BODY, BASS_SUBKICK, BassBodyWindow, subKickDb } from './bassBody.js';
-import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getLatestKickAt } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getRecentKicksInto, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
@@ -823,7 +823,9 @@ export class PiLightEngine {
   private _learnLastAt = 0; private _learnLastRingAt = 0; private _learnLastKick = 0; private _learnStartAt = 0;
   private _learnSaver: ((artist: string, title: string, summary: Record<string, number>) => void) | null = null;
   /** TEMPOSTABILITET (09-19): 1 Hz-fonster av analysatorns (bpm, conf); gridet far den viktade medianen. */
-  private _tempoWin: Array<{ t: number; bpm: number; conf: number }> = [];
+  private _tempoWin: { t: number[]; bpm: number[]; conf: number[] } = { t: [], bpm: [], conf: [] };
+  // Arbetsbuffertar (10-18): tempofonstrets goda sampel sorterade (~beatTempoSmoothS st), kickringen, oktavregelns fack. Ett objekt = inte motorns tillstand.
+  private _scr = { twB: new Float64Array(256), twC: new Float64Array(256), ks: new Float64Array(64), obK: new Float64Array(64), obC: new Float64Array(64) };
   private _tempoWinLastAt = 0; private _tempoSm = 0;
   /** Oktavregelns senaste ringmatt (per slag) + rakning for inlarningsraden. */
   private _octRingMs = 0; private _octPerBeat = 0; private _octReg = 0; private _octOn = false; private _octBeats = 0; private _octBeatsTotal = 0;
@@ -1690,7 +1692,7 @@ export class PiLightEngine {
     this.learnReset();
     this._octOn = false; this._octBeats = 0; this._octBeatsTotal = 0; this._octRingMs = 0; this._octPerBeat = 0; this._octReg = 0; this._octHint = 1;
     this._tempoHintRatio = 1; this._tempoHintAnBpm = 0; this._tempoHintApplied = false;
-    this._tempoWin = []; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
+    this._tempoWin.t.length = 0; this._tempoWin.bpm.length = 0; this._tempoWin.conf.length = 0; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
     this._songBpm = 0;
     this._songEntry = null;
     this._metaBpm = 0; this._metaSource = ''; this._metaRatio = 0; this._metaVerdict = ''; this._metaDrives = false;
@@ -1816,13 +1818,21 @@ export class PiLightEngine {
     const smoothS = this.cal.beatTempoSmoothS ?? 12;
     if (smoothS > 0 && nowMs - this._tempoWinLastAt >= 1000) {
       this._tempoWinLastAt = nowMs;
-      if (rawBpm > 40) this._tempoWin.push({ t: nowMs, bpm: rawBpm, conf: rawConf });
-      while (this._tempoWin.length && nowMs - this._tempoWin[0].t > smoothS * 1000) this._tempoWin.shift();
-      const good = this._tempoWin.filter((x) => x.conf >= 0.5);
-      if (good.length >= 5) {
-        const sorted = [...good].sort((a, b) => a.bpm - b.bpm);
-        const tot = sorted.reduce((s, x) => s + x.conf, 0); let acc = 0; let m = sorted[0].bpm;
-        for (const x of sorted) { acc += x.conf; if (acc >= tot / 2) { m = x.bpm; break; } }
+      // (skrapjakten 10-18: tre talarrayer i st f ett objekt per sekund + filter/kopia/sort/reduce; de goda sorteras stabilt
+      // efter bpm med insattningssortering = samma ordning som Array.sort, och summorna tas i samma ordning)
+      const W = this._tempoWin;
+      if (rawBpm > 40) { W.t.push(nowMs); W.bpm.push(rawBpm); W.conf.push(rawConf); }
+      while (W.t.length && nowMs - W.t[0] > smoothS * 1000) { W.t.shift(); W.bpm.shift(); W.conf.shift(); }
+      const gb = this._scr.twB, gc = this._scr.twC; let ng = 0;
+      for (let i = 0; i < W.t.length && ng < gb.length; i++) if (W.conf[i] >= 0.5) {
+        const b = W.bpm[i], c = W.conf[i]; let j = ng - 1;
+        while (j >= 0 && gb[j] > b) { gb[j + 1] = gb[j]; gc[j + 1] = gc[j]; j--; }
+        gb[j + 1] = b; gc[j + 1] = c; ng++;
+      }
+      if (ng >= 5) {
+        let tot = 0; for (let i = 0; i < ng; i++) tot += gc[i];
+        let acc = 0; let m = gb[0];
+        for (let i = 0; i < ng; i++) { acc += gc[i]; if (acc >= tot / 2) { m = gb[i]; break; } }
         this._tempoSm = m;
       } else this._tempoSm = 0;
     }
@@ -1925,9 +1935,9 @@ export class PiLightEngine {
           // KICKARNA SOM DOMARE (09-21, "dubbelblink"): analysatorns fas flyttade gridet 0,4 slag fram och tillbaka inom en
           // minut (kvot 3,2/6,0) pa 16-delsbas -> pulsen mellan kickarna medan energin foljer kickarna = tva bumpar per slag.
           // Flytta bara om de senaste ~8 slagens riktiga kickar ligger tydligt narmare den nya fasen an den gamla.
-          const ks = getRecentKicks(); const since = nowMs - 8 * beatMsNow; let n = 0, sCur = 0, sNew = 0;
+          const ks = this._scr.ks, kn = getRecentKicksInto(ks); const since = nowMs - 8 * beatMsNow; let n = 0, sCur = 0, sNew = 0;   // (allokeringsfritt, 10-18)
           const newAnchor = this._beat.anchorMs + err * beatMsNow;
-          for (let i = ks.length - 1; i >= 0 && ks[i] >= since; i--) {
+          for (let i = kn - 1; i >= 0 && ks[i] >= since; i--) {
             const k = ks[i]; n++;
             const pc = ((((k - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
             const pn = ((((k - newAnchor) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
@@ -2538,10 +2548,11 @@ export class PiLightEngine {
             // < 100 BPM => presentera 2x (samma vag som energySubdiv). Hysteres + 10 s hallning.
             let _octWants: number | null = null;
             if (this.cal.beatOctaveRule !== false && bpmNow > 0) {
-              const ks = getRecentKicks(); const bins = new Map<number, number>(); let n = 0;
-              for (let i = 1; i < ks.length; i++) { const dt = ks[i] - ks[i - 1]; if (dt > 40 && dt < 2000) { const b = Math.round(dt / 10) * 10; bins.set(b, (bins.get(b) ?? 0) + 1); n++; } }
-              let mode = 0, modeN = 0; for (const [b, c] of bins) if (c > modeN) { modeN = c; mode = b; }
-              let ws = 0, wn = 0; for (const [b, c] of bins) if (mode > 0 && Math.abs(b / mode - 1) <= 0.1) { ws += b * c; wn += c; }
+              // (skrapjakten 10-18: ringen via getRecentKicksInto och facken i tva smala arrayer i insattningsordning - som Map:en forr)
+              const ks = this._scr.ks, kn = getRecentKicksInto(ks), bk = this._scr.obK, bc = this._scr.obC; let nb = 0; let n = 0;
+              for (let i = 1; i < kn; i++) { const dt = ks[i] - ks[i - 1]; if (dt > 40 && dt < 2000) { const b = Math.round(dt / 10) * 10; let j = 0; while (j < nb && bk[j] !== b) j++; if (j === nb) { bk[nb] = b; bc[nb] = 0; nb++; } bc[j] += 1; n++; } }
+              let mode = 0, modeN = 0; for (let j = 0; j < nb; j++) { const b = bk[j], c = bc[j]; if (c > modeN) { modeN = c; mode = b; } }
+              let ws = 0, wn = 0; for (let j = 0; j < nb; j++) { const b = bk[j], c = bc[j]; if (mode > 0 && Math.abs(b / mode - 1) <= 0.1) { ws += b * c; wn += c; } }
               this._octRingMs = wn ? ws / wn : 0; this._octReg = n ? wn / n : 0;
               this._octPerBeat = this._octRingMs > 0 ? baseIntervalMs / this._octRingMs : 0;
               const pb = this._octPerBeat, rg = this._octReg;

@@ -58,10 +58,12 @@ const td = { v: null };
 eng.callbacks.push((d) => { td.v = d; });
 // fullt tillstand: alla numeriska/booleska falt (aven i nastlade typade arrayer) -> FNV-1a over float64-bitar
 const f64 = new Float64Array(1), u32 = new Uint32Array(f64.buffer);
+const HASH_SKIP = new Set((process.env.HASH_SKIP || '').split(',').filter(Boolean));
 function stateHash(o) {
   let h = 2166136261 >>> 0;
   const mix = (x) => { h ^= x; h = Math.imul(h, 16777619) >>> 0; };
   for (const k of Object.keys(o).sort()) {
+    if (HASH_SKIP.has(k)) continue;   // HASH_SKIP=f1,f2: falt vars FORM bytts (t.ex. array -> objekt, skrapjakten 10-18) - kor bade gammal och ny med samma lista
     const v = o[k];
     if (typeof v === 'number' && Number.isNaN(v)) mix(3);   // NaN = 'inte satt' (skrapjakten 10-17) = undefined
     else if (typeof v === 'number') { f64[0] = v; mix(u32[0]); mix(u32[1]); }
