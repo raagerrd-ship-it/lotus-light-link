@@ -54,6 +54,15 @@ export function renderEnd(): void {
   r = total.render; r.n++; r.ms += ms; if (ms > r.max) r.max = ms; if (ms > 1) r.over1++; if (ms > 2) r.over2++; if (ms > 5) r.over5++;
 }
 
+/** TVINGADE STÄDNINGAR (DMX gcDark.ts / lotus gcIfNearLimit, 2026-10-18): paus, orsak och gamla minnets fyllnad - de senaste 10 + antal. */
+const forced: { iso: string; why: string; ms: number; usedMb: number; limitMb: number; afterMb: number }[] = [];
+let forcedN = 0, forcedMax = 0;
+export function noteForcedGc(ms: number, why: string, usedMb: number, limitMb: number, afterMb: number): void {
+  forcedN++; if (ms > forcedMax) forcedMax = ms;
+  forced.push({ iso: new Date().toISOString(), why, ms: +ms.toFixed(1), usedMb: +usedMb.toFixed(1), limitMb: +limitMb.toFixed(1), afterMb: +afterMb.toFixed(1) });
+  if (forced.length > 10) forced.shift();
+}
+
 function closeMinute(): void {
   const ns = 1e-6;
   cur.loop = { meanMs: +(loop.mean * ns).toFixed(2), p99Ms: +(loop.percentile(99) * ns).toFixed(2), maxMs: +(loop.max * ns).toFixed(2) };
@@ -72,5 +81,5 @@ const round = (b: Bucket) => ({
 
 /** GET /api/perf */
 export function getPerf() {
-  return { startedIso, now: new Date().toISOString(), current: round(cur), minutes: hist.map(round), total: round(total) };
+  return { startedIso, now: new Date().toISOString(), current: round(cur), minutes: hist.map(round), total: round(total), forcedGc: { n: forcedN, maxMs: +forcedMax.toFixed(1), last: forced } };
 }
