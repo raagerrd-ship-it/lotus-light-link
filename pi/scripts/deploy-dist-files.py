@@ -50,3 +50,9 @@ for i in range(45):
     time.sleep(2); rc, out, _ = run("curl -s -m 2 http://127.0.0.1:3051/api/status | grep -oE '\"connected\":[0-9]+' | head -1")
     if out.strip().endswith(':1'): print(f"BLE ansluten efter {2*(i+1)} s"); break
 else: print('BLE ej ansluten inom 90 s (normalt om Sonos ar IDLE)')
+# NOBLE-PATCHEN (2026-10-18): loggraderna i noble ska vara skyddade (if (debug.enabled)) - en npm install skriver over dem.
+# postinstall i package.json kor patchen; har bara en kontroll + tydlig varning.
+rc, out, _ = run("python3 /opt/lotus-light/pi/scripts/patch-noble-debug.py --check 2>&1 | tail -1")
+if out.strip() != 'totalt 0':
+    print('VARNING noble-patchen saknas (' + out.strip() + ') - kor pa Pi:n: sudo python3 /opt/lotus-light/pi/scripts/patch-noble-debug.py && sudo systemctl restart lotus-light-engine')
+else: print('noble-patchen ok (alla loggrader skyddade)')
