@@ -4,6 +4,13 @@
 före 07:00. Den delade analysatorn rörs inte. Inget deployas. Morgonagenten: läs nattens lotus-commit(s) och rapport, bänka som vanligt,
 rör inte samma filer samma morgon. 10-17 LIVE på lotus: analysatorn 14:04 (4e264e9), v8Tiering + micvägen 14:45 (1a0365a).
 
+## 2026-10-18 dag (ägaren via DMX-sessionen) - LIVE PÅ LOTUS, RÄTTA INTE TILLBAKA
+- Drop-in zz-heapgrow.conf (A/B, ägarens prov): --heap-growing-percent=200 i ExecStart (gamla minnet växer 3x levande i st f ~1,4x).
+  Mätt 32 min: storstädning 0 st efter uppstarten (förr var 4,5:e min, slutpaus 19-28 ms + inkrementellt 25-57 ms), små GC oförändrade
+  8-9/min <= 8 ms, loopfördröjning max 20-28 ms, minne 142/300 MB. Backa: rm filen, daemon-reload, restart.
+- Drops AV (ägaren: "bara led-slinga runt rummet"): PUT /api/calibration {"dropEnabled":false}.
+- Node på lotus-Pi:n är 24.18 (inte 18). GET /api/perf (perfStats) live. noble-patchen (pi/scripts/patch-noble-debug.py, postinstall).
+
 ## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BORT MED ALLT LÖPANDE SKRÄP (går före allt utom hälsan)
 KLART 2026-10-17 kväll (DMX-sessionen, ägaren bad om det direkt): kodfixen gjord i analyser.ts i båda repona (md5 656c093a), bevisad
 (paritet 0 i 4 varianter, bänken live 396/503, syntet 6/8, on-beat 0,84; DMX 24/24 byte-identiska) - se Status i analysator-fynd.md.
