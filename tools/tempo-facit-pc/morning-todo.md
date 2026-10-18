@@ -9,6 +9,8 @@ rör inte samma filer samma morgon. 10-17 LIVE på lotus: analysatorn 14:04 (4e2
   Mätt 32 min: storstädning 0 st efter uppstarten (förr var 4,5:e min, slutpaus 19-28 ms + inkrementellt 25-57 ms), små GC oförändrade
   8-9/min <= 8 ms, loopfördröjning max 20-28 ms, minne 142/300 MB. Backa: rm filen, daemon-reload, restart.
 - Drops AV (ägaren: "bara led-slinga runt rummet"): PUT /api/calibration {"dropEnabled":false}.
+- 13:2x: heap-growing 200 PERMANENT i heap.conf (zz-heapgrow.conf borttagen) + låtbytesstädning gc-track.conf LOTUS_GC_TRACK=0.6
+  (full GC vid Sonos-låtbyte bara när gamla minnet >= 60 % av gränsen; mätt 93-95 ms per städning). Av: ta bort gc-track.conf.
 - Node på lotus-Pi:n är 24.18 (inte 18). GET /api/perf (perfStats) live. noble-patchen (pi/scripts/patch-noble-debug.py, postinstall).
 
 ## Från kvällen 2026-10-17 (ägaren via DMX-sessionen) - ANALYSATORNS SKRÄP: BORT MED ALLT LÖPANDE SKRÄP (går före allt utom hälsan)
