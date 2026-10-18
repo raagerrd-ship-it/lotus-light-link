@@ -6,6 +6,8 @@ export type DeviceMode = 'rgb' | 'brightness';
 
 export interface PiCharacteristic {
   writeAsync(data: Buffer, withoutResponse: boolean): Promise<void>;
+  /** noble:s callback-variant (protocol.ts drainQueuedWrite, 10-18: skräpfri skrivning utan promise). */
+  write(data: Buffer, withoutResponse: boolean, callback?: (error?: any) => void): void;
   _peripheral?: any;
   deviceName?: string;
   deviceId?: string;

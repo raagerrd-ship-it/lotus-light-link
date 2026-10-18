@@ -2765,6 +2765,8 @@ export class PiLightEngine {
   /** Called by ALSA FFT callback — runs in the audio data handler context */
   private _phaseFlipDenied = 0;
   private _syncTimer: NodeJS.Timeout | null = null;
+  private _syncTarget = 0.5;   // decimalform från start
+  private readonly _syncTickFn = (): void => this.syncTick(this._syncTarget);
   private _guardMs = TICK_SYNC_GUARD_MS;
   private _sweepG = 0;            // 0 = inget svep pågår; annars guard som provas
   private _sweepWin: number[] = [];   // p50 per 2 s-fönster för aktuell guard
@@ -2794,7 +2796,8 @@ export class PiLightEngine {
     const now = performance.now();
     // Mål = förutsagd radiohändelse − guard; minst 1 ms fram så vi aldrig snurrar.
     const target = Math.max(now + 1, nextRasterEventAt(now + 1, this._guardMs) - this._guardMs);
-    this._syncTimer = setTimeout(() => this.syncTick(target), Math.max(1, Math.round(target - now)));
+    this._syncTarget = target;   // (10-18, skräp: förr en ny closure per tick - nu en återanvänd funktion som läser fältet)
+    this._syncTimer = setTimeout(this._syncTickFn, Math.max(1, Math.round(target - now)));
   }
   getSyncDiag(): { on: boolean; guardMs: number; ticks: number; late: number; lateMaxMs: number; raster: ReturnType<typeof getRasterStats> } {
     return { on: TICK_SYNC, guardMs: this._guardMs, ticks: this._syncTicks, late: this._syncLate, lateMaxMs: Math.round(this._syncLateMax * 10) / 10, raster: getRasterStats() };

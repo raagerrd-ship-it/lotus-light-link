@@ -300,21 +300,18 @@ function nextDrainDelay(now: number): number {
   return 10;
 }
 
+// (10-18, skräp: förr en ny closure per armDrain-anrop - nu två återanvända funktioner)
+function drainFromImmediate(): void { drainImmediate = null; drainQueuedWrite(); }
+function drainFromTimer(): void { drainTimer = null; drainQueuedWrite(); }
 function armDrain(delayMs = 0): void {
   if (drainTimer || drainImmediate) return;
   if (delayMs <= 0) {
     // setTimeout(...,0) klampas till 1 ms och kostar en timer-heap-insert per
     // frame (~50-66/s). setImmediate kör fortfarande off caller-stacken.
-    drainImmediate = setImmediate(() => {
-      drainImmediate = null;
-      drainQueuedWrite();
-    });
+    drainImmediate = setImmediate(drainFromImmediate);
     return;
   }
-  drainTimer = setTimeout(() => {
-    drainTimer = null;
-    drainQueuedWrite();
-  }, delayMs);
+  drainTimer = setTimeout(drainFromTimer, delayMs);
 }
 
 
@@ -384,9 +381,9 @@ function drainQueuedWrite(): void {
     lastWriteTime = now;
 
     const _syncT0 = performance.now();
-    let _writePromise: Promise<unknown>;
+    drainWriteStartedAt = writeStartedAt; drainWriteSeq = seq;   // läses av onDrainWriteDone (se SKRIVNINGEN UTAN SKRÄP)
     try {
-      _writePromise = device.characteristic.writeAsync(buf, true);
+      device.characteristic.write(buf, true, onDrainWriteDone);
       rasterNoteWrite(_syncT0);   // write→kvitto-latens mäts mot radions raster (raster.ts)
     } catch (e: any) {
       writePending = false;
@@ -403,8 +400,25 @@ function drainQueuedWrite(): void {
       bleStats.lastStuckReason = `write-sync ${_syncMs.toFixed(1)}ms (blocking native call)`;
     }
 
-    _writePromise
-      .then(() => {
+    // (kvittot hanteras av onDrainWriteDone - se SKRIVNINGEN UTAN SKRÄP nedan)
+  } finally {
+    drainRunning = false;
+  }
+}
+
+// ── SKRIVNINGEN UTAN SKRÄP (2026-10-18, live-profil på lotus: drainQueuedWrite ~136 kB/s) ──
+// Förr device.characteristic.writeAsync(buf, true).then(..).catch(..).finally(..): per skrivning (~125/s) ett promise i noble +
+// _withDisconnectHandler (två promises, en closure, två mallsträngar, en lyssnare in/ut) + tre closures och tre promises här.
+// Nu noble:s write(buf, true, callback) med EN återanvänd callback; skrivningens seq/starttid i modulvariabler (noble håller bara
+// EN väntande write-callback per characteristic - onceExclusive - så den som fyrar hör alltid till senaste registrerade skrivning).
+// Arbetet görs i en mikrotask som förr (.then körde aldrig synkront inne i write()). Frånkoppling mitt i en skrivning avvisade förr
+// promiset; nu släpps sloten av stall-vakten (WRITE_PENDING_TIMEOUT_MS) och anslutningslogiken tar över som förut.
+let drainWriteStartedAt = 0, drainWriteSeq = 0, drainWriteError: any = undefined;
+function onDrainWriteDone(error?: any): void { drainWriteError = error; queueMicrotask(drainWriteSettled); }
+function drainWriteSettled(): void {
+  const e = drainWriteError; drainWriteError = undefined;
+  if (e === undefined || e === null) {
+        const writeStartedAt = drainWriteStartedAt;
         const elapsed = performance.now() - writeStartedAt;
         bleStats.sentCount++;
         _sentAt[_sentIdx] = performance.now(); _sentIdx = (_sentIdx + 1) % _sentAt.length; _sentN++;
@@ -414,21 +428,16 @@ function drainQueuedWrite(): void {
         if (elapsed > bleStats.writeLatMaxMs) bleStats.writeLatMaxMs = Math.round(elapsed * 10) / 10;
         if (writeFailCount > 0) dlog(`[BLE] Write recovered after ${writeFailCount} failures`);
         writeFailCount = 0;
-      })
-      .catch((e: any) => {
+  } else {
         writeFailCount++;
         bleStats.writeFailCount++;
         if (writeFailCount === 1 || writeFailCount === WRITE_FAIL_THRESHOLD) {
           console.warn(`[BLE] Write failed (${writeFailCount}x): ${e?.message ?? e}`);
         }
-      })
-      .finally(() => {
-        if (seq === writeSeq) writePending = false;
-        if (queuedFrame) armDrain(nextDrainDelay(performance.now()));
-      });
-  } finally {
-    drainRunning = false;
   }
+  // (förr .finally)
+  if (drainWriteSeq === writeSeq) writePending = false;
+  if (queuedFrame) armDrain(nextDrainDelay(performance.now()));
 }
 
 // ── Keepalive (idle-vägen) ──
