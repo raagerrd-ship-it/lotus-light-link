@@ -18,6 +18,7 @@
 import { SongClock } from './songClock.js';
 import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
 import { BASS_BODY, BASS_SUBKICK, BassBodyWindow, subKickDb } from './bassBody.js';
+import { renderBegin, renderEnd } from './perfStats.js';   // GC/tick/loop alltid på, GET /api/perf (10-18, samma fil som dmx-control)
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getRecentKicksInto, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
@@ -2786,7 +2787,7 @@ export class PiLightEngine {
     this._syncTicks++;
     this._nextTickDeadline = now + TICK_PERIOD_MS;
     this._lastTickTime = now;
-    try { this.tickInner(); } finally { this.scheduleSyncTick(); }
+    renderBegin(); try { this.tickInner(); } finally { renderEnd(); this.scheduleSyncTick(); }
   }
   private scheduleSyncTick(): void {
     if (this._syncTimer || !this._loopActive) return;
@@ -2810,7 +2811,7 @@ export class PiLightEngine {
     const now = performance.now();
     this._nextTickDeadline = now + this.tickMs;
     this._lastTickTime = now;
-    this.tickInner();
+    renderBegin(); this.tickInner(); renderEnd();
   }
 
   private startLoop(): void {

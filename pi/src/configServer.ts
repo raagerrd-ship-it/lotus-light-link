@@ -17,6 +17,7 @@ import { FRAME_MS } from './alsaMic.js';
 import type { PiLightEngine } from './piEngine.js';
 import { loadTvCalibration, TV_CAL_DEFAULTS } from './piEngine.js';
 import { getRuntimeHealth, getBleDownForMs } from './runtimeHealth.js';
+import { getPerf } from './perfStats.js';
 
 // FIX 2: statiska imports i stället för await import() per request — interna
 // moduler, ingen load-order-fara när servern lyssnar.
@@ -704,6 +705,9 @@ export function startConfigServer(port = 3050): void {
     });
   });
 
+
+  // GC-stopp per sort, ticktid och händelseloopens fördröjning per minut - alltid på (perfStats.ts, 10-18, samma som dmx-control)
+  app.get('/api/perf', (_req, res) => { res.json(getPerf()); });
 
   // --- Status (full app status) ---
   app.get('/api/status', async (_req, res) => {
