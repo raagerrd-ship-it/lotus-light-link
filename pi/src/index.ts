@@ -529,6 +529,7 @@ async function startSonosSubsystem(): Promise<void> {
         if (!name || name === lastTrackName) return;
         lastTrackName = name;
         engineInstance?.gcNow('latbyte');   // LOTUS_GC_QUIET_MS (av): latgransen ar det basta ogonblicket nar spellistan saknar paus
+        engineInstance?.gcIfNearLimit('låtbyte');   // LOTUS_GC_TRACK (opt-in): full GC bara när gamla minnet är nära gränsen
         engineInstance?.notifyTrackChange(lastArtist, name);
         if (isDebugEnabled()) void resolveMetaTempo(lastArtist, name);
         recorder?.trackChanged(lastArtist, name);

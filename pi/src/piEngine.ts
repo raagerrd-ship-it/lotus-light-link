@@ -19,6 +19,8 @@ import { SongClock } from './songClock.js';
 import { renderShow, lastRenderedColors, DEFAULT_SHOW, SHOW_STEP_MS } from './showRenderer.js';
 import { BASS_BODY, BASS_SUBKICK, BassBodyWindow, subKickDb } from './bassBody.js';
 import { renderBegin, renderEnd } from './perfStats.js';   // GC/tick/loop alltid på, GET /api/perf (10-18, samma fil som dmx-control)
+import { getHeapStatistics, getHeapSpaceStatistics } from 'v8';
+import { constants as perfConstants } from 'node:perf_hooks';
 import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getRecentKicksInto, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
@@ -760,6 +762,19 @@ export type TickCallback = (data: TickData) => void;
 /** STADA I TYSTNADEN (se tickInner): ms tystnad innan full GC; 0 = av. Kraver node --expose-gc (annars ingen effekt). */
 const GC_QUIET_MS = Number(process.env.LOTUS_GC_QUIET_MS ?? 0);
 const GC_FN: (() => void) | null = typeof (globalThis as any).gc === 'function' ? (globalThis as any).gc : null;
+/** STÄDA VID LÅTBYTE NÄR GAMLA MINNET ÄR NÄRA GRÄNSEN (opt-in LOTUS_GC_TRACK=<andel 0..1>, 2026-10-18, ägaren: 'smart städning vid
+ *  låtbyten ... fylla mer innan det rensas'). Med --heap-growing-percent=200 får gamla minnet växa till ~3x det levande innan V8 städar
+ *  stort själv (~var 60:e min, mitt i en låt). Vid ett Sonos-låtbyte görs i stället en full GC (global.gc, kräver --expose-gc) - men BARA
+ *  om gamla minnet nått <andel> av gränsen (levande efter senaste storstädning x tillväxtfaktorn ur nodens egna flaggor), högst en per
+ *  60 s. En tvingad GC är en stopp-städning utan inkrementell märkning (~100 ms på Zero 2 W, 09-30) - därför bara när den annars snart
+ *  hade kommit mitt i musiken. 0 = av. Loggas '[gc] låtbyte: ...'. */
+const GC_TRACK_FRAC = Number(process.env.LOTUS_GC_TRACK ?? 0);
+const HEAP_GROW = (() => { const a = process.execArgv.find((x) => x.startsWith('--heap-growing-percent=')); return a ? 1 + Number(a.split('=')[1]) / 100 : 1.4; })();
+function oldUsedBytes(): number {   // allt utom unga generationen (det är den som fylls mot gränsen)
+  let n = getHeapStatistics().used_heap_size;
+  for (const sp of getHeapSpaceStatistics()) if (sp.space_name === 'new_space' || sp.space_name === 'new_large_object_space') n -= sp.space_used_size;
+  return n;
+}
 
 export class PiLightEngine {
   private color: [number, number, number] = [255, 80, 0];
@@ -869,6 +884,31 @@ export class PiLightEngine {
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
   private _trustSm?: number;
   private _quietSince = 0; private _musicSinceGc = false; private _lastQuietGc = -1e9;   // LOTUS_GC_QUIET_MS
+  private _oldLive = 0; private _lastTrackGc = -1e9; private _gcObs: PerformanceObserver | null = null;   // LOTUS_GC_TRACK
+  /** Låtbytesstädningen (se GC_TRACK_FRAC): anropas av index.ts vid varje nytt låtnamn. */
+  gcIfNearLimit(why: string): void {
+    if (!(GC_TRACK_FRAC > 0 && GC_FN)) return;
+    if (!this._gcObs) {   // levande storlek efter varje storstädning (naturlig eller vår egen)
+      this._gcObs = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          const k = (e as any).detail?.kind ?? (e as any).kind;
+          if (k === perfConstants.NODE_PERFORMANCE_GC_MAJOR) setImmediate(() => { this._oldLive = oldUsedBytes(); });
+        }
+      });
+      this._gcObs.observe({ entryTypes: ['gc'] });
+      this._oldLive = oldUsedBytes();   // startvärde tills första storstädningen (överskattar levande -> städar hellre för sent än för tidigt)
+    }
+    const n = performance.now();
+    if (n - this._lastTrackGc < 60000 || this._oldLive <= 0) return;
+    const used = oldUsedBytes(), limit = this._oldLive * HEAP_GROW, mb = (b: number) => (b / 1048576).toFixed(1);
+    if (used < GC_TRACK_FRAC * limit) return;
+    this._lastTrackGc = n;
+    setImmediate(() => {
+      const t0 = performance.now(); GC_FN!(); const dt = performance.now() - t0;
+      const after = oldUsedBytes(); this._oldLive = after;
+      console.log(`[gc] ${why}: full GC ${dt.toFixed(1)} ms (gamla minnet ${mb(used)} MB = ${(100 * used / limit).toFixed(0)} % av ~${mb(limit)} MB, efter ${mb(after)} MB)`);
+    });
+  }
   /** Anropas direkt efter tystnads-GC:n (index.ts: tempocachen sparas i samma paus). */
   onQuietGc: (() => void) | null = null;
   /** Full GC nu (tystnad eller latbyte, se LOTUS_GC_QUIET_MS): hogst en per 60 s och bara om musik spelats sedan forra. */
