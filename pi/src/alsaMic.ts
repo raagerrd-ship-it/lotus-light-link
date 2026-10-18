@@ -222,7 +222,9 @@ const hsState = new Float64Array(1);
 
 // LJUS-TAPP: ~130 ms EMA av RÅ (o-gainad) block-RMS. micGain appliceras i
 // emitBands → ljusnivån är linjär i användarens gain, helt utan AGC.
-let lightRawRms = 0;
+// TAL SOM SKRIVS PER LJUDPERIOD/HOP (skrapjakten 10-18): en modulvariabel (let) som far ett decimaltal far en ny HeapNumber
+// vid varje skrivning i V8 10 (Node 18 = Pi:ns version); falt i ett objekt skrivs pa plats. Samma varden som forr.
+const _mn = { lightRawRms: 0, lastLightSum: -1, lastFFTTimestamp: 0, latestFrameAt: 0, lastAudioCbAt: 0, stableRmsSince: 0, stableRmsValue: 0, blockRms: 0, blockSec: 0 };
 /**
  * RA, O-GAINAD block-RMS -- samma storhet som refinern lagrar i energikurvan.
  *
@@ -230,15 +232,12 @@ let lightRawRms = 0;
  * har passerat gain, AGC och utjamning, och korrelerade darfor bara r=0.08 mot
  * den lagrade kurvan. Det sag ut som daligt synk men var fel matsticka.
  */
-export function getLightRawRms(): number { return lightRawRms; }
-let _lastLightSum = -1;
+export function getLightRawRms(): number { return _mn.lightRawRms; }
 let _lastFrameCount = -1;
 let _contentFreezeStreak = 0;
 let _contentFreezeAt = 0;
 // Andra freeze-detektorn: fångar en DMA-wedge som varierar sista decimalen.
 let _micPlaybackGate = false;
-let _stableRmsSince = 0;
-let _stableRmsValue = 0;
 const STABLE_RMS_MIN = 0.003;
 // RELATIVT fönster: lightRawRms är en 130 ms EMA — ett fast absolut tak på 2e-5
 // gav falsk "frys" på lugna, jämna partier (2e-5 vid nivå 0.003 = 0.7 %) →
@@ -251,12 +250,12 @@ const STABLE_RMS_REL = 0.02;
 /** Matas från Sonos playback-state; freeze-diagnostik kör bara under PLAYING. */
 export function setMicPlaybackGate(playing: boolean): void {
   _micPlaybackGate = playing;
-  if (!playing) { _stableRmsSince = 0; _stableRmsValue = 0; }
+  if (!playing) { _mn.stableRmsSince = 0; _mn.stableRmsValue = 0; }
 }
 
 /** Ms som micens RMS varit nästan konstant under PLAYING (0 = ej fruset). */
 export function getMicStableContentFrozenMs(): number {
-  return _stableRmsSince > 0 ? Math.round(performance.now() - _stableRmsSince) : 0;
+  return _mn.stableRmsSince > 0 ? Math.round(performance.now() - _mn.stableRmsSince) : 0;
 }
 
 /** Ms som mic-buffertens innehåll varit byte-identiskt (0 = ej fruset). */
@@ -270,7 +269,6 @@ let latestBands: BandResult = { bassRms: 0, midHiRms: 0, totalRms: 0, flux: 0, b
 
 
 // Timestamp of last FFT completion (performance.now())
-let lastFFTTimestamp = 0;
 
 // Debug — only active when DEBUG=true env var is set
 const DEBUG_ENABLED = process.env.DEBUG === 'true';
@@ -288,7 +286,7 @@ const HS_D_COEFF = (1 - HS_ALPHA) * hsGain;
 // ── Event-driven FFT callback ──
 type FFTReadyCallback = (bands: BandResult) => void;
 let _onFFTReady: FFTReadyCallback | null = null;
-let _onFluxReady: ((flux: number) => void) | null = null;
+let _onFluxReady: (() => void) | null = null;   // flux lases ur getLatestBands().flux (skrapjakten 10-18: forr ett boxat argument per band-event)
 
 /** Register callback fired immediately after each FFT frame completes.
  *  The engine uses this to process with zero timer latency. */
@@ -296,7 +294,7 @@ export function onFFTReady(cb: FFTReadyCallback | null): void {
   _onFFTReady = cb;
 }
 
-export function onFluxReady(cb: ((flux: number) => void) | null): void {
+export function onFluxReady(cb: (() => void) | null): void {
   _onFluxReady = cb;
 }
 
@@ -506,10 +504,9 @@ let fftSlot = 0;   // vilket block nasta hop fyller; process() nar alla N ar fyl
 
 let analyserSamplesReceived = 0;
 let latestFrame: Frame | null = null;
-let latestFrameAt = 0;
 export function getLatestFrame(): Frame | null { return latestFrame; }
 /** Väggklocka (ms) då senaste framen producerades — färskhetsguard hos motorn. */
-export function getLatestFrameAt(): number { return latestFrameAt; }
+export function getLatestFrameAt(): number { return _mn.latestFrameAt; }
 /** Mata analysatorn med motorns PLL-grid → kick-grindning + taktfas (barShift). */
 export function setAnalyserBeatGrid(grid: { bpm: number; anchorMs: number } | null): void {
   analyser.setBeatGrid(grid);
@@ -686,7 +683,7 @@ function emitBands(frame: Frame): void {
   // den är AGC:ad och normaliserar bort användarens gain (ljuset blev gain-
   // okänsligt och pinnade ~50 %). Ljuset drivs av den egna linjära RMS:en ×
   // micGain (tvåpunkts Sonos-kurva). Analysatorns AGC rör bara detektionen.
-  let amp = lightRawRms * micGainAuto;
+  let amp = _mn.lightRawRms * micGainAuto;
   if (amp > 1) amp = 1;
 
   // Den ABSOLUTA bandmagnituden används bara som SPEKTRAL ANDEL (bas kontra
@@ -742,10 +739,10 @@ function emitBands(frame: Frame): void {
     }
   }
 
-  lastFFTTimestamp = performance.now();
+  _mn.lastFFTTimestamp = performance.now();
   _fftFrameCount++;
 
-  if (_onFluxReady) _onFluxReady(latestBands.flux);
+  if (_onFluxReady) _onFluxReady();
   if (_onFFTReady) _onFFTReady(latestBands);
 }
 
@@ -757,7 +754,7 @@ export function resetFluxState(): void {
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
-  lightRawRms = 0;
+  _mn.lightRawRms = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   latestBands.shape = 0;
@@ -767,7 +764,7 @@ export function resetFluxState(): void {
   seedAnalyserGain('reset');
 
   latestFrame = null;
-  latestFrameAt = 0;
+  _mn.latestFrameAt = 0;
   analyserSamplesReceived = 0;
   fftSlot = 0;
   analyserMsEMA = 0; analyserMsMax = 0; analyserHopCount = 0; analyserOverBudgetCount = 0;
@@ -776,7 +773,7 @@ export function resetFluxState(): void {
 
 /** Return timestamp (performance.now) of last FFT completion */
 export function getLastFFTTimestamp(): number {
-  return lastFFTTimestamp;
+  return _mn.lastFFTTimestamp;
 }
 
 let capture: any = null;
@@ -1013,7 +1010,8 @@ function gainFromRef(ref: number): number {
   return Math.max(AUTO_GAIN_MIN, Math.min(AUTO_GAIN_MAX, lgTarget / ref));
 }
 
-function learnGainSample(blockRms: number, blockSec: number): void {
+function learnGainSample(): void {
+  const blockRms = _mn.blockRms, blockSec = _mn.blockSec;   // (skrapjakten 10-18: forr argument, boxades per ljudperiod)
   if (!lgEnabled) return;
   const v = lastSonosVol;
   if (v == null || !(v > 0) || !lgLearnAllowed) return;
@@ -1191,7 +1189,7 @@ export function startMic(): void {
   _audioCbCount = 0;
   _audioCbBytes = 0;
   _audioCbFirstAt = 0;
-  lastFFTTimestamp = 0;
+  _mn.lastFFTTimestamp = 0;
   _fftFrameCount = 0;
 
   const handleStartFailure = (message: string) => {
@@ -1293,7 +1291,7 @@ let _cbBytes = new Uint8Array(4096), _cbI32 = new Int32Array(_cbBytes.buffer), _
 
 function onAudioData(buf: Buffer): void {
   const _cbT0 = performance.now();
-  _lastAudioCbAt = _cbT0;
+  _mn.lastAudioCbAt = _cbT0;
   _audioCbCount++;
   _audioCbBytes += buf.byteLength;
   if (_audioCbFirstAt === 0) {
@@ -1394,8 +1392,8 @@ function onAudioData(buf: Buffer): void {
     const blockRms = Math.sqrt(lightSumLocal / frameCount);
     const dt = frameCount / SAMPLE_RATE;
     const a = 1 - Math.exp(-dt / 0.13);
-    lightRawRms = lightRawRms === 0 ? blockRms : lightRawRms + (blockRms - lightRawRms) * a;
-    learnGainSample(blockRms, dt);   // FIX 4: lärd volym→gain (gate:ad, långsam)
+    _mn.lightRawRms = _mn.lightRawRms === 0 ? blockRms : _mn.lightRawRms + (blockRms - _mn.lightRawRms) * a;
+    _mn.blockRms = blockRms; _mn.blockSec = dt; learnGainSample();   // FIX 4: lärd volym→gain (gate:ad, långsam); talen via _mn (ingen box per anrop)
     if (_fine) {
       // Energisumma, inte RMS-medel: en RMS av RMS:er viktar korta block fel.
       _fineSum += blockRms * blockRms * frameCount;
@@ -1405,16 +1403,16 @@ function onAudioData(buf: Buffer): void {
         _fineSum = 0; _fineN = 0;
       }
     }
-    if (_micPlaybackGate && lightRawRms >= STABLE_RMS_MIN) {
-      const tol = Math.max(STABLE_RMS_DELTA, lightRawRms * STABLE_RMS_REL);
-      if (_stableRmsSince === 0 || Math.abs(lightRawRms - _stableRmsValue) > tol) {
+    if (_micPlaybackGate && _mn.lightRawRms >= STABLE_RMS_MIN) {
+      const tol = Math.max(STABLE_RMS_DELTA, _mn.lightRawRms * STABLE_RMS_REL);
+      if (_mn.stableRmsSince === 0 || Math.abs(_mn.lightRawRms - _mn.stableRmsValue) > tol) {
 
-        _stableRmsSince = performance.now();
-        _stableRmsValue = lightRawRms;
+        _mn.stableRmsSince = performance.now();
+        _mn.stableRmsValue = _mn.lightRawRms;
       }
     } else {
-      _stableRmsSince = 0;
-      _stableRmsValue = lightRawRms;
+      _mn.stableRmsSince = 0;
+      _mn.stableRmsValue = _mn.lightRawRms;
     }
   }
 
@@ -1425,12 +1423,12 @@ function onAudioData(buf: Buffer): void {
   // gång. K identiska summor i rad ⟹ enheten matar frusen buffert. frameCount
   // matchas också, så jitter (1–3 hops/callback) aldrig triggar falskt.
   if (frameCount > 0) {
-    if (lightSumLocal === _lastLightSum && frameCount === _lastFrameCount) {
+    if (lightSumLocal === _mn.lastLightSum && frameCount === _lastFrameCount) {
       if (_contentFreezeStreak === 0) _contentFreezeAt = performance.now();
       _contentFreezeStreak++;
     } else {
       _contentFreezeStreak = 0;
-      _lastLightSum = lightSumLocal;
+      _mn.lastLightSum = lightSumLocal;
       _lastFrameCount = frameCount;
     }
   }
@@ -1480,7 +1478,7 @@ function onAudioData(buf: Buffer): void {
         _kickLast = latestFrame.kickAtMs;
         _kickRing[_kickPos] = _kickLast; _kickPos = (_kickPos + 1) % KICK_RING;
       }
-      latestFrameAt = Date.now();
+      _mn.latestFrameAt = Date.now();
       if (t0 > 0) {
         const dt = performance.now() - t0;
         // EMA (alfa=0.02, ~50 anrop) + max sedan senaste lasning; budget = FFT_EVERY hop
@@ -1514,11 +1512,10 @@ function onAudioData(buf: Buffer): void {
 // 'close' (controller/DMA-stall). Då kommer inga FFT-frames → motorns tick
 // fryser → playback-watchdogen hard-restartade hela processen. Nu re-initieras
 // bara capturen. Anropas från 1 Hz-schedulern i index.ts.
-let _lastAudioCbAt = 0;
 let _micRestartCount = 0;
 const MIC_STALL_MS = 1500;
 
-export function getLastAudioCbAt(): number { return _lastAudioCbAt; }
+export function getLastAudioCbAt(): number { return _mn.lastAudioCbAt; }
 export function getMicRestartCount(): number { return _micRestartCount; }
 
 // C1/C2: reopen skjuts upp så gamla capture-tråden hinner släppa hw:0,0
@@ -1533,21 +1530,21 @@ let _captureOpenedAt = 0;
 export function isMicStalled(): boolean {
   if (_reopenPending) return false;            // reopen är på väg — vänta ut den
   if (!capture) return false;
-  if (_lastAudioCbAt === 0) {
+  if (_mn.lastAudioCbAt === 0) {
     // C2: aldrig levererat sedan open → stall efter grace-perioden.
     return _captureOpenedAt > 0 && performance.now() - _captureOpenedAt >= FIRST_AUDIO_GRACE_MS;
   }
-  return performance.now() - _lastAudioCbAt >= MIC_STALL_MS;
+  return performance.now() - _mn.lastAudioCbAt >= MIC_STALL_MS;
 }
 
 /** Stäng och starta om ALSA-capturen utan process-restart. */
 export function restartCapture(reason: string): boolean {
   if (_reopenPending) return true;             // redan på väg
   if (!capture) return false;                  // C3: icke-omstartbart (ej wedged)
-  const ageMs = _lastAudioCbAt === 0 ? -1 : Math.round(performance.now() - _lastAudioCbAt);
+  const ageMs = _mn.lastAudioCbAt === 0 ? -1 : Math.round(performance.now() - _mn.lastAudioCbAt);
   console.warn(`[ALSA] restartCapture (${reason}): senaste audio-cb ${ageMs}ms sedan — re-initierar capturen`);
   try { stopMic(); } catch (e: any) { console.warn(`[ALSA] stopMic under restart: ${e?.message ?? e}`); }
-  _lastAudioCbAt = 0;
+  _mn.lastAudioCbAt = 0;
   _reopenPending = true;
   setTimeout(() => {
     _reopenPending = false;
@@ -1587,13 +1584,13 @@ export function stopMic(): void {
   latestBands.bassRms = 0;
   latestBands.midHiRms = 0;
   latestBands.totalRms = 0;
-  lightRawRms = 0;
-  _lastLightSum = -1;
+  _mn.lightRawRms = 0;
+  _mn.lastLightSum = -1;
   _lastFrameCount = -1;
   _contentFreezeStreak = 0;
   _contentFreezeAt = 0;
-  _stableRmsSince = 0;
-  _stableRmsValue = 0;
+  _mn.stableRmsSince = 0;
+  _mn.stableRmsValue = 0;
   latestBands.flux = 0;
   latestBands.bassFlux = 0;
   latestBands.shape = 0;
@@ -1601,7 +1598,7 @@ export function stopMic(): void {
   _audioCbBytes = 0;
   _audioCbFirstAt = 0;
   
-  lastFFTTimestamp = 0;
+  _mn.lastFFTTimestamp = 0;
   _fftFrameCount = 0;
   micStartError = null;
   _captureOpenedAt = 0;

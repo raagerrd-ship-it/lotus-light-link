@@ -2455,7 +2455,8 @@ export class PiLightEngine {
 
     // Register for FFT-driven ticks (event-driven, not polling)
     onFFTReady(() => this.onFFTFrame());
-    onFluxReady((flux) => {
+    onFluxReady(() => {
+      const flux = getLatestBands().flux;   // samma tal som alsaMic forr skickade som argument (satt strax fore anropet)
       if (this._clapMode) this.clapDetect(flux);
       if (this._loopActive && this.playing && this._bleOwner === 'active') {
         // Energy gate (2026-05-02): låt inte den adaptiva tröskeln skala ner
