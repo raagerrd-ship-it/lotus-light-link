@@ -501,6 +501,12 @@ export class Analyser {
    *  LOTUS_SECTION_HOLD_BARS = N (0 = av): uppehallet i high (REPEAT bit 16/32) ersatts av TAKTSTRUKTUR - minst N takter fran high-starten,
    *  sedan slapps high bara pa en 4-taktsgrans (fas +-1 takt) nar rangen inte langre sager high. */
   private static readonly RANK_RUN_IN = Analyser.secEnv('SECTION_RUN_IN', 0);
+  /** BASEN TILLBAKA = HIGH (2026-10-19, DMX-fyndet: 12/68 show-drops gick in i 'build' 2-8 s EFTER smallen): <prefix>SECTION_BODY_HIGH = ms
+   *  kroppen (bodyEnv) maste ha varit borta (under taket - BODY_GONE_DB), 0 = av. Nar den kommer tillbaka och inom 2 s nar
+   *  bodyPeak - SECTION_BODY_HIGH_DB raknas det som en drop for sektionen: 'high' direkt, forbi uppehallstiden. */
+  private static readonly BODY_HIGH_MS = Analyser.secEnv('SECTION_BODY_HIGH', 0);
+  private static readonly BODY_HIGH_DB = Analyser.secEnv('SECTION_BODY_HIGH_DB', 3);
+  private secBodyRet = 0; private secBodyArmMs = 0;
   private static readonly HOLD_BARS = Analyser.secEnv('SECTION_HOLD_BARS', 0);
   /** ATERINTRADE (09-22, agent-sec5): efter forsta refrangen ar refrangnivan kand (lastHighDb). Ar 2-blocksmedlet tillbaka pa den nivan
    *  (>= lastHighDb - REENTRY_DB) och 4 s-fonstrets rang >= REENTRY_PCT (under RANK_HI 0,67) -> 'high' DIREKT utan 3-blocks-run.
@@ -1292,7 +1298,7 @@ export class Analyser {
     this.section = 'intro'; this.sectionStartMs = 0; this.sectionIndex = 0; this.sectionTier = 1; this.repeatSim = 0; this.repeatAgoMs = 0; this.repeatSection = '';
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0);
     this.secBlkBon = 0; this.secBlkBpk = 0; this.secBlkFlux = 0; this.secBlkRms4 = 0; const H = this.secBlkH; H.bon.length = 0; H.bpk.length = 0; H.high.length = 0; H.flat.length = 0; H.flux.length = 0; H.dyn.length = 0;
-    this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount; this.secSilentBlocks = 0;
+    this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secHighSeen = false; this.secDropSeen = this.dropCount + this.secBodyRet; this.secSilentBlocks = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
     this.lastHighDens = NaN; this.secLvlInRun = 0; this.secLvlOutRun = 0; this.secLvlOutRef = NaN; this.secPeakRun = 0;
@@ -1309,7 +1315,7 @@ export class Analyser {
   private sectionHop(spec: ArrayLike<number>): void {
     const I = this.shIn, hops = I.hops, intSum = I.intSum, kicks = I.kicks, breaking = I.breaking, nowMs = I.nowMs, dtMs = I.dtMs, rms2Sum = I.rms2Sum, centSum = I.centSum,
       specOff = I.specOff, bonSum = I.bonSum, bpk = I.bpk, fluxSum = I.fluxSum, rms4Sum = I.rms4Sum;
-    if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount; }
+    if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount + this.secBodyRet; }
     this.secBlkMs += dtMs; this.secBlkN += hops; this.secBlkInt += intSum; this.secBlkKicks += kicks; this.secBlkCent += centSum; this.secBlkRms2 += rms2Sum;
     this.secBlkBon += bonSum; this.secBlkBpk += bpk; this.secBlkFlux += fluxSum; this.secBlkRms4 += rms4Sum;
     for (let i = 0; i < 8; i++) this.secBlkSpec[i] += spec[specOff + i];
@@ -1352,7 +1358,7 @@ export class Analyser {
     this.secHist[this.secHistPos] = bInt; this.secHistPos = (this.secHistPos + 1) & 15; if (this.secHistN < 16) this.secHistN++;
     const rise = this.secHistN >= 9 ? bInt - this.secHist[(this.secHistPos - 9 + 16) & 15] : 0;
     this.secRiseRun = rise >= 0.10 ? this.secRiseRun + 1 : 0;
-    const sinceStart = nowMs - this.secSongStartMs; const dropped = this.dropCount !== this.secDropSeen; this.secDropSeen = this.dropCount;
+    const sinceStart = nowMs - this.secSongStartMs; const dropEv = this.dropCount + this.secBodyRet; const dropped = dropEv !== this.secDropSeen; this.secDropSeen = dropEv;
     const prev = this.section; let label: string;
     if (Analyser.SECTION_MODE === 'rank') {
       // rang-lage: tier 2 = high, tier 0 = low, mitten = 'break' pa vag ner fran high, 'build' pa vag upp fran low/intro, annars kvar
@@ -1442,7 +1448,7 @@ export class Analyser {
     // sektion, utom in i 'high' (drop/topp ska synas direkt) och ur 'high' till 'break' (svackan ar en flank).
     // uppehallstid 8 s (var 4: build/low/high bytte var 4 s pa pop 14:30), utom in i 'high' (4 s) och high -> break (direkt)
     const dwellMs = label === 'high' ? 4000 : 8000;
-    const dwellOk = nowMs - this.sectionStartMs >= dwellMs || (prev === 'high' && label === 'break');
+    const dwellOk = nowMs - this.sectionStartMs >= dwellMs || (prev === 'high' && label === 'break') || (Analyser.BODY_HIGH_MS > 0 && dropped && label === 'high');
     if (label !== prev && dwellOk) {
       // MINNE: avslutad sektion till loggen (medel-dB, kickar/s); refrangens dB blir referensen for levelVsHighDb.
       const dbMean = this.secCurDbN ? this.secCurDbSum / this.secCurDbN : blkDb;
@@ -1832,7 +1838,7 @@ export class Analyser {
     r[o + R_SEC_BON] = g.bon; r[o + R_SEC_BPK] = g.bpk; r[o + R_SEC_FLUX] = g.flux; r[o + R_SEC_RMS4] = g.rms4;
     // SECTION_AGG 'hop': fakta fran sista aggregerade hoppet (som sectionHop sag dem i odelat lage); 'env': vid skrivningen.
     if (SECTION_AGG_HOP) { r[o + R_DROPS] = g.drops; r[o + R_ACTIVE] = g.active; r[o + R_BUILD] = g.build; }
-    else { r[o + R_DROPS] = this.dropCount; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp; }
+    else { r[o + R_DROPS] = this.dropCount + this.secBodyRet; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp; }
     r[o + R_FLAGCNT] = packFlagCounts(this.flagCnt);
     r[o + R_SEQ] = seq;                                    // sist: seq = recordet ar komplett
     g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
@@ -3512,7 +3518,11 @@ export class Analyser {
         if (this.bodyGoneMs - dtHop * 1000 < BODY_GONE_MIN_MS) this.goneEpisodeMs = nowWallA;   // NY episod (korsningen), oforandrad tills nasta
         this.lastBodyGoneMs = nowWallA;
       }
-    } else { if (this.bodyGoneMs > 0) this.lastGoneSpanMs = this.bodyGoneMs; this.bodyGoneMs = 0; }
+    } else {
+      if (Analyser.BODY_HIGH_MS > 0 && this.bodyGoneMs >= Analyser.BODY_HIGH_MS) this.secBodyArmMs = nowWallA;
+      if (this.bodyGoneMs > 0) this.lastGoneSpanMs = this.bodyGoneMs; this.bodyGoneMs = 0;
+      if (this.secBodyArmMs > 0) { if (nowWallA - this.secBodyArmMs > 2000) this.secBodyArmMs = 0; else if (this.bodyEnv >= this.bodyPeak - Analyser.BODY_HIGH_DB) { this.secBodyRet++; this.secBodyArmMs = 0; } }
+    }
     // STIGNINGSTAKT över 0.5 s (ringbuffert, ingen allokering).
     const hist = this.bodyHist, HL = hist.length;
     const oldest = hist[(this.bodyHistPos + HL - this.bodyHistLen) % HL];
@@ -3764,7 +3774,7 @@ export class Analyser {
         const sp = this.secSpecHop; for (let i = 0; i < 8; i++) sp[i] = Math.pow(10, this.bandDbRaw[i] / 20);
         if (this.role === 'fast') {
           const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += this.dtHop * 1000;
-          g.breaking = breaking ? 1 : 0; g.wall = this.wallNow(); g.drops = this.dropCount; g.active = this.activeMs; g.build = this.buildUp;
+          g.breaking = breaking ? 1 : 0; g.wall = this.wallNow(); g.drops = this.dropCount + this.secBodyRet; g.active = this.activeMs; g.build = this.buildUp;
           for (let i = 0; i < 8; i++) g.spec[i] += sp[i];
         } else { const I = this.shIn; I.hops = 1; I.intSum = intensity; I.kicks = kick ? 1 : 0; I.breaking = breaking; I.nowMs = this.wallNow(); I.dtMs = this.dtHop * 1000;
           I.rms2Sum = rms * rms; I.centSum = this.centSmooth; I.specOff = 0; I.bonSum = 0; I.bpk = 0; I.fluxSum = 0; I.rms4Sum = 0; this.sectionHop(sp); }
