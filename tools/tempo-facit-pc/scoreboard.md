@@ -1,12 +1,11 @@
 # Resultattavla — analysatorns tempoval mot facit
 
-Uppdaterad 2026-10-18 07:56. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
+Uppdaterad 2026-10-19 08:03. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
 
 Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).
 
 | datum | standard | live | evidence | ring10 | live-cd80 | live-cd120 | live: dygnets låtar | ok-andel | grid-släp | onset recall | onset precision | nivå r |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-10-03 | 332/548 · 6/8 · slag 0.54 p 0.87 | 435/548 · 6/8 · slag 0.84 p 0.86 · fas 222/395 | 429/548 · 6/8 · slag 0.57 p 0.87 | 359/548 · 6/8 · slag 0.54 p 0.86 | 435/548 · 6/8 · slag 0.85 p 0.86 · fas 222/395 | 435/548 · 6/8 · slag 0.79 p 0.86 · fas 222/395 | 90 (76 facit) | 0.61 | None ms | 1.0 | 0.9 | 0.6 |
 | 2026-10-04 | 343/567 · 6/8 · slag 0.54 p 0.87 | 451/567 · 6/8 · slag 0.84 p 0.86 · fas 228/406 | 448/567 · 6/8 · slag 0.57 p 0.87 | 374/567 · 6/8 · slag 0.54 p 0.86 | 451/567 · 6/8 · slag 0.85 p 0.86 · fas 228/406 | 451/567 · 6/8 · slag 0.79 p 0.87 · fas 228/406 | 6 (5 facit) | 0.6 | None ms | 0.9 | 0.9 | 0.6 |
 | 2026-10-05 | 295/572 · 6/8 · slag 0.54 p 0.86 | 400/572 · 6/8 · slag 0.83 p 0.85 · fas 214/354 | 395/572 · 6/8 · slag 0.56 p 0.86 | 321/572 · 6/8 · slag 0.53 p 0.86 | 400/572 · 6/8 · slag 0.84 p 0.86 · fas 214/354 | 400/572 · 6/8 · slag 0.79 p 0.86 · fas 214/354 | 118 (51 facit) | 0.12 | None ms | 0.9 | 0.8 | 0.7 |
 | 2026-10-06 | 280/503 · 6/8 · slag 0.54 p 0.87 | 388/503 · 6/8 · slag 0.84 p 0.86 · fas 216/360 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 388/503 · 6/8 · slag 0.84 p 0.86 · fas 216/360 | 388/503 · 6/8 · slag 0.79 p 0.86 · fas 216/360 | 0 (0 facit) | 0.0 | None ms | None | None | None |
@@ -20,8 +19,9 @@ Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med ana
 | 2026-10-16 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-17 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-18 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 4 (1 facit) | 1.0 | None ms | None | None | None |
+| 2026-10-19 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 
-Senaste dygnet: domar {"ok": 1, "utan facit": 3}; kick-bias None ms; nivå-lag None ms; tak-r None lag None ms None %/dB klipp None; analysatorns spann inom låt 44.5 BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 614 {"ratt": 82, "falsk": 129, "osaker": 401}.
+Senaste dygnet: domar {}; kick-bias None ms; nivå-lag None ms; tak-r None lag None ms None %/dB klipp None; analysatorns spann inom låt None BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 614 {"ratt": 82, "falsk": 129, "osaker": 401}.
 
 Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.
 

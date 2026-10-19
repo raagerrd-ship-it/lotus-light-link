@@ -4,6 +4,8 @@
 före 07:00. Den delade analysatorn rörs inte. Inget deployas. Morgonagenten: läs nattens lotus-commit(s) och rapport, bänka som vanligt,
 rör inte samma filer samma morgon. 10-17 LIVE på lotus: analysatorn 14:04 (4e264e9), v8Tiering + micvägen 14:45 (1a0365a).
 
+## 2026-10-19 morgon (morgonagenten): ingen PUT. Repo-kopior heap.conf/gc-track.conf = Pi (f922235). SECTION_BODY_HIGH opt-in i delade analysatorn (DMX-profilval, ej lotus). Skräpjaktens rest (riserStep/agcStep) ej angripen.
+
 ## 2026-10-18 dag (ägaren via DMX-sessionen) - LIVE PÅ LOTUS, RÄTTA INTE TILLBAKA
 - Drop-in zz-heapgrow.conf (A/B, ägarens prov): --heap-growing-percent=200 i ExecStart (gamla minnet växer 3x levande i st f ~1,4x).
   Mätt 32 min: storstädning 0 st efter uppstarten (förr var 4,5:e min, slutpaus 19-28 ms + inkrementellt 25-57 ms), små GC oförändrade
