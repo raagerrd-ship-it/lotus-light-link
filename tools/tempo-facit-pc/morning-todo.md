@@ -4,6 +4,8 @@
 före 07:00. Den delade analysatorn rörs inte. Inget deployas. Morgonagenten: läs nattens lotus-commit(s) och rapport, bänka som vanligt,
 rör inte samma filer samma morgon. 10-17 LIVE på lotus: analysatorn 14:04 (4e264e9), v8Tiering + micvägen 14:45 (1a0365a).
 
+## 2026-10-20 morgon (morgonagenten): ingen PUT. DMX-fyndet 10-20 KLART (lotus f71054e, dmx 19bebf7): SECTION_BODY_HIGH även i intro efter låtgräns, redo för ladan. Bänk oförändrad 396/503.
+
 ## 2026-10-19 morgon (morgonagenten): ingen PUT. Repo-kopior heap.conf/gc-track.conf = Pi (f922235). SECTION_BODY_HIGH opt-in i delade analysatorn (DMX-profilval, ej lotus). Skräpjaktens rest (riserStep/agcStep) ej angripen.
 
 ## 2026-10-18 dag (ägaren via DMX-sessionen) - LIVE PÅ LOTUS, RÄTTA INTE TILLBAKA
