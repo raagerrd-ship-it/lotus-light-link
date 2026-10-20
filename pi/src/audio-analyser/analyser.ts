@@ -1362,7 +1362,9 @@ export class Analyser {
     const prev = this.section; let label: string;
     if (Analyser.SECTION_MODE === 'rank') {
       // rang-lage: tier 2 = high, tier 0 = low, mitten = 'break' pa vag ner fran high, 'build' pa vag upp fran low/intro, annars kvar
-      if (this.secBlkDb.length < 20) label = 'intro';
+      // SECTION_BODY_HIGH aven i intro (DMX-fyndet 10-20: latgransen 0,1-7 s fore dropen nollade till intro, smallen nadde aldrig high):
+      // basen tillbaka = 'high' direkt och kvar tills rangen har 20 block.
+      if (this.secBlkDb.length < 20) label = Analyser.BODY_HIGH_MS > 0 && (dropped || prev === 'high') ? 'high' : 'intro';
       else if (dropped || st === 2) label = 'high';
       else if (st === 0) label = 'low';
       else label = prev === 'high' || prev === 'break' ? 'break' : (prev === 'low' || prev === 'intro' || prev === 'build') ? 'build' : prev;
