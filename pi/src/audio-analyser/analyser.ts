@@ -364,6 +364,25 @@ export class Analyser {
   private static readonly BIG_EVERY = 3;   // kor stor-FFT var N:e hop → analysen ryms i realtid
   /** bandPeak-decay per stor-FFT (τ ≈ 3.8 s oavsett BIG_EVERY). */
   private static readonly PEAK_DECAY = Math.pow(0.9993, Analyser.BIG_EVERY);
+  /** SNABBA BANDEN FÖR LJUSET (opt-in <prefix>FAST_BANDS=1, DMX-fyndet 10-21): ramens LJUSFÄLT - spec, specAbs, onset, drum.hat/
+   *  snare/bass, midHiDb - räknas VARJE hop ur en snabb väg i stället för ur 2048-FFT:n (42,7 ms Hann, var 3:e hop: 21-27 ms efter
+   *  ljudet). Sub/kick/bas (band 0-2) ur en IIR-filterbank i tidsdomänen (Butterworth HP+LP per band, effekten per hop utjämnad
+   *  FB_TAU_MS), band 3-7 ur 512-FFT:n (94 Hz per bin räcker där). Egen uppsättning (fb*): 2048-vägens band räknas OFÖRÄNDRAT och
+   *  matar allt som är analys eller drop - dropkroppen (bodyDb), sektionen, karaktärsprofilen, basgången, risern. Nivåerna är
+   *  kalibrerade mot 2048-vägens bandmedel (FB_K) så dB-skalan är densamma; tidskonstanterna desamma (90 ms nivå, peak-decay ~3,8 s,
+   *  onset-medianens steg, uppvärmning), räknade per hop. Mätt 10-21 (faltLatens, 2 filer): specAbs.kick 21 -> 5 ms, onset.kick 27 -> 5,
+   *  onset.treble 21 -> 3 ms efter ljudet. */
+  private static readonly FAST_BANDS = sysEnv('FAST_BANDS') === '1';
+  private static readonly FB_TAU_MS = [12, 6, 3];
+  private static readonly FB_K = [385, 475, 313, 1.46, 1.62, 1.8, 2.03, 2.12];   // 2048-medel / snabbt medel, median över 4 ladan-inspelningar (+-2 dB mellan filerna)
+  private fbMag = new Float32Array(256); private fbPrevMag = new Float32Array(256);
+  private fbLo = new Int32Array(8); private fbHi = new Int32Array(8);
+  private fbCoef = new Float64Array(3 * 2 * 5);   // per lågband: HP-biquad + LP-biquad (b0 b1 b2 a1 a2)
+  private fbState = new Float64Array(3 * 2 * 4); // x1 x2 y1 y2 per biquad
+  private fbPow = new Float64Array(3); private fbPrevAmp = new Float64Array(3); private fbA = new Float64Array(3);
+  private fbAbs = new Float32Array(8); private fbDbRaw = new Float32Array(8); private fbLvl = new Float32Array(8); private fbOn = new Float32Array(8);
+  private fbPeak = new Float32Array(8).fill(1e-4); private fbOnMed = new Float32Array(8); private fbOnMad = new Float32Array(8);
+  private fbAlvl = 0.5; private fbMax = 0; private fbWarm = 0;
   /** Valfri avlyssnare på den stora magnituden (låtminnets fingeravtryck). */
   private specSink: ((mag: Float32Array, binHz: number) => void) | null = null;
   setSpectrumSink(fn: ((mag: Float32Array, binHz: number) => void) | null): void { this.specSink = fn; }
@@ -2818,6 +2837,24 @@ export class Analyser {
       this.bandHi[b] = Math.min(BIG / 2, Math.round(Analyser.BAND_HZ[b + 1] / binHzBig));
       this.bandPeak[b] = 1e-4;   // seed → själv-kalibrerar inom ~1s
     }
+    if (Analyser.FAST_BANDS) {   // snabba banden: 512-binnar för band 3-7, biquads för band 0-2 (RBJ, Q 0,707)
+      const binHz = cfg.audio.rate / cfg.fft.size, half = cfg.fft.size / 2;
+      for (let b = 3; b < 8; b++) { this.fbLo[b] = Math.max(1, Math.round(Analyser.BAND_HZ[b] / binHz)); this.fbHi[b] = Math.min(half, Math.max(this.fbLo[b] + 1, Math.round(Analyser.BAND_HZ[b + 1] / binHz))); }
+      this.fbMax = Math.min(half, this.fbHi[7] + 1);
+      if (this.fbMag.length < half) { this.fbMag = new Float32Array(half); this.fbPrevMag = new Float32Array(half); }
+      const dtMs = cfg.fft.hop / cfg.audio.rate * 1000;
+      for (let b = 0; b < 3; b++) {
+        for (let s = 0; s < 2; s++) {
+          const f0 = Analyser.BAND_HZ[b + s], w = 2 * Math.PI * f0 / cfg.audio.rate, c = Math.cos(w), al = Math.sin(w) / (2 * Math.SQRT1_2), a0 = 1 + al;
+          const o = (b * 2 + s) * 5, C = this.fbCoef;
+          if (s === 0) { C[o] = (1 + c) / 2 / a0; C[o + 1] = -(1 + c) / a0; C[o + 2] = (1 + c) / 2 / a0; }   // HP vid bandets nedre kant
+          else { C[o] = (1 - c) / 2 / a0; C[o + 1] = (1 - c) / a0; C[o + 2] = (1 - c) / 2 / a0; }          // LP vid övre kanten
+          C[o + 3] = -2 * c / a0; C[o + 4] = (1 - al) / a0;
+        }
+        this.fbA[b] = 1 - Math.exp(-dtMs / Analyser.FB_TAU_MS[b]);
+      }
+      this.fbAlvl = 1 - Math.exp(-dtMs / 90);
+    }
     this.magBigMax = Math.min(BIG / 2, this.bandHi[7] + 1);
     this.magBigView = this.magBig.subarray(0, this.magBigMax);
     this.prevMagBigView = this.prevMagBig.subarray(0, this.magBigMax);
@@ -2934,6 +2971,7 @@ export class Analyser {
         if (dd > 0) { flux += dd; if (i < kickBins) kickFlux += dd; }   // half-wave rectified
       }
       powSum += p; powW += i * p;
+      if (Analyser.FAST_BANDS && i < this.fbMax) this.fbMag[i] = Math.sqrt(p);
     }
     this.onsetPeakReady = true;
     if (enhancedOnset) {
@@ -3047,15 +3085,17 @@ export class Analyser {
     // ljuset låg 40–140ms efter. Decimeringen får den att rymmas i realtid.
     // Tidssteget skalas (bigDt) så smoothing-tidskonstanterna blir oförändrade.
     if (++this.bigCounter >= Analyser.BIG_EVERY) this.bigStep();
+    if (Analyser.FAST_BANDS) this.fastBandStep(samples);
     // TRUM-KIT peak-hold-envelopes PÅ HOP-TAKT (var 2.7ms) → fångar varje anslag,
     // aldrig missat mellan två render-frames (100Hz). tau bevarade från effects.ts:
     // hat 60ms (treble+air-onset O[6]/O[7]) / snare 110ms (highMid-onset O[5]) / kick 150ms
     // (ENBART diskret kick — se nedan). bass = spec.bass-NIVÅ (L[2], ingen envelope).
     // Hi-hats/sizzle i modern EDM/trap ligger ofta >10 kHz, så hat får lyssna på både
     // treble (3,5–10 kHz) och air (10–16 kHz) och ta den starkaste transienten.
-    const hatOnset = this.bandOn[6] > this.bandOn[7] ? this.bandOn[6] : this.bandOn[7];
+    const ON = Analyser.FAST_BANDS ? this.fbOn : this.bandOn;   // trumenveloperna är ljus: snabba banden med FAST_BANDS
+    const hatOnset = ON[6] > ON[7] ? ON[6] : ON[7];
     this.hatHit = Math.max(this.hatHit * this.dHat, hatOnset);
-    this.snareHit = Math.max(this.snareHit * this.dSnare, this.bandOn[5]);
+    this.snareHit = Math.max(this.snareHit * this.dSnare, ON[5]);
     // Drivs ENBART av den riktiga kick-detektorn (median + 4.5*MAD). Tidigare
     // fylldes den ocksa pa av bandOn[1], men det bandet (60-120 Hz) domineras av
     // sustained bas: MATT 816-1377 anslag/min dar ~110 fanns, dvs 8x for manga.
@@ -3369,6 +3409,56 @@ export class Analyser {
     const scale = Math.max(0.015, this.intensitySpread) * 4;
     const intensity = Math.max(0, Math.min(1, 0.5 + dev / scale));
     this.hIntensity = intensity;
+  }
+
+  /** SNABBA BANDEN (FAST_BANDS, se fältet): varje hop, till fb*-uppsättningen. Samma nivå/AGC/onset-räkning som 2048-vägens bandloop
+   *  i bigStep, med tidskonstanterna per hop i stället för per stor-FFT (nivå 90 ms, peak-decay 0,9993, onset-steg 0,002, uppvärmning
+   *  ONSET_WARM x BIG_EVERY hop). */
+  private fastBandStep(samples: Float32Array): void {
+    const gated = this.hRms > this.cfg.detection.noiseFloor * 1.5;
+    if (gated) this.fbWarm++; else this.fbWarm = 0;
+    const warm = gated && this.fbWarm >= Analyser.ONSET_WARM * Analyser.BIG_EVERY;
+    const C = this.fbCoef, S = this.fbState, n = samples.length;
+    for (let b = 0; b < 8; b++) {
+      let avg: number, fluxN: number;
+      if (b < 3) {   // biquad HP + LP i följd, effekten per hop, utjämnad; amplitud = rot ur effekten, skalad till ett bandmedel
+        const o1 = b * 10, o2 = o1 + 5, s1 = b * 8, s2 = s1 + 4;
+        let x1 = S[s1], x2 = S[s1 + 1], y1 = S[s1 + 2], y2 = S[s1 + 3], u1 = S[s2], u2 = S[s2 + 1], v1 = S[s2 + 2], v2 = S[s2 + 3], pw = 0;
+        for (let i = 0; i < n; i++) {
+          const x = samples[i];
+          const y = C[o1] * x + C[o1 + 1] * x1 + C[o1 + 2] * x2 - C[o1 + 3] * y1 - C[o1 + 4] * y2; x2 = x1; x1 = x; y2 = y1; y1 = y;
+          const v = C[o2] * y + C[o2 + 1] * u1 + C[o2 + 2] * u2 - C[o2 + 3] * v1 - C[o2 + 4] * v2; u2 = u1; u1 = y; v2 = v1; v1 = v;
+          pw += v * v;
+        }
+        S[s1] = x1; S[s1 + 1] = x2; S[s1 + 2] = y1; S[s1 + 3] = y2; S[s2] = u1; S[s2 + 1] = u2; S[s2 + 2] = v1; S[s2 + 3] = v2;
+        this.fbPow[b] += (pw / n - this.fbPow[b]) * this.fbA[b];
+        avg = Math.sqrt(this.fbPow[b]) * Analyser.FB_K[b];
+        const d = avg - this.fbPrevAmp[b]; fluxN = d > 0 ? d : 0; this.fbPrevAmp[b] = avg;
+      } else {       // 512-FFT:ns binnar (fbMag fylls i process()), flux mot förra hoppet
+        const lo = this.fbLo[b], hi = this.fbHi[b], m = this.fbMag, pm = this.fbPrevMag;
+        let sum = 0, fl = 0;
+        for (let i = lo; i < hi; i++) { const v = m[i]; sum += v; const d = v - pm[i]; if (d > 0) fl += d; }
+        const nb = hi - lo;
+        avg = sum / nb * Analyser.FB_K[b]; fluxN = fl / nb * Analyser.FB_K[b];
+      }
+      this.fbAbs[b] = avg;
+      this.fbDbRaw[b] = 20 * Math.log10(avg + 1e-7);
+      const minPeak = this.lvlSmooth * 0.15;
+      if (gated && avg > this.fbPeak[b]) this.fbPeak[b] = Math.max(avg, minPeak);
+      else this.fbPeak[b] = Math.max(this.fbPeak[b] * 0.9993, minPeak);
+      const lvlRawB = gated ? Math.min(1, avg / (this.fbPeak[b] + 1e-6)) : 0;
+      this.fbLvl[b] += (lvlRawB - this.fbLvl[b]) * this.fbAlvl;
+      const oStep = 0.002;
+      const dOMed = fluxN - this.fbOnMed[b];
+      this.fbOnMed[b] += (dOMed > 0 ? 1 : dOMed < 0 ? -1 : 0) * oStep * (this.fbOnMed[b] + 0.01);
+      const dOMad = Math.abs(fluxN - this.fbOnMed[b]) - this.fbOnMad[b];
+      this.fbOnMad[b] += (dOMad > 0 ? 1 : dOMad < 0 ? -1 : 0) * oStep * (this.fbOnMad[b] + 0.01);
+      if (this.fbOnMed[b] < 0) this.fbOnMed[b] = 0;
+      if (this.fbOnMad[b] < 0) this.fbOnMad[b] = 0;
+      const oThr = this.fbOnMed[b] + Analyser.ONSET_K * this.fbOnMad[b];
+      this.fbOn[b] = warm ? Math.max(0, Math.min(1, (fluxN - oThr) / Math.max(1e-6, this.fbOnMad[b] * 3))) : 0;
+    }
+    { const t = this.fbPrevMag; this.fbPrevMag = this.fbMag; this.fbMag = t; }
   }
 
   /** Decimerad stor-FFT (var BIG_EVERY:e hop): 2048-magnitud, latminnets spec-sink, basonset-envelope, 8 band (niva/AGC/onset) + swap. */
@@ -3791,7 +3881,7 @@ export class Analyser {
   private fillFrame(): Frame {
     const level = this.hLevel, fluxNorm = this.hFlux, kick = this.hKick, intensity = this.hIntensity, bodyNow = this.hBody, inZone = this.hInZone, breaking = this.hBreaking,
       inRiser = this.hInRiser, kickAtMs = this.hKickAt, barShift = this.hBarShift, rms = this.hRms, nowWallA = this.hNowWall;
-    const L = this.bandLvl, A = this.bandAbs, O = this.bandOn;
+    const FB = Analyser.FAST_BANDS, L = FB ? this.fbLvl : this.bandLvl, A = FB ? this.fbAbs : this.bandAbs, O = FB ? this.fbOn : this.bandOn;   // ljusfälten
     const spec = this.outSpec, specAbs = this.outSpecAbs, onset = this.outOnset;
     spec.sub = L[0]; spec.kick = L[1]; spec.bass = L[2]; spec.lowMid = L[3]; spec.mid = L[4]; spec.highMid = L[5]; spec.treble = L[6]; spec.air = L[7];
     specAbs.sub = A[0]; specAbs.kick = A[1]; specAbs.bass = A[2]; specAbs.lowMid = A[3]; specAbs.mid = A[4]; specAbs.highMid = A[5]; specAbs.treble = A[6]; specAbs.air = A[7];
@@ -3806,7 +3896,7 @@ export class Analyser {
     f.centroid = this.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.bodyDb = bodyNow;
-    { let s2 = 1e-12; for (let b = 3; b < 8; b++) { const lin = Math.pow(10, this.bandDbRaw[b] / 20); s2 += lin * lin; } f.midHiDb = 20 * Math.log10(Math.sqrt(s2)); }
+    { let s2 = 1e-12; for (let b = 3; b < 8; b++) { const lin = Math.pow(10, (FB ? this.fbDbRaw : this.bandDbRaw)[b] / 20); s2 += lin * lin; } f.midHiDb = 20 * Math.log10(Math.sqrt(s2)); }
     f.dropCount = this.dropCount; f.miniDropCount = this.miniDropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
     f.kickAtMs = kickAtMs; f.barShift = barShift;
     // Gridfasen ut: konstant offset (detektorns slap) och/eller trim. Bada 0/av som standard => oforandrad fas.
