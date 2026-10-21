@@ -94,6 +94,9 @@ export interface SplitBuffers { ctrl: SharedArrayBuffer; ring: SharedArrayBuffer
 
 /** Meddelanden main ↔ worker (bara utanför driftvägen). `crash` finns ENBART bakom <prefix>SPLIT_TEST_CRASH=1 (stresstest). */
 export type WorkerMsg = { type: 'stop' } | { type: 'crash' };
+/** cfg ar en KOPIA (structured clone) fran workerns start: den langsamma sidan ser aldrig motorns senare andringar (cfg.beat,
+ *  UI-andrade detection-varden). Las darfor aldrig cfg efter start i den langsamma sidan - behovs ett levande varde, skicka det i recorden
+ *  (bankens inline-lage ger samma kopia, structuredClone, sedan 10-19). */
 export interface WorkerData { cfg: unknown; buffers: SplitBuffers; resumeSeq: number /* senast lästa record (full seq) — 0 vid första start */ }
 
 export function createSplitBuffers(): SplitBuffers {
