@@ -1,5 +1,5 @@
 """GEMENSAM ANALYSATOR - deployspärr (2026-09-24). Samma fil i lotus-light-link (pi/scripts/) och dmx-control
-(pi-dmx/engine/tools/). Analysatorn (analyser.ts, split.ts, slowWorker.ts, tempoTracker.ts) och inspelaren
+(pi-dmx/engine/tools/). Analysatorn (analyser.ts, split.ts, slowWorker.ts) och inspelaren
 (recorder.ts) ar SAMMA byte i bada repona; systemskillnaderna ligger i analyserProfile.ts (en per system).
 
 check() vagrar (sys.exit) om:
@@ -13,7 +13,7 @@ Uppdatera manifestet EFTER att filerna kopierats till bada repona:
 Syskonets kallkatalog: env ANALYSER_SIBLING, annars standardplatsen bredvid detta repo."""
 import hashlib, os, sys
 
-SHARED = ['analyser.ts', 'split.ts', 'slowWorker.ts', 'tempoTracker.ts', 'recorder.ts']
+SHARED = ['analyser.ts', 'split.ts', 'slowWorker.ts', 'recorder.ts']
 MANIFEST = 'ANALYSER_SHARED.md5'
 
 

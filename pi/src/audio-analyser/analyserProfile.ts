@@ -23,10 +23,8 @@ export const PROFILE: AnalyserProfile = {
     TEMPO_LAGMAX: 'half',        // DMX: 'full' (lag upp till N-1)
     SECTION_AGG: 'env',          // DMX: 'hop'
     SECTION_SCORE_F32: '0',      // DMX: '1'
-    SECTION_W_HIGH: '0',         // DMX: '1.0'
     SIL_CLEAR_PENDING: '0',      // DMX: '1'
   },
   bare: {
-    BPM_MIN: '80',               // DMX: 100 (ladan satter BPM_MIN=80 i tempo.conf)
   },
 };

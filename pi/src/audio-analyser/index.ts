@@ -8,7 +8,7 @@
  *   const frame = a.process(samples);
  *   // frame.level, frame.kick, frame.bpm, frame.dropCount, frame.spec.*, frame.onset.*, ...
  *
- * Analysatorn (analyser.ts, split.ts, slowWorker.ts, tempoTracker.ts) ar GEMENSAM med pi-dmx - samma byte i
+ * Analysatorn (analyser.ts, split.ts, slowWorker.ts) ar GEMENSAM med pi-dmx - samma byte i
  * bada repona. Systemets egna standardvarden ligger i analyserProfile.ts. createAnalyser (med
  * LOTUS_ANALYSER_SPLIT = worker | inline) bor i analyser.ts. See README.md and INTEGRATION.md for details.
  */
