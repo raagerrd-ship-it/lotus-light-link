@@ -148,3 +148,6 @@ Ingen PUT (felsökning av, GET {"enabled":false,"record":false}; 4 lärrader ur 
 
 ## Morgonen 2026-10-23 — kalibrering
 Ingen PUT (felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Musik 10-22 (PAUSED 13:07/14:12/17:28 UTC), drops n 154 edgeAgo median 0 ms (p75 11). Nattjobbet för hand 07:04–08:00 (Sonos PAUSED): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362 — första bänken på flaggstädad kod (3d992a2), oförändrad; evidence 385→383, ring10 308→311 (deras borttagna flaggor). Drift: drop-ins Pi = repo utom bass-body.conf (känt); Pi:ns dist äldre än main (flaggstädningen ej deployad, ägarens beslut). DMX-fynd 10-22 SECTION_EARLY-medianen AVVISAT (opt-in EARLY_OWN byggd, 25 lang hiStart 38→27 %, koden bort); onset.kick-klampningen TAGET.
+
+## Morgonen 2026-10-24 — kalibrering
+Ingen PUT (inga lärrader: felsökning av; kalibreringen orörd). Ingen musik 10-23. Nattjobbet för hand 10:26–11:22 (Sonos PAUSED): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift = i går (bass-body.conf bara i repot, dist äldre än main enl. ägarens beslut). Inga nya DMX-fynd.
