@@ -154,3 +154,6 @@ Ingen PUT (inga lärrader: felsökning av; kalibreringen orörd). Ingen musik 10
 
 ## Morgonen 2026-10-25 — kalibrering
 Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Musik 10-24 10:40–19:09 (MOTOR_ON ×4), drops n 353 edgeAgo median 0 ms (p75 29), en BLE-Down 15 s 17:31 (restart-log ble-down-light-frozen). Warmup 04:00Z 10,8 s. Nattjobbet för hand 07:05–08:13 (Sonos PAUSED): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift = i går (drop-ins lika i verksamma rader, bass-body.conf bara i repot, dist äldre än main enl. ägarens beslut). Timers 03:00–04:10 (sommartid slut i natt). Inga nya DMX-fynd.
+
+## Morgonen 2026-10-26 — kalibrering
+Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Ingen musik 10-25 (engine.log.1 bara bootrader, 0 drops). Warmup 04:01Z 10,9 s. Nattjobbet för hand 07:05–08:06 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 21 aktiva drop-ins md5 = repo, bass-body.conf bara i repot, dist äldre än main enl. ägarens beslut. Timers 03:00–04:30. Inga nya DMX-fynd.
