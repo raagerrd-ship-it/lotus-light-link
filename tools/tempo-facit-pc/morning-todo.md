@@ -1,3 +1,19 @@
+## Från kvällen 2026-10-26 (ägaren via DMX-sessionen) - LATENS OCH OPTIMERING (går före allt utom hälsan och kalibreringen)
+Ägaren: 'natten vill jag att agenterna skall jobba med latensen och optimering'. DMX-nattagenten gör samma sak på DMX-sidan i natt och
+skriver fynd i den delade analysatorn till dmx-control/pi-dmx/engine/tools/natt/analysator-fynd.md - läs den FÖRST och ta fynden
+(du äger ändringar i analyser.ts/split.ts/slowWorker.ts, i båda repona, manifest + paritet som vanligt). Inget deployas utan ägaren;
+skriv 'redo för källaren' med kommando. Regler som förut: fade-down/nedgången rörs aldrig, beatLeadMs aldrig uppåt.
+1. SNABBA BANDEN PÅ LOTUS: <prefix>FAST_BANDS=1 finns i delade analysatorn sedan 10-21 (DMX kör den som standard: ljusets bandfält 5 ms
+   efter ljudet i stället för 21-27, riggens ljus ~15 ms tidigare, drops identiska). Bänka LOTUS_FAST_BANDS=1 i lotus-banken (live 396/503,
+   syntet, on-beat, fas, drops, sektioner) + fältlatens; håller den -> redo för källaren. Om ljuset kommer tidigare: räkna om par-regeln
+   (lead ~ 45 + ceil(2*rise/24)*24) och föreslå lägre lead - aldrig högre.
+2. LATENSBUDGETEN PÅ LOTUS: mic -> analys -> BLE -> remsa i ms (period/buffer, hop, fönster per fält, tick, conn-interval, lead), vilka 2
+   steg som går att korta. Jämför med DMX:s budget i analysator-fynd.md/nattrapporten.
+3. OPTIMERING: de TAGNA men obyggda punkterna - computeBpm i små metoder (0 % TurboFan, fynd 10-18), process()-skräpet 54-73 B/hop,
+   onset.kick-klampningen (fynd 10-22/10-23, kick på toppen). Bit-identiskt/paritet 0 där bara kostnaden ändras; /api/perf på lotus
+   (minor/major/loop) före/efter som mått.
+Rapportera i morgonens rad + scoreboard; markera DMX-fynden TAGET/KLART/AVVISAT.
+
 ## Från kvällen 2026-10-17 (INFO) - DMX-NATTAGENTEN SKRIVER OM LOTUS-MOTORNS SKRÄP I NATT
 Ägaren gav natten till 10-18 åt skräpjakten: DMX-nattagenten (02:38) får, som engångsundantag, skriva lotus-motorns egna filer
 (pi/src/piEngine.ts, alsaMic.ts, bassBody.ts, heartbeat/*.ts), bara bevisat byte-identiskt (tools/skrap/engineReplay.mjs) och pushar
