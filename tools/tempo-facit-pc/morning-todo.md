@@ -1,3 +1,20 @@
+## Från kvällen 2026-10-27 (ägaren via DMX-sessionen: 'nya test för natten') - KICKFÄLTET (går före allt utom hälsan och kalibreringen)
+DMX-nattagenten hittade i natt att gallop-felet i ladan är taktgridets fas: onset.kick är klampad 0/1 och står på 1 under hela bas-svallet,
+så DMX:s vikning lägger slaget +130 ms efter kicken (fynd 10-27 i dmx-control/pi-dmx/engine/tools/natt/analysator-fynd.md - du har
+markerat det TAGET). DMX:s eget prov (dB-stigning) rättade gridet och taktklockan 67 -> 83 % men flyttade sektionerna. Du äger delade
+analysatorn (båda repona, manifest + paritet). Inget deployas utan ägaren; regler som förut (nedgången rörs aldrig, beatLeadMs aldrig upp).
+1. BYGG DET OMÄTTADE KICKFÄLTET som NYTT ramfält (t.ex. onset.kickRise = kickbandets stigning i dB före klampningen, eller fbOn[1]
+   före klampning), både i den snabba vägen (FAST_BANDS) och den gamla. Befintliga fält orörda -> paritet 0 på allt annat (analyserParity
+   lotus, splitProof/konsertReplay dmx byte-identiskt). Bevis att fältet duger: toppen ligger på kickens ansats - på DMX:s gallop-klipp
+   (dmx-control/pi-dmx/engine/tools/ladan-2026-10-26/video-20261026T182512-ljud-x4-norm17.wav, subbens ansats 7,23 + k x 0,4695 s inom varje
+   10,24 s-varv) och pop_ladan: median avstånd topp -> ansats och andel inom +-15 ms. Skriv KLART <commit> i analysator-fynd.md 10-27.
+2. KICK PÅ TOPPEN (fynd 10-19/10-22, bygger på 1): opt-in <prefix>KICK_PEAK=1 - frame.kick på det lokala maxet av det nya fältet över
+   adaptiv tröskel i stället för flux-tröskeln. Döm i lotus-banken (kick r/p, on-beat, fas, live 396/503 får inte gå ner) och på DMX:s pop
+   (fasresultant kick mot kickbandets anslag, i dag R 0,03-0,18). Paritet 0 med flaggan av.
+3. FAST_BANDS PÅ LOTUS (DELVIS 10-27: falsk-high 0,35 -> 0,39): DMX kör FAST_BANDS ihop med SECTION_WIN 2 (sektionspoäng över 2 s) som tog
+   tillbaka sektionstappet där. Bänka LOTUS_FAST_BANDS=1 + LOTUS_SECTION_WIN=2 ihop mot samma sektionsbänk. Håller det -> redo för källaren.
+Rapportera i morgonens rad + scoreboard; markera avsnittet KLART/DELVIS.
+
 ## Från kvällen 2026-10-26 (ägaren via DMX-sessionen) - LATENS OCH OPTIMERING (går före allt utom hälsan och kalibreringen)
 Ägaren: 'natten vill jag att agenterna skall jobba med latensen och optimering'. DMX-nattagenten gör samma sak på DMX-sidan i natt och
 skriver fynd i den delade analysatorn till dmx-control/pi-dmx/engine/tools/natt/analysator-fynd.md - läs den FÖRST och ta fynden
