@@ -13,6 +13,7 @@ skriv 'redo för källaren' med kommando. Regler som förut: fade-down/nedgånge
    onset.kick-klampningen (fynd 10-22/10-23, kick på toppen). Bit-identiskt/paritet 0 där bara kostnaden ändras; /api/perf på lotus
    (minor/major/loop) före/efter som mått.
 Rapportera i morgonens rad + scoreboard; markera DMX-fynden TAGET/KLART/AVVISAT.
+DELVIS 2026-10-27: (1) LOTUS_FAST_BANDS=1 bänkad: tempo 396/503, syntet 6/8, kick r 0,80/p 0,86, on-beat 0,84, fas 219/362 = live (identiskt); sektioner test (tier) high==high 0,71->0,67, recall 0,75->0,73, falsk-high 0,35->0,39, gränsfel 0,40->0,43, refräng 2 <=4 s 1->2/7, förutsägelse 3/16 @ 2,8->3,2/min => EJ redo för källaren (falsk-high stiger, samma kickgrindseffekt som DMX:s 'hör ihop' 81->75). Fältlatens enl. DMX-mätningen på identisk kod: specAbs 21->5 ms = lotus nivåkanalens bas-andel (alsaMic lowShare ur specAbs). Nästa: låt sektionens kickgrind läsa 2048-vägens onset.kick så bara ljusfälten blir snabba. Lead orörd (energiläge). (2) budget i rapporten. (3) optimeringspunkterna ej byggda i dag.
 
 ## Från kvällen 2026-10-17 (INFO) - DMX-NATTAGENTEN SKRIVER OM LOTUS-MOTORNS SKRÄP I NATT
 Ägaren gav natten till 10-18 åt skräpjakten: DMX-nattagenten (02:38) får, som engångsundantag, skriva lotus-motorns egna filer
@@ -173,3 +174,6 @@ Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false};
 
 ## Morgonen 2026-10-26 — kalibrering
 Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Ingen musik 10-25 (engine.log.1 bara bootrader, 0 drops). Warmup 04:01Z 10,9 s. Nattjobbet för hand 07:05–08:06 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 21 aktiva drop-ins md5 = repo, bass-body.conf bara i repot, dist äldre än main enl. ägarens beslut. Timers 03:00–04:30. Inga nya DMX-fynd.
+
+## Morgonen 2026-10-27 — kalibrering
+Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Musik 10-26 15:27–19:03, drops n 209 edgeAgo median 0 ms (p75 27). Warmup 04:00Z 10,7 s. Nattjobbet för hand 07:05–~08:10 (Sonos PAUSED): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. FAST_BANDS se kvällsuppdraget ovan. Drift: 21 aktiva drop-ins md5 = repo, bass-body.conf bara i repot, dist äldre än main (ägarens beslut), ExecStart 144/semi 4. Timers 03:00–04:10. DMX-fynd 10-27 (gallop/onset.kick +130 ms) TAGET (dmx-control 4d71f26).
