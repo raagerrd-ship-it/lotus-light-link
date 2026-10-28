@@ -1,12 +1,11 @@
 # Resultattavla — analysatorns tempoval mot facit
 
-Uppdaterad 2026-10-27 08:01. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
+Uppdaterad 2026-10-28 19:39. Korpus = riktiga snuttar med PC-facit (växer), syntet = 8 kända tempon. Cell = korpus rätt/n · syntet rätt/n.
 
 Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med analysatorkick inom ±60 ms) · kickprecision. Bänk = live-läge (BENCH_GRID=1).
 
 | datum | standard | live | evidence | ring10 | live-cd80 | live-cd120 | live: dygnets låtar | ok-andel | grid-släp | onset recall | onset precision | nivå r |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-10-14 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-15 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-16 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-17 | 280/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 385/503 · 6/8 · slag 0.57 p 0.86 | 308/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
@@ -20,8 +19,9 @@ Cell = korpus rätt/n · syntet rätt/n · on-beat-recall (andel PC-slag med ana
 | 2026-10-25 | 282/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 383/503 · 6/8 · slag 0.57 p 0.86 | 311/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-26 | 282/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 383/503 · 6/8 · slag 0.57 p 0.86 | 311/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
 | 2026-10-27 | 282/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 383/503 · 6/8 · slag 0.57 p 0.86 | 311/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | 0 (0 facit) | 0.0 | None ms | None | None | None |
+| 2026-10-28 | 282/503 · 6/8 · slag 0.54 p 0.87 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 383/503 · 6/8 · slag 0.57 p 0.86 | 311/503 · 6/8 · slag 0.54 p 0.86 | 396/503 · 6/8 · slag 0.84 p 0.86 · fas 219/362 | 396/503 · 6/8 · slag 0.79 p 0.86 · fas 219/362 | – (– facit) | – | – ms | – | – | – |
 
-Senaste dygnet: domar {}; kick-bias None ms; nivå-lag None ms; tak-r None lag None ms None %/dB klipp None; analysatorns spann inom låt None BPM (median); tempoledtrådar ≠ 1: 37; dropfångster 614 {"ratt": 82, "falsk": 129, "osaker": 401}.
+Senaste dygnet: domar null; kick-bias None ms; nivå-lag None ms; tak-r None lag None ms None %/dB klipp None; analysatorns spann inom låt None BPM (median); tempoledtrådar ≠ 1: None; dropfångster None null.
 
 Live = det som kör på Pi:n (tempo-variant.conf), standard = utan flaggor. En variant ska slå live med minst 3 låtar på ≥ 36 korpuslåtar utan att tappa på syntet innan den provas live (drop-in-flagga, backup, återgång). Kickvarianter (cd80/cd120) döms på on-beat-recall utan precisionsförlust > 0,02.
 

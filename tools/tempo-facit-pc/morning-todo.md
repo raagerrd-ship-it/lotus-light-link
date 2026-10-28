@@ -14,6 +14,7 @@ analysatorn (båda repona, manifest + paritet). Inget deployas utan ägaren; reg
 3. FAST_BANDS PÅ LOTUS (DELVIS 10-27: falsk-high 0,35 -> 0,39): DMX kör FAST_BANDS ihop med SECTION_WIN 2 (sektionspoäng över 2 s) som tog
    tillbaka sektionstappet där. Bänka LOTUS_FAST_BANDS=1 + LOTUS_SECTION_WIN=2 ihop mot samma sektionsbänk. Håller det -> redo för källaren.
 Rapportera i morgonens rad + scoreboard; markera avsnittet KLART/DELVIS.
+DELVIS 2026-10-28: (1) KLART frame.kickRise (lotus 9d6899f4, dmx 493b5ce): basens dB-stigning över 6 hop = DMX FEED_RISE-talet; paritet 0 (33 750 hop, FAST_BANDS 0/1, split inline); gallop FAST_BANDS topp median +4 ms, 66/82 inom +-15 ms (onset.kick tyngdpunkt +92 ms, 0/82); utan FAST_BANDS -22 ms, 23/82; pop_ladan saknar pålitlig ansatsreferens. (2) KICK_PEAK ej byggd. (3) FAST_BANDS+SECTION_WIN 2 test tier: high==high 0,71->0,66, recall 0,75->0,76, falsk-high 0,35->0,35, gränsfel 0,40->0,43, refräng 2 <=8 s 1->3/7, förutsägelse 3/16 @ 2,8->2,4/min => blandat, EJ redo (n 8), ägarens val. fastbands-win2-sektionsbank-20261028.json.
 
 ## Från kvällen 2026-10-26 (ägaren via DMX-sessionen) - LATENS OCH OPTIMERING (går före allt utom hälsan och kalibreringen)
 Ägaren: 'natten vill jag att agenterna skall jobba med latensen och optimering'. DMX-nattagenten gör samma sak på DMX-sidan i natt och
@@ -194,3 +195,6 @@ Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false};
 
 ## Morgonen 2026-10-27 — kalibrering
 Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Musik 10-26 15:27–19:03, drops n 209 edgeAgo median 0 ms (p75 27). Warmup 04:00Z 10,7 s. Nattjobbet för hand 07:05–~08:10 (Sonos PAUSED): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. FAST_BANDS se kvällsuppdraget ovan. Drift: 21 aktiva drop-ins md5 = repo, bass-body.conf bara i repot, dist äldre än main (ägarens beslut), ExecStart 144/semi 4. Timers 03:00–04:10. DMX-fynd 10-27 (gallop/onset.kick +130 ms) TAGET (dmx-control 4d71f26).
+
+## Morgonen 2026-10-28 — kalibrering
+Ingen PUT (felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Körningen startade sent (18:15). Ingen musik 10-28 före 18:15; engine.log.1 utan drop-rader. Warmup 04:00Z 10,9 s. Nattjobbet för hand 18:16–19:39 (Sonos IDLE): live 396/503, syntet 6/8, kick r 0,80/p 0,86, on-beat 0,84, fas median 0,89 (n 362), sektioner = i går. piHealth i dygnsposten saknas: PC:n bytte nät (10.100.x) ca 19:39, Pi:n onåbar därifrån (inte nere enligt 18:15-kontrollen). Drift: 21 aktiva drop-ins lika i verksamma rader, bass-body.conf bara i repot. Timers 03:00–04:10.
