@@ -188,6 +188,10 @@ export interface Frame {
   bodyDb: number;
   /** ABSOLUT mid+diskant-niva i dB (band 3-7, >250 Hz), RMS-kombinerad, ingen AGC. */
   midHiDb: number;
+  /** KICKENS STIGNING, OMÄTTAD (10-28, fynd 10-22/10-27): basens (specAbs sub+kick) stigning i dB mot KICK_RISE_HOPS hop sedan,
+   *  halvvåg (0 vid fall). onset.kick är klampad 0/1 och står på 1 under hela bas-svallet; det här fältet toppar på ansatsen.
+   *  Samma tal som DMX:s FEED_RISE-vikning räknar själv (beatFeed.ts). Bara utdata: ingen konsument i analysatorn läser det. */
+  kickRise: number;
   onset: Spectrum;      // per-band ONSET/anslag (halvvågs-flux mot adaptiv baslinje, 0..1)
   /** TRUM-KIT-envelopes (0..1): peak-hold + decay PÅ HOP-TAKT (375Hz) → fångar
    *  varje anslag, aldrig missat mellan två render-frames. kick=diskret kick +
@@ -344,6 +348,8 @@ export class Analyser {
   private static readonly ONSET_K = 3.0;   // troskel = median + K*MAD
   private bandLvl = new Float32Array(8);   // scratch: per-band nivå denna frame (~90ms smoothad)
   private bandOn = new Float32Array(8);    // scratch: per-band onset denna frame
+  private static readonly KICK_RISE_HOPS = 6;   // kickRise-fönstret (16 ms), = DMX:s FEED_RISE_HOPS
+  private kickRiseDb = new Float64Array(Analyser.KICK_RISE_HOPS); private kickRisePos = 0;
   private bigCounter = 0;                  // decimering av 2048-FFT:n (se BIG_EVERY)
   private static readonly BIG_EVERY = 3;   // kor stor-FFT var N:e hop → analysen ryms i realtid
   /** bandPeak-decay per stor-FFT (τ ≈ 3.8 s oavsett BIG_EVERY). */
@@ -2594,7 +2600,7 @@ export class Analyser {
     this.outFrame = {
       level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
-      dropCount: 0, miniDropCount: 0, bodyDb: 0, midHiDb: -120, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
+      dropCount: 0, miniDropCount: 0, bodyDb: 0, midHiDb: -120, kickRise: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
       kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
@@ -3582,6 +3588,11 @@ export class Analyser {
     f.centroid = this.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
     f.bodyDb = bodyNow;
+    {   // kickRise: basens dB mot KICK_RISE_HOPS hop sedan (ringen håller de senaste), halvvåg
+      const db = 20 * Math.log10(A[0] + A[1] + 1e-7), old = this.kickRiseDb[this.kickRisePos];
+      this.kickRiseDb[this.kickRisePos] = db; this.kickRisePos = (this.kickRisePos + 1) % Analyser.KICK_RISE_HOPS;
+      f.kickRise = old !== 0 && db > old ? db - old : 0;
+    }
     { let s2 = 1e-12; for (let b = 3; b < 8; b++) { const lin = Math.pow(10, (FB ? this.fbDbRaw : this.bandDbRaw)[b] / 20); s2 += lin * lin; } f.midHiDb = 20 * Math.log10(Math.sqrt(s2)); }
     f.dropCount = this.dropCount; f.miniDropCount = this.miniDropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
     f.kickAtMs = kickAtMs; f.barShift = barShift;
