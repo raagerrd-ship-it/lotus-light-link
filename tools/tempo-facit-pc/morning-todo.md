@@ -33,6 +33,8 @@ skriv 'redo för källaren' med kommando. Regler som förut: fade-down/nedgånge
 Rapportera i morgonens rad + scoreboard; markera DMX-fynden TAGET/KLART/AVVISAT.
 DELVIS 2026-10-27: (1) LOTUS_FAST_BANDS=1 bänkad: tempo 396/503, syntet 6/8, kick r 0,80/p 0,86, on-beat 0,84, fas 219/362 = live (identiskt); sektioner test (tier) high==high 0,71->0,67, recall 0,75->0,73, falsk-high 0,35->0,39, gränsfel 0,40->0,43, refräng 2 <=4 s 1->2/7, förutsägelse 3/16 @ 2,8->3,2/min => EJ redo för källaren (falsk-high stiger, samma kickgrindseffekt som DMX:s 'hör ihop' 81->75). Fältlatens enl. DMX-mätningen på identisk kod: specAbs 21->5 ms = lotus nivåkanalens bas-andel (alsaMic lowShare ur specAbs). Nästa: låt sektionens kickgrind läsa 2048-vägens onset.kick så bara ljusfälten blir snabba. Lead orörd (energiläge). (2) budget i rapporten. (3) optimeringspunkterna ej byggda i dag.
 
+## 2026-10-29 morgon (morgonagenten): ingen PUT. Bänk live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Inga nya DMX-fynd. KICK_PEAK (10-27 p2) och optimeringen (10-26 p3) fortfarande ej byggda.
+
 ## Från kvällen 2026-10-17 (INFO) - DMX-NATTAGENTEN SKRIVER OM LOTUS-MOTORNS SKRÄP I NATT
 Ägaren gav natten till 10-18 åt skräpjakten: DMX-nattagenten (02:38) får, som engångsundantag, skriva lotus-motorns egna filer
 (pi/src/piEngine.ts, alsaMic.ts, bassBody.ts, heartbeat/*.ts), bara bevisat byte-identiskt (tools/skrap/engineReplay.mjs) och pushar
