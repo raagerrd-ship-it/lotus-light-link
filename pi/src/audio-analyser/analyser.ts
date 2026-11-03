@@ -510,10 +510,6 @@ export class Analyser {
    *  bodyPeak - SECTION_BODY_HIGH_DB raknas det som en drop for sektionen: 'high' direkt, forbi uppehallstiden. */
   private static readonly BODY_HIGH_MS = Analyser.secEnv('SECTION_BODY_HIGH', 0);
   private static readonly BODY_HIGH_DB = Analyser.secEnv('SECTION_BODY_HIGH_DB', 3);
-  /** DROPEN HALLER HIGH (2026-11-03, DMX-fyndet 11-02: break med full bas efter dropen, high 66,2 -> break -> high 71,3 i ladan):
-   *  dropped ger high i ett block, men rangens 4 s-fonster bar breakets block i RANK_WIN + RANK_RUN block till. <prefix>SECTION_DROP_HOLD=1
-   *  haller 'high' sa lange (i ms: (RANK_WIN+RANK_RUN) x 1 s) efter en drop om tier >= 1; tier 0 slapper. 0 = av (som forr). */
-  private static readonly DROP_HOLD = Analyser.secEnv('SECTION_DROP_HOLD', 0);
   private secBodyRet = 0; private secBodyArmMs = 0;
 
   /** ATERINTRADE (09-22, agent-sec5): efter forsta refrangen ar refrangnivan kand (lastHighDb). Ar 2-blocksmedlet tillbaka pa den nivan
@@ -1362,10 +1358,11 @@ export class Analyser {
           if (nowMs - this.sectionStartMs < hold) label = 'high';
         }
       }
-      if (Analyser.DROP_HOLD > 0) {
-        if (dropped && label === 'high') this.secDropHoldUntil = nowMs + (Analyser.RANK_WIN + Analyser.RANK_RUN) * 1000;
-        else if (prev === 'high' && label !== 'high' && st >= 1 && nowMs < this.secDropHoldUntil) label = 'high';
-      }
+      // DROPEN HALLER HIGH (2026-11-03, DMX-fyndet 11-02: break med full bas efter dropen, high 66,2 -> break -> high 71,3 i ladan):
+      // dropped ger high i ett block, men rangens 4 s-fonster bar breakets block i RANK_WIN + RANK_RUN block till - sa lange halls
+      // 'high' efter en drop om tier >= 1; tier 0 slapper. Standard i koden sedan 11-03 (agaren; backup/fore-drop-hold-20261103).
+      if (dropped && label === 'high') this.secDropHoldUntil = nowMs + (Analyser.RANK_WIN + Analyser.RANK_RUN) * 1000;
+      else if (prev === 'high' && label !== 'high' && st >= 1 && nowMs < this.secDropHoldUntil) label = 'high';
       // UTGANG VIA LAG (bit 128): det forflutnas high-SLUT + lag. Sa lange det forflutna fortfarande ar high halls high (st 1);
       // nar slutet ar NU (-1,5..+1,5 s) och rangen inte langre sager high -> 'break' direkt (minnets grans i stallet for uppehallets slut).
       // NIVAMINNE (LEVELREF, se flaggan): absolut referens fran refrang 1 i stallet for den troga percentilrangen. Drop vinner alltid.
