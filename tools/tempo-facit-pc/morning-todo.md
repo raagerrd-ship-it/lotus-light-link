@@ -216,3 +216,6 @@ Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false};
 
 ## Morgonen 2026-11-04 — kalibrering
 Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 72/rise 36, chainLatency 30, energyGridTrust 99 orörda). Ingen musik 11-03 (0 drops). Warmup 04:01Z 10,8 s. Nattjobbet för hand 07:05–07:58 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 21 drop-ins = repo (6 skiljer bara i kommentarer); Pi-dist äldre än main (5c7ac6c drop-hold ej deployad, ägarens beslut). DMX-fynd 10-30 del 1 TEMPO_FOLD provad: 396 -> 396/503, ingen vinst, ej committad (dmx 43d6d35).
+
+## Morgonen 2026-11-06 — kalibrering
+Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 96/rise 48 (ägarens 11-05), chainLatency 30, energyGridTrust 99 orörda). Musik 11-05 (MOTOR_ON ×4), edgeAgo n 84 median 0 ms, p75 8 (tillbaka till det vanliga 0/24-läget). Warmup 04:01Z 11,0 s. Nattjobbet för hand 07:05–08:02 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 21 aktiva drop-ins = repo, bass-body.conf bara i repot, ExecStart 144/semi 4, Pi-dist analyser.js 7e257378 (äldre än main, känt). Timers 03:00–04:10. Inga nya DMX-fynd sedan 11-02.
