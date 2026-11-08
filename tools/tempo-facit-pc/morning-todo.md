@@ -222,3 +222,6 @@ Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false};
 
 ## Morgonen 2026-11-07 — kalibrering
 Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 96/rise 48, chainLatency 30, energyGridTrust 99 orörda). Musik 11-06 (MOTOR_ON ×2), edgeAgo n 14 median 0, p75 0. Warmup 04:01Z 10,9 s. Nattjobbet för hand 07:05–08:42 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift: 21 aktiva drop-ins = repo (6 bara kommentarer), bass-body.conf bara i repot, ExecStart 144/semi 4, Pi-dist analyser.js 7e257378 (äldre än main, känt). DMX-fynd 11-07 (bpm 0 i breaket) = DMX-PROFIL: beatFeed.ts:335 coast → resetTempo efter GRID_COAST_MS 4000 (dmx 2faf6fa).
+
+## Morgonen 2026-11-08 — kalibrering
+Ingen PUT (inga lärrader: felsökning av, GET {"enabled":false,"record":false}; smoothS 15, oktavregel false, lead 96/rise 48, chainLatency 30, energyGridTrust 99 orörda). Musik 11-07 11:31–12:52 (MOTOR_ON ×2), edgeAgo n 1 median 0. Nattjobbet för hand 07:05–08:01 (Sonos IDLE): live 396/503, syntet 6/8, on-beat 0,84, fas 219/362, sektioner = i går. Drift = i går (heap 144/semi 4, drop-ins = repo, analyser.js 7e257378). DMX-fynd: inget öppet för lotus (nattagenten tar breakets resetTempo i beatFeed).
