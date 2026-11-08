@@ -24,6 +24,10 @@ import {
   C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PHASE_MS, S_PHASE_CONF, S_SECTION, S_SEC_START, S_SEC_INDEX, S_SEC_TIER,
   S_REP_SIM, S_REP_AGO, S_REP_SEC, S_EXPECT_MS, S_EXPECT_SRC, S_PREV_SEC, S_LVL_HIGH, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
   SECTIONS, sectionCode, viewsOf, stateWrite, stateRead, createSplitBuffers, type SplitBuffers, type WorkerData,
+  C_WAKE, syncWait, HopLaneFast, HopLaneSlow, StateReader, type HopFeed,
+  R_BIGSEQ, BIG_REC_LEN, BIG_RING_N, BIG_HOP_MAX, B_SEQ, B_N, B_RMS, B_LVL, B_CENT, B_ACTIVE, B_WALL, B_KICK, B_KICKHIT, B_INT, B_BREAK, B_SEC, B_LVH, B_CONF,
+  B_ENVF, B_ENVBPM, C_WAITING_B, C_BIG_WRITE, C_BIG_READ, C_BIG_SEQ, BS_SEQ, BS_BODY, BS_DROPS, BS_MINI, BS_BUILD, BS_RISER, BS_PUNCH, BS_BASS, BS_BRIGHT, BS_BEAT,
+  BS_BASSLINE, BS_SPEC_N, BS_SKIPPED, BIG_STATE_LEN, SPEC_SLOTS, SPEC_MAX,
 } from './split.js';
 import FFT from "fft.js";
 
@@ -94,6 +98,8 @@ export interface SplitInit {
   role: 'all' | 'fast' | 'slow';
   split?: SplitBuffers;
   resumeSeq?: number;
+  /** Bänkens synk-läge (createAnalyser(cfg, 'sync')): snabba sidan väntar på workern, workern notify:ar efter publicering. */
+  sync?: boolean;
 }
 
 /** Rikt log-spektrum (8 band) från den parallella 2048-FFT:n. Varje band är
@@ -327,7 +333,8 @@ export class Analyser {
   private fftBig!: FFT;
   private windowBig!: Float32Array;
   private windowedBig!: Float32Array;   // scratch (återanvänds, ingen alloc/frame)
-  private bufferBig!: Float32Array;     // egen glidande buffert (matas samma hops)
+  private bufferBig!: Float32Array;     // egen glidande buffert (matas samma hops) - RING (a7): äldsta sampel vid bigPos
+  private bigPos = 0;
   private prevMagBig!: Float32Array;    // för per-band flux
   private magBig!: Float32Array;        // scratch magnitud
   private magBigMax = 0;                // högsta bin någon läser (band 8-taket)
@@ -623,7 +630,7 @@ export class Analyser {
   // ── DELAD ANALYSATOR (split.ts) ─────────────────────────────────────────────────────────────
   readonly role: 'all' | 'fast' | 'slow';
   private splitCtrl: Int32Array | null = null; private splitRing: Float64Array | null = null; private splitState: Float64Array | null = null;
-  private stateCopy = new Float64Array(STATE_LEN);
+  private stateCopy = new Float64Array(STATE_LEN); private stateRd = new StateReader();   // a7: kopian bara när blocket ändrats
   private recSeq = 0;              // fast: senast skrivna record; slow: senast lasta. JS-tal, wrap-sakert (split.ts seqDelta)
   private barrierSeq = 0;          // fast: tillstand aldre an detta record ignoreras (en flagga ar pa vag)
   private pendFlags = 0; private pendHintMs = 0; private pendVclock = 0;
@@ -632,6 +639,9 @@ export class Analyser {
   private slowGap = false;         // slow: records tappade sedan senast behandlade -> kontrollera forlorade flaggor
   private slowLostFlags = 0;       // slow: antal flaggor som aterskapats ur raknarna efter tapp (statistik)
   splitRestarts = 0;               // fast: antal omstarter av workern (satts av index.ts)
+  /** TAKTVÄGEN (split.ts): systemets taktmatning i den långsamma tråden. null = ingen (lotus; DMX utan BEAT_FEED 'slow' eller odelad). */
+  hopLane: HopLaneFast | null = null;
+  private syncWorker = false;      // fast: vänta på workern efter varje record; slow: notify efter publicering (bänkens synk-läge)
   /** HOPPETS VÄRDEN (2026-10-17, skräpjakten): decimaltal som skickas som argument till, eller returneras från, en metod som V8 inte
    *  inlinar blir ett nytt HeapNumber per anrop (process 47 -> 6 kB/s skräp när de gick via fält). De heta stegen läser därför hoppets
    *  värden ur fält som process() skriver. Alla initieras som decimaltal (0,5) så fälten har Double-form från start. */
@@ -642,6 +652,21 @@ export class Analyser {
   private shIn = { hops: 0.5, intSum: 0.5, kicks: 0.5, breaking: false, nowMs: 0.5, dtMs: 0.5, rms2Sum: 0.5, centSum: 0.5, specOff: 0.5, bonSum: 0.5, bpk: 0.5, fluxSum: 0.5, rms4Sum: 0.5 };
   private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, drops: 0, active: 0, build: 0, spec: new Float64Array(8), bon: 0, bpk: 0, flux: 0, rms4: 0 };
   private inlinePeer: Analyser | null = null;
+  /** STORA VÄGEN (split.ts, a3): 2048-FFT, drop, riser, profil, basgång och sektionsaggregat i långsamma tråden, ett record per hop.
+   *  fast: skriver recordet och läser tillbaka; slow: kör stegen. Bara med FAST_BANDS + SECTION_AGG 'hop' och split-buffertarna. */
+  readonly bigOn: boolean = false;
+  private bigRing: Float64Array | null = null; private bigPcm: Float32Array | null = null; private bigState: Float64Array | null = null; private specRing: Float32Array | null = null;
+  private bigSeq = 0; private bigCopy = new Float64Array(BIG_STATE_LEN); private bigRd = new StateReader(); private specCopy = new Float32Array(0); private specDelivered = 0; private specN = 0; private bigSkipped = 0;
+  private bigEnvFlag = 0; private bigEnvBpm = 0.5;
+  /** Snabba sidans syn på långsamma värden vid hoppet (drop/profil/basgång läser dessa i stället för de levande fälten). */
+  private dSec = 'intro'; private dLvh = 0.5; private dConf = 0.5; private dBpm = 0.5;
+  /** slow + stora vägen: sektionens syn på drop-räknaren (som R_DROPS förr: värdet vid förra env-recordet). */
+  private secVDrops = 0;
+  /** PI:NS VERKLIGHET (a3r): EN worker-tråd (motorn är låst till 2 kärnor). Anropas efter varje behandlat env- och hop-record, så
+   *  taktvägen (det motorn läser varje hop) körs mellan dem och aldrig köar bakom en hel 2048-backlog. null i bänkens inline/synk-läge
+   *  (taktvägen är oberoende av analysatorn, så ordningen påverkar inga värden). */
+  bigYield: (() => void) | null = null;
+  private secSpecDirty = true;
   private slowBusyEmaUs = 0; private slowBusyMaxUs = 0; private slowLagMaxMs = 0; private slowSkipped = 0; private slowProcessed = 0;
   private localBpm = 0;
   private localBpmConfidence = 0;
@@ -1265,11 +1290,13 @@ export class Analyser {
    *  mot 8 s tidigare. Upprepning: ett klangavtryck per 4 s (8 band normerade + centroid + kicktathet + intensitet, L2)
    *  jamfors med alla avtryck >= 16 s tillbaka (max 96 = 6,4 min); bast cosinus -> repeatSim/repeatAgoMs/repeatSection.
    *  Kostnad: nagra adds per hop, ~100 punktprodukter a 11 var fjarde sekund. Referens for bansken: all-in-one pa hela latar. */
+  /** Sektionens drop-evidens: levande i roll 'all'/'fast'; i workern med stora vägen värdet vid förra env-recordet (som R_DROPS förr). */
+  private secDropsNow(): number { return this.role === 'slow' && this.bigOn ? this.secVDrops : this.dropCount + this.secBodyRet; }
   private sectionReset(): void {
     this.section = 'intro'; this.sectionStartMs = 0; this.sectionIndex = 0; this.sectionTier = 1; this.repeatSim = 0; this.repeatAgoMs = 0; this.repeatSection = '';
     this.secBlkMs = 0; this.secBlkN = 0; this.secBlkInt = 0; this.secBlkKicks = 0; this.secBlkCent = 0; this.secBlkSpec.fill(0);
     this.secBlkBon = 0; this.secBlkBpk = 0; this.secBlkFlux = 0; this.secBlkRms4 = 0; const H = this.secBlkH; H.bon.length = 0; H.bpk.length = 0; H.high.length = 0; H.flat.length = 0; H.flux.length = 0; H.dyn.length = 0;
-    this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secDropSeen = this.dropCount + this.secBodyRet; this.secSilentBlocks = 0; this.secDropHoldUntil = 0;
+    this.secTierRun = 0; this.secTierCand = 1; this.secRiseRun = 0; this.secSongStartMs = 0; this.secBlkRms2 = 0; this.secBlkDb.length = 0; this.secBlkDens.length = 0; this.secBlkCentH.length = 0; this.secDropSeen = this.secDropsNow(); this.secSilentBlocks = 0; this.secDropHoldUntil = 0;
     this.secHistN = 0; this.secHistPos = 0; this.secFpN = 0; this.secFpPos = 0; this.secFpLab.length = 0; this.secFpAcc.fill(0); this.secFpAccN = 0;
     this.secLog.length = 0; this.secCurDbSum = 0; this.secCurDbN = 0; this.secCurDens = 0; this.lastHighDb = NaN; this.expectHighMs = 0; this.expectSource = 0; this.prevSection = ''; this.levelVsHighDb = 0;
     
@@ -1286,7 +1313,7 @@ export class Analyser {
   private sectionHop(spec: ArrayLike<number>): void {
     const I = this.shIn, hops = I.hops, intSum = I.intSum, kicks = I.kicks, breaking = I.breaking, nowMs = I.nowMs, dtMs = I.dtMs, rms2Sum = I.rms2Sum, centSum = I.centSum,
       specOff = I.specOff, bonSum = I.bonSum, bpk = I.bpk, fluxSum = I.fluxSum, rms4Sum = I.rms4Sum;
-    if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.dropCount + this.secBodyRet; }
+    if (this.secSongStartMs === 0) { this.secSongStartMs = nowMs; this.sectionStartMs = nowMs; this.secDropSeen = this.secDropsNow(); }
     this.secBlkMs += dtMs; this.secBlkN += hops; this.secBlkInt += intSum; this.secBlkKicks += kicks; this.secBlkCent += centSum; this.secBlkRms2 += rms2Sum;
     this.secBlkBon += bonSum; this.secBlkBpk += bpk; this.secBlkFlux += fluxSum; this.secBlkRms4 += rms4Sum;
     for (let i = 0; i < 8; i++) this.secBlkSpec[i] += spec[specOff + i];
@@ -1327,7 +1354,7 @@ export class Analyser {
     this.secHist[this.secHistPos] = bInt; this.secHistPos = (this.secHistPos + 1) & 15; if (this.secHistN < 16) this.secHistN++;
     const rise = this.secHistN >= 9 ? bInt - this.secHist[(this.secHistPos - 9 + 16) & 15] : 0;
     this.secRiseRun = rise >= 0.10 ? this.secRiseRun + 1 : 0;
-    const sinceStart = nowMs - this.secSongStartMs; const dropEv = this.dropCount + this.secBodyRet; const dropped = dropEv !== this.secDropSeen; this.secDropSeen = dropEv;
+    const sinceStart = nowMs - this.secSongStartMs; const dropEv = this.secDropsNow(); const dropped = dropEv !== this.secDropSeen; this.secDropSeen = dropEv;
     const prev = this.section; let label: string;
     {
       // rang-lage: tier 2 = high, tier 0 = low, mitten = 'break' pa vag ner fran high, 'build' pa vag upp fran low/intro, annars kvar
@@ -1637,7 +1664,7 @@ export class Analyser {
     } else if (this.blRef > 0.05) this.blRef *= 0.999;
     this.blPrev2 = p1; this.blPrev1 = v;
     let n = 0; for (let i = 0; i < 32; i++) if (seq - this.blOnsets[i] <= 200 && this.blOnsets[i] > 0) n++;
-    const beats2s = (this.localBpm > 0 ? this.localBpm : 120) / 30;
+    const beats2s = (this.dBpm > 0 ? this.dBpm : 120) / 30;
     const opb = n / beats2s;
     this.bassOnsetsPerBeat = opb;
     const raw = Math.max(0, Math.min(1, (opb - 0.4) / 0.8));
@@ -1673,16 +1700,23 @@ export class Analyser {
     if (SECTION_AGG_HOP) { r[o + R_DROPS] = g.drops; r[o + R_ACTIVE] = g.active; r[o + R_BUILD] = g.build; }
     else { r[o + R_DROPS] = this.dropCount + this.secBodyRet; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp; }
     r[o + R_FLAGCNT] = packFlagCounts(this.flagCnt);
+    r[o + R_BIGSEQ] = this.bigSeq;                         // stora vägen: hop-record före detta (workern kör dem först)
     r[o + R_SEQ] = seq;                                    // sist: seq = recordet ar komplett
     g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
     this.pendFlags = 0;
     Atomics.store(ctrl, C_WRITE, seqLow(seq));             // laga 32 bitarna; workern rekonstruerar via seqDelta (wrap-sakert)
-    if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WRITE, 1);   // Dekker: workern satter C_WAITING fore wait-jamforelsen
+    if (this.bigOn) {   // stora vägen: analysatortråden väntar på C_WAKE (C_WAITING_B); med taktväg väcker feed() i samma hop
+      Atomics.add(ctrl, C_WAKE, 1);
+      if ((this.syncWorker || !this.hopLane) && (Atomics.load(ctrl, C_WAITING) || Atomics.load(ctrl, C_WAITING_B))) Atomics.notify(ctrl, C_WAKE);
+    } else if (!this.hopLane) { if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WRITE, 1); }   // Dekker: workern satter C_WAITING fore wait-jamforelsen
+    // a7: MED taktvägen väntar workern bara på C_WAKE - en notify på C_WRITE vore ett anrop i onödan.
+    else { Atomics.add(ctrl, C_WAKE, 1); if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WAKE, 1); }   // taktvägen: workern väntar på C_WAKE
     if (this.inlinePeer) { this.inlinePeer.drainRecords(); this.pullSlowState(); }   // inline-lage (korbank): synkront har, tillstandet hamtas direkt
+    else if (this.syncWorker) { syncWait(ctrl, C_STATE_SEQ, () => this.stateRd.read(ctrl, this.splitState!, this.stateCopy) && this.stateCopy[S_REC_SEQ] >= seq); this.pullSlowState(); }
   }
   /** Hamta tempo/gridfas/sektion ur tillstandsblocket (varje hop, ~20 doubles). Aldre an barrierSeq ignoreras. */
   private pullSlowState(): void {
-    if (!stateRead(this.splitCtrl!, this.splitState!, this.stateCopy)) return;
+    if (!this.stateRd.read(this.splitCtrl!, this.splitState!, this.stateCopy)) return;
     const s = this.stateCopy; if (s[S_REC_SEQ] < this.barrierSeq) return;
     this.localBpm = s[S_BPM]; this.localBpmConfidence = s[S_CONF]; this.localBpmF = s[S_BPMF];
     this.beatPhaseMs = s[S_PHASE_MS]; this.beatPhaseConf = s[S_PHASE_CONF];
@@ -1723,7 +1757,9 @@ export class Analyser {
         }
         this.slowGap = false;
       }
+      if (this.bigOn) this.drainBig(r[o + R_BIGSEQ]);   // stora vägen: hoppen före recordet först (sektionsaggregatet, drop-räknaren)
       this.slowStep(o); this.slowLastCnt = r[o + R_FLAGCNT];
+      if (this.bigYield) this.bigYield();
       const us = (performance.now() - t0) * 1000;
       this.slowBusyEmaUs = this.slowBusyEmaUs === 0 ? us : this.slowBusyEmaUs + 0.02 * (us - this.slowBusyEmaUs);
       if (us > this.slowBusyMaxUs) this.slowBusyMaxUs = us;
@@ -1741,8 +1777,97 @@ export class Analyser {
         s[S_EXPECT_MS] = this.expectHighMs; s[S_EXPECT_SRC] = this.expectSource; s[S_PREV_SEC] = sectionCode(this.prevSection); s[S_LVL_HIGH] = this.levelVsHighDb;
         s[S_PROCESSED] = this.slowProcessed; s[S_LAG_MS] = lagMs; s[S_LAG_MAX] = this.slowLagMaxMs; s[S_BUSY_US] = this.slowBusyEmaUs; s[S_BUSY_MAX_US] = this.slowBusyMaxUs; s[S_SKIPPED] = this.slowSkipped; s[S_LOST_FLAGS] = this.slowLostFlags;
       });
+      if (this.syncWorker) Atomics.notify(ctrl, C_STATE_SEQ);
+    }
+    if (this.bigOn) this.drainBig(Infinity);
+    return n;
+  }
+
+  // ── STORA VÄGEN (split.ts) ────────────────────────────────────────────────────────────────────
+  /** fast: hoppets record (sampel + snabba sidans fakta) till långsamma tråden; hämta drop/riser/profil/kropp/spektrum tillbaka. */
+  private pushBig(samples: Float32Array): void {
+    const r = this.bigRing!, ctrl = this.splitCtrl!, seq = ++this.bigSeq, slot = seq % BIG_RING_N, o = slot * BIG_REC_LEN, n = samples.length;
+    this.bigPcm!.set(samples, slot * BIG_HOP_MAX);
+    r[o + B_N] = n; r[o + B_RMS] = this.hRms; r[o + B_LVL] = this.lvlSmooth; r[o + B_CENT] = this.centSmooth; r[o + B_ACTIVE] = this.activeMs;
+    r[o + B_WALL] = this.hNowWall; r[o + B_KICK] = this.hKick ? 1 : 0; r[o + B_KICKHIT] = this.kickHit; r[o + B_INT] = this.hIntensity; r[o + B_BREAK] = this.hBreaking ? 1 : 0;
+    r[o + B_SEC] = sectionCode(this.section); r[o + B_LVH] = this.levelVsHighDb; r[o + B_CONF] = this.localBpmConfidence;
+    r[o + B_ENVF] = this.bigEnvFlag; r[o + B_ENVBPM] = this.bigEnvBpm; this.bigEnvFlag = 0;
+    r[o + B_SEQ] = seq;                                    // sist: recordet ar komplett
+    Atomics.store(ctrl, C_BIG_WRITE, seqLow(seq)); Atomics.add(ctrl, C_WAKE, 1);
+    // Väckning: taktvägens feed() följer i samma hop och väcker workern - här bara i synk-läget eller utan taktväg.
+    if ((this.syncWorker || !this.hopLane) && (Atomics.load(ctrl, C_WAITING) || Atomics.load(ctrl, C_WAITING_B))) Atomics.notify(ctrl, C_WAKE);
+    if (this.inlinePeer) this.inlinePeer.drainBig(Infinity);
+    else if (this.syncWorker) syncWait(ctrl, C_BIG_SEQ, () => this.bigRd.read(ctrl, this.bigState!, this.bigCopy, C_BIG_SEQ) && this.bigCopy[BS_SEQ] >= seq);
+    const s = this.bigCopy;
+    if (!this.bigRd.read(ctrl, this.bigState!, s, C_BIG_SEQ) || s[BS_SEQ] === 0) return;
+    this.hBody = s[BS_BODY]; this.dropCount = s[BS_DROPS]; this.miniDropCount = s[BS_MINI]; this.buildUp = s[BS_BUILD]; this.hInRiser = s[BS_RISER] === 1;
+    const p = this.outProfile; p.punch = s[BS_PUNCH]; p.bass = s[BS_BASS]; p.bright = s[BS_BRIGHT]; p.beat = s[BS_BEAT]; p.bassline = s[BS_BASSLINE];
+    const sn = s[BS_SPEC_N];
+    if (sn > this.specDelivered) {
+      const sink = this.specSink, binHz = this.cfg.audio.rate / this.bufferBig.length, R = this.specRing!, c = this.specCopy;
+      for (let k = Math.max(this.specDelivered + 1, sn - SPEC_SLOTS + 1); k <= sn; k++) {
+        if (sink) { const o2 = (k % SPEC_SLOTS) * SPEC_MAX; c.set(R.subarray(o2, o2 + c.length)); sink(c, binHz); }
+      }
+      this.specDelivered = sn;
+    }
+  }
+
+  /** slow: behandla hop-recorden t.o.m. `limit` (full seq) i exakt snabba sidans gamla ordning, publicera. */
+  drainBig(limit: number): number {
+    const ctrl = this.splitCtrl!, r = this.bigRing!, pcm = this.bigPcm!;
+    let w = this.bigSeq + seqDelta(Atomics.load(ctrl, C_BIG_WRITE), this.bigSeq); if (limit < w) w = limit;
+    if (w - this.bigSeq > BIG_RING_N - RING_MARGIN) { this.bigSkipped += (w - this.bigSeq) - (BIG_RING_N - RING_MARGIN); this.bigSeq = w - (BIG_RING_N - RING_MARGIN); }
+    let n = 0;
+    while (this.bigSeq < w) {
+      const seq = ++this.bigSeq, slot = seq % BIG_RING_N, o = slot * BIG_REC_LEN;
+      if (r[o + B_SEQ] !== seq) { this.bigSkipped++; continue; }
+      const hn = r[o + B_N];
+      // basgången (process(): ackumulatorn med förra 2048-bandens nivå och förra hoppets kick, sedan env-sampelns steg)
+      { const bl = this.bandLvl[1] + this.bandLvl[2]; if (bl > this.blAccum) this.blAccum = bl; if (this.kickHit >= 1) this.blKickSeq = this.envSeq; }
+      if (r[o + B_ENVF] === 1) { this.dBpm = r[o + B_ENVBPM]; this.stepBassline(); }
+      this.hRms = r[o + B_RMS]; this.lvlSmooth = r[o + B_LVL]; this.centSmooth = r[o + B_CENT]; this.activeMs = r[o + B_ACTIVE]; this.kickHit = r[o + B_KICKHIT];
+      const wall = r[o + B_WALL];
+      { const po = slot * BIG_HOP_MAX; this.bigRingPush(pcm.subarray(po, po + hn)); }
+      if (++this.bigCounter >= Analyser.BIG_EVERY) this.bigStep();
+      this.hNowWall = wall; this.hBody = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;
+      this.dSec = SECTIONS[r[o + B_SEC]]; this.dLvh = r[o + B_LVH];
+      this.dropStep();
+      this.hInRiser = this.riserStep();
+      this.dConf = r[o + B_CONF];
+      this.profileStep();
+      this.bigAgg(r[o + B_INT], r[o + B_KICK] === 1, r[o + B_BREAK] === 1, wall);
+      n++;
+      if (this.bigYield) this.bigYield();
+    }
+    if (n > 0) {
+      Atomics.store(ctrl, C_BIG_READ, seqLow(this.bigSeq));
+      const p = this.outProfile;
+      stateWrite(ctrl, this.bigState!, (s) => {
+        s[BS_SEQ] = this.bigSeq; s[BS_BODY] = this.hBody; s[BS_DROPS] = this.dropCount; s[BS_MINI] = this.miniDropCount; s[BS_BUILD] = this.buildUp; s[BS_RISER] = this.hInRiser ? 1 : 0;
+        s[BS_PUNCH] = p.punch; s[BS_BASS] = p.bass; s[BS_BRIGHT] = p.bright; s[BS_BEAT] = p.beat; s[BS_BASSLINE] = p.bassline; s[BS_SPEC_N] = this.specN; s[BS_SKIPPED] = this.bigSkipped;
+      }, C_BIG_SEQ);
+      if (this.syncWorker) Atomics.notify(ctrl, C_BIG_SEQ);
     }
     return n;
+  }
+  /** 2048-bufferten som RING (a7/a8): hoppet skrivs på den äldstas plats i stället för copyWithin (8 kB memmove per hop);
+   *  bigStep läser ringen i tidsordning från bigPos -> samma sampel i samma ordning, bit-identiskt. Förutsätter hop <= 2048. */
+  private bigRingPush(samples: Float32Array): void {
+    const B = this.bufferBig, N = B.length, p = this.bigPos, hop = samples.length, first = N - p;
+    if (hop <= first) B.set(samples, p);
+    else { B.set(samples.subarray(0, first), p); B.set(samples.subarray(first), 0); }
+    this.bigPos = (p + hop) % N;
+  }
+  /** slow: alla hop-record lästa? (workerns sömnvillkor) */
+  bigIdle(): boolean { return seqLow(this.bigSeq) === Atomics.load(this.splitCtrl!, C_BIG_WRITE); }
+  /** slow: sektionens hopaggregat (som snabba sidans SECTION_AGG 'hop'-gren förr, samma summeringsordning). */
+  private bigAgg(intensity: number, kick: boolean, breaking: boolean, wall: number): void {
+    const rms = this.hRms;
+    const sp = this.secSpecHop;   // bandDbRaw ändras bara i bigStep (var 3:e hop): räkna om då, samma värden
+    if (this.secSpecDirty) { this.secSpecDirty = false; for (let i = 0; i < 8; i++) sp[i] = Math.pow(10, this.bandDbRaw[i] / 20); }
+    const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += this.dtHop * 1000;
+    g.breaking = breaking ? 1 : 0; g.wall = wall; g.drops = this.dropCount + this.secBodyRet; g.active = this.activeMs; g.build = this.buildUp;
+    for (let i = 0; i < 8; i++) g.spec[i] += sp[i];
   }
   /** Snabba sidans kommandon i exakt den ordning de restes (virtuell klocka forst: den nollar ankare som resten skriver). */
   private applyFlags(flags: number, hintMs: number, vclock: number): void {
@@ -1771,6 +1896,18 @@ export class Analyser {
     this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
     this.envLastWallMs = r[o + R_WALL];
     this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
+    if (this.bigOn) {   // stora vägen: sektionens fakta och blocksummor ur den egna hopvägen (hoppen före recordet är redan körda)
+      const g = this.secAgg;
+      if (g.n > 0) this.secVDrops = g.drops;
+      this.envStep();
+      if (g.n > 0) {
+        const I = this.shIn; I.hops = g.n; I.intSum = g.int; I.kicks = g.kicks; I.breaking = g.breaking > 0; I.nowMs = g.wall; I.dtMs = g.dt; I.rms2Sum = g.rms2; I.centSum = g.cent;
+        I.specOff = 0; I.bonSum = g.bon; I.bpk = g.bpk; I.fluxSum = g.flux; I.rms4Sum = g.rms4;
+        this.sectionHop(g.spec);
+        g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
+      }
+      return;
+    }
     const secN = r[o + R_SEC_N] > 0;
     if (!SECTION_AGG_HOP || secN) { this.dropCount = r[o + R_DROPS]; this.activeMs = r[o + R_ACTIVE]; this.buildUp = r[o + R_BUILD]; }
     this.envStep();
@@ -2513,12 +2650,21 @@ export class Analyser {
       // resumeSeq (full JS-seq) fran index.ts: slow = senast lasta record (omstart av workern fortsatter dar den dog,
       // drainRecords klipper backloggen till RING_N-RING_MARGIN); C_READ ar bara 32 laga bitar och duger inte ensamt.
       this.recSeq = splitIn?.resumeSeq ?? cfgIn.resumeSeq ?? 0;
+      this.syncWorker = splitIn?.sync === true;
       if (this.role === 'slow') {
         this.slowGap = true;   // forsta recordet: okand forhistoria -> raknarna tas som utgangspunkt
         // Seqlock-paritet: dog forra workern MITT I stateWrite (terminate/OOM) star C_STATE_SEQ udda for alltid och varje
         // stateRead pa snabba sidan misslyckas — aven mot den nya workern (som skulle skriva udda→jamn→udda). En skribent
         // i taget, sa det ar sakert att jamna till har.
         const sq = Atomics.load(v.ctrl, C_STATE_SEQ); if (sq & 1) Atomics.store(v.ctrl, C_STATE_SEQ, sq + 1);
+      }
+      if (Analyser.FAST_BANDS && SECTION_AGG_HOP && splitBuf.big && splitBuf.bigPcm && splitBuf.bigState && splitBuf.spec) {
+        (this as { bigOn: boolean }).bigOn = true;
+        this.bigRing = new Float64Array(splitBuf.big); this.bigPcm = new Float32Array(splitBuf.bigPcm); this.bigState = new Float64Array(splitBuf.bigState); this.specRing = new Float32Array(splitBuf.spec);
+        if (this.role === 'slow') {   // omstart av workern: fortsätt i sekvensen, med räknarna (en drop-räknare som hoppar bakåt vore en ny 'drop')
+          const sq = Atomics.load(v.ctrl, C_BIG_SEQ); if (sq & 1) Atomics.store(v.ctrl, C_BIG_SEQ, sq + 1);
+          const st = this.bigState; this.bigSeq = st[BS_SEQ]; this.dropCount = st[BS_DROPS]; this.miniDropCount = st[BS_MINI]; this.specN = st[BS_SPEC_N]; this.secVDrops = this.dropCount;
+        }
       }
     }
     const cfg = this.cfg = {
@@ -2581,6 +2727,7 @@ export class Analyser {
     this.magBigMax = Math.min(BIG / 2, this.bandHi[7] + 1);
     this.magBigView = this.magBig.subarray(0, this.magBigMax);
     this.prevMagBigView = this.prevMagBig.subarray(0, this.magBigMax);
+    if (this.bigOn) this.specCopy = new Float32Array(Math.min(SPEC_MAX, this.magBigMax));
 
     // FÖRBERÄKNADE EMA-ALFOR. dtHop och alla tidskonstanter är fasta, så de 11
     // Math.exp()-anropen per hop (~4000/s vid 375 Hz) hörde inte hemma i tick-vägen.
@@ -2652,7 +2799,7 @@ export class Analyser {
 
     // Windowed FFT (pre-allokerade scratchpads → ingen alloc/hop)
     const windowed = this.windowed512;
-    for (let i = 0; i < windowed.length; i++) windowed[i] = this.buffer[i] * this.window[i];
+    { const buf = this.buffer, win = this.window; for (let i = 0; i < windowed.length; i++) windowed[i] = buf[i] * win[i]; }
     const spectrum = this.spectrum512;
     this.fft.realTransform(spectrum, windowed);
 
@@ -2670,31 +2817,44 @@ export class Analyser {
     // Ljusets nivå använder fortfarande rå magnitud. Onset-vägen kan däremot
     // komprimeras och vitbalanseras per FFT-bin, så en högljudd/tonal källa inte
     // sväljer svagare transienter i tempogrammet.
-    for (let i = 0; i < half; i++) {
+    // TRE LOOPAR I STÄLLET FÖR EN (a7, samma aritmetik i samma ordning): basbinnen (onset + snabba bandens magnitud = samma
+    // sqrt som m), binnen upp till de snabba bandens tak (sqrt) och resten (bara centroidens summor). Fälten hissade ut ur
+    // loopen (ingen this-läsning per varv); powSum/powW summeras fortfarande i stigande bin-ordning.
+    const fbMax = Analyser.FAST_BANDS ? this.fbMax : 0, fbMag = this.fbMag;
+    const onsetPeak = this.onsetPeak, onsetPrev = this.onsetPrev, peakDecay = this.onsetPeakDecay, peakReady = this.onsetPeakReady, PFLOOR = Analyser.ONSET_PEAK_FLOOR;
+    for (let i = 0; i < bassBins; i++) {
       const re = spectrum[2 * i];
       const im = spectrum[2 * i + 1];
       const p = re * re + im * im;
-      if (i < bassBins) {
-        const m = Math.sqrt(p);
-        bassEnergy += m;
-        let onsetMag = m;
-        if (enhancedOnset) {
-          // Log-kompression före differensen + SuperFlux-liknande långsam
-          // per-bin-whitening. Peak uppdateras före division så varje bin börjar
-          // på en stabil skala även när signalen startar från tystnad.
-          const compressed = Math.log1p(m);
-          let peak = this.onsetPeak[i] * this.onsetPeakDecay;
-          if (compressed > peak) peak = compressed;
-          this.onsetPeak[i] = peak;
-          onsetMag = this.onsetPeakReady ? compressed / Math.max(Analyser.ONSET_PEAK_FLOOR, peak) : 0;
-        }
-        mag[i] = m;
-        const dd = onsetMag - this.onsetPrev[i];
-        this.onsetPrev[i] = onsetMag;
-        if (dd > 0) { flux += dd; if (i < kickBins) kickFlux += dd; }   // half-wave rectified
+      const m = Math.sqrt(p);
+      bassEnergy += m;
+      let onsetMag = m;
+      if (enhancedOnset) {
+        // Log-kompression före differensen + SuperFlux-liknande långsam
+        // per-bin-whitening. Peak uppdateras före division så varje bin börjar
+        // på en stabil skala även när signalen startar från tystnad.
+        const compressed = Math.log1p(m);
+        let peak = onsetPeak[i] * peakDecay;
+        if (compressed > peak) peak = compressed;
+        onsetPeak[i] = peak;
+        onsetMag = peakReady ? compressed / Math.max(PFLOOR, peak) : 0;
       }
+      mag[i] = m;
+      const dd = onsetMag - onsetPrev[i];
+      onsetPrev[i] = onsetMag;
+      if (dd > 0) { flux += dd; if (i < kickBins) kickFlux += dd; }   // half-wave rectified
       powSum += p; powW += i * p;
-      if (Analyser.FAST_BANDS && i < this.fbMax) this.fbMag[i] = Math.sqrt(p);
+      if (i < fbMax) fbMag[i] = m;
+    }
+    const fbEnd = Math.max(bassBins, Math.min(fbMax, half));
+    for (let i = bassBins; i < fbEnd; i++) {
+      const re = spectrum[2 * i], im = spectrum[2 * i + 1], p = re * re + im * im;
+      powSum += p; powW += i * p;
+      fbMag[i] = Math.sqrt(p);
+    }
+    for (let i = fbEnd; i < half; i++) {
+      const re = spectrum[2 * i], im = spectrum[2 * i + 1], p = re * re + im * im;
+      powSum += p; powW += i * p;
     }
     this.onsetPeakReady = true;
     if (enhancedOnset) {
@@ -2758,7 +2918,8 @@ export class Analyser {
     const bassFluxNorm = Math.min(1, kickFlux * (this.cfg.onset.enhancements ? 0.5 : 0.02));
     if (bassFluxNorm > this.envBassAccum) this.envBassAccum = bassFluxNorm;
     // TYDLIG BASGANG: basnivans topp per env-sampel + senaste kick (se stepBassline).
-    { const bl = this.bandLvl[1] + this.bandLvl[2]; if (bl > this.blAccum) this.blAccum = bl; if (this.kickHit >= 1) this.blKickSeq = this.envSeq; }
+    const big = this.bigOn;   // STORA VÄGEN (fast): basgången, 2048-vägen, drop, riser, profil och sektionsaggregatet körs i långsamma tråden
+    if (!big) { const bl = this.bandLvl[1] + this.bandLvl[2]; if (bl > this.blAccum) this.blAccum = bl; if (this.kickHit >= 1) this.blKickSeq = this.envSeq; }
     if (HIGH_ON) { const hi = this.bandOn[6] > this.bandOn[7] ? this.bandOn[6] : this.bandOn[7]; if (hi > this.envHighAccum) this.envHighAccum = hi; }
     this.envAccumT += hopMs;
     if (this.envAccumT >= 1000 / Analyser.ENV_HZ) this.envSampleStep();
@@ -2797,14 +2958,15 @@ export class Analyser {
     // Egen glidande 2048-buffert, matas samma hop. Ger 23 Hz/bin i botten så
     // sub/kick/bas separeras. Per-band AGC-nivå + per-band adaptiv onset.
     // Bufferten matas VARJE hop (glidande fönster måste vara obrutet)...
-    this.bufferBig.copyWithin(0, hop);   // skjut vänster med en hop
-    this.bufferBig.set(samples, this.bufferBig.length - hop);
+    if (!big) {
+    this.bigRingPush(samples);
     // ...men själva FFT:n + band-analysen körs bara var BIG_EVERY:e hop. 2048-FFT:n
     // är analysatorns dyraste steg och spec-NIVÅERNA smoothas ändå ~90ms — de behöver
     // inte 375Hz. MÄTT: analysen tog 3.8ms/hop mot 2.67ms budget → ljud droppades och
     // ljuset låg 40–140ms efter. Decimeringen får den att rymmas i realtid.
     // Tidssteget skalas (bigDt) så smoothing-tidskonstanterna blir oförändrade.
     if (++this.bigCounter >= Analyser.BIG_EVERY) this.bigStep();
+    }
     if (Analyser.FAST_BANDS) this.fastBandStep(samples);
     // TRUM-KIT peak-hold-envelopes PÅ HOP-TAKT (var 2.7ms) → fångar varje anslag,
     // aldrig missat mellan två render-frames (100Hz). tau bevarade från effects.ts:
@@ -2845,12 +3007,21 @@ export class Analyser {
     // BASKROPPEN — drop-detektionens egen signal (tak + frånvaro + stigningstakt).
     // `inZone` lämnas orörd: effektlagret använder den som "musiken ligger högt".
 
-    const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;   // ra dB
-    this.hKick = kick; this.hNowWall = nowWallA; this.hBody = bodyNow;
-    this.dropStep();
-
-    const inRiser = this.riserStep();
-    this.profileStep();
+    this.hKick = kick; this.hNowWall = nowWallA;
+    let inRiser: boolean;
+    if (big) {
+      this.hIntensity = intensity; this.hBreaking = breaking;
+      this.pushBig(samples);
+      inRiser = this.hInRiser;
+    } else {
+      const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;   // ra dB
+      this.hBody = bodyNow;
+      this.dSec = this.section; this.dLvh = this.levelVsHighDb;
+      this.dropStep();
+      inRiser = this.riserStep();
+      this.dConf = this.localBpmConfidence;
+      this.profileStep();
+    }
     this.hLevel = level; this.hFlux = fluxNorm; this.hIntensity = intensity; this.hInZone = inZone; this.hBreaking = breaking; this.hInRiser = inRiser;
     this.hKickAt = kickAtMs; this.hBarShift = barShift;
     return this.fillFrame();
@@ -3026,7 +3197,7 @@ export class Analyser {
       const _b = this.envBassAccum, _h = this.envHighAccum;
       this.envRing[this.envPos] = _e;
       this.envBassRing[this.envPos] = _b;
-      this.stepBassline();
+      if (this.bigOn) { this.bigEnvFlag = 1; this.bigEnvBpm = this.localBpm; } else { this.dBpm = this.localBpm; this.stepBassline(); }
       if (HIGH_ON) this.envHighRing[this.envPos] = _h;
       this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
       if (Analyser.GRID_PHASE_ON) this.envLastWallMs = this.wallNow();
@@ -3143,10 +3314,13 @@ export class Analyser {
       if (b < 3) {   // biquad HP + LP i följd, effekten per hop, utjämnad; amplitud = rot ur effekten, skalad till ett bandmedel
         const o1 = b * 10, o2 = o1 + 5, s1 = b * 8, s2 = s1 + 4;
         let x1 = S[s1], x2 = S[s1 + 1], y1 = S[s1 + 2], y2 = S[s1 + 3], u1 = S[s2], u2 = S[s2 + 1], v1 = S[s2 + 2], v2 = S[s2 + 3], pw = 0;
+        // Koefficienterna i lokala konstanter (a7): tio typade läsningar per sampel bort, samma tal i samma uttryck.
+        const a0 = C[o1], a1 = C[o1 + 1], a2 = C[o1 + 2], a3 = C[o1 + 3], a4 = C[o1 + 4];
+        const c0 = C[o2], c1 = C[o2 + 1], c2 = C[o2 + 2], c3 = C[o2 + 3], c4 = C[o2 + 4];
         for (let i = 0; i < n; i++) {
           const x = samples[i];
-          const y = C[o1] * x + C[o1 + 1] * x1 + C[o1 + 2] * x2 - C[o1 + 3] * y1 - C[o1 + 4] * y2; x2 = x1; x1 = x; y2 = y1; y1 = y;
-          const v = C[o2] * y + C[o2 + 1] * u1 + C[o2 + 2] * u2 - C[o2 + 3] * v1 - C[o2 + 4] * v2; u2 = u1; u1 = y; v2 = v1; v1 = v;
+          const y = a0 * x + a1 * x1 + a2 * x2 - a3 * y1 - a4 * y2; x2 = x1; x1 = x; y2 = y1; y1 = y;
+          const v = c0 * y + c1 * u1 + c2 * u2 - c3 * v1 - c4 * v2; u2 = u1; u1 = y; v2 = v1; v1 = v;
           pw += v * v;
         }
         S[s1] = x1; S[s1 + 1] = x2; S[s1 + 2] = y1; S[s1 + 3] = y2; S[s2] = u1; S[s2 + 1] = u2; S[s2 + 2] = v1; S[s2 + 3] = v2;
@@ -3161,7 +3335,7 @@ export class Analyser {
         avg = sum / nb * Analyser.FB_K[b]; fluxN = fl / nb * Analyser.FB_K[b];
       }
       this.fbAbs[b] = avg;
-      this.fbDbRaw[b] = 20 * Math.log10(avg + 1e-7);
+      if (b >= 3) this.fbDbRaw[b] = 20 * Math.log10(avg + 1e-7);   // bara band 3-7 läses (midHiDb)
       const minPeak = this.lvlSmooth * 0.15;
       if (gated && avg > this.fbPeak[b]) this.fbPeak[b] = Math.max(avg, minPeak);
       else this.fbPeak[b] = Math.max(this.fbPeak[b] * 0.9993, minPeak);
@@ -3184,7 +3358,9 @@ export class Analyser {
   private bigStep(): void {
     const rms = this.hRms;
     this.bigCounter = 0;
-    for (let i = 0; i < this.bufferBig.length; i++) this.windowedBig[i] = this.bufferBig[i] * this.windowBig[i];
+    { const buf = this.bufferBig, w = this.windowBig, out = this.windowedBig, B = buf.length, p = this.bigPos, n1 = B - p;
+      for (let i = 0; i < n1; i++) out[i] = buf[p + i] * w[i];
+      for (let i = n1; i < B; i++) out[i] = buf[i - n1] * w[i]; }
     this.fftBig.realTransform(this.specBig, this.windowedBig);
     // Bara upp till högsta bin som någon läser (band 8 slutar vid 16 kHz ≈ bin 683,
     // låtminnet slutar vid 5 kHz ≈ bin 218). Resterande ~340 sqrt per stor-FFT hade
@@ -3200,7 +3376,8 @@ export class Analyser {
     // LÅTMINNET får samma magnitud (ingen extra FFT). Anropas före swap:en nedan,
     // så bufferten faktiskt innehåller DENNA frames spektrum. Skickas som cachad vy
     // (0..magBigMax) — svansen räknas inte, så ingen läsare kan tyst få nollor.
-    this.specSink?.(this.magBigView, this.cfg.audio.rate / this.bufferBig.length);
+    if (this.bigOn) { const k = ++this.specN, R = this.specRing!, o = (k % SPEC_SLOTS) * SPEC_MAX; R.set(this.magBigView.subarray(0, this.specCopy.length), o); }
+    else this.specSink?.(this.magBigView, this.cfg.audio.rate / this.bufferBig.length);
     const gated = rms > this.cfg.detection.noiseFloor * 1.5;
 
     // Signal i rad? Räknaren driver ONSET_WARM ovan.
@@ -3210,7 +3387,7 @@ export class Analyser {
     // Samma hissning som magnitud-loopen: pekarna ut ur this före det inre varvet.
     const bandLo = this.bandLo, bandHi = this.bandHi;
     const prevMagBig = this.prevMagBig;
-    {
+    if (!SECTION_AGG_HOP) {   // a3r: bara SECTION_AGG 'env' laser basonset-ringen (g.bon/g.bpk); i 'hop' (DMX) var den dod - 11 log10 per stor-FFT
       // BASONSET-ENVELOPE (09-23, sektionssardrag): som librosa onset_strength(fmax 220): medel over basbinen (20-250 Hz) av
       // halvvagslikriktad dB-skillnad mot forra stor-FFT:n. Toppplockning som onset_detect (pre_max/avg/post_avg/wait/delta) pa
       // 8 ms-raster med 100 ms fordrojning (post_avg) - toppen raknas i det block som pagar, sa fordrojningen ar harmlos.
@@ -3245,6 +3422,7 @@ export class Analyser {
       // Ingen AGC, inget tak som följer med uppåt → en stigning syns som stigning.
       const db = 20 * Math.log10(avg + 1e-7);
       this.bandDbRaw[b] = db;   // RA dB (drop-kropp)
+      this.secSpecDirty = true;
       this.bandDb[b] = Math.max(0, Math.min(1, (db + 70) / 60));
       // Per-band AGC: skala mot egen långsamt sjunkande peak → varje band nyttjar
       // full range oavsett mix (bas dominerar annars alltid rå-magnituden).
@@ -3338,7 +3516,13 @@ export class Analyser {
     const hist = this.bodyHist, HL = hist.length;
     const oldest = hist[(this.bodyHistPos + HL - this.bodyHistLen) % HL];
     let riseRef = oldest;
-    { let mn = oldest; for (let k = 1; k <= this.bodyHistLen; k++) { const v = hist[(this.bodyHistPos + HL - k) % HL]; if (v < mn) mn = v; } riseRef = mn; }
+    // MINIMUM UTAN MODULO (a7): fönstret pos-1 .. pos-len läses som högst två raka bitar (var en heltalsdivision per varv,
+    // ~188 varv per hop). Samma mängd värden -> samma minimum.
+    { const pos = this.bodyHistPos, len = this.bodyHistLen; let mn = oldest;
+      const n1 = len < pos ? len : pos;   // pos-1 .. pos-n1
+      for (let j = pos - n1; j < pos; j++) { const v = hist[j]; if (v < mn) mn = v; }
+      for (let j = HL - (len - n1); j < HL; j++) { const v = hist[j]; if (v < mn) mn = v; }   // resten från slutet
+      riseRef = mn; }
     let bodyRise = bodyPeek - riseRef;   // let: CALMLAND/KICKLOCK bar kandidatens lyft vidare till fyrningen
     hist[this.bodyHistPos] = this.bodyFast;
     this.bodyHistPos = (this.bodyHistPos + 1) % HL;
@@ -3448,7 +3632,9 @@ export class Analyser {
     if (MINI_SPACING_MS > 0) {
       if (this.bodyEnv < this.bodyCeil - MINI_GONE_DB) { this.miniGoneMs += dtHop * 1000; if (this.miniGoneMs >= MINI_GONE_MS) this.lastMiniGoneMs = nowWallA; }
       else this.miniGoneMs = 0;
-      let mnRef = oldest; for (let k = 1; k <= this.bodyHistLen; k++) { const v = hist[(this.bodyHistPos + HL - k) % HL]; if (v < mnRef) mnRef = v; }
+      // Samma fönster som riseRef plus det nyss skrivna värdet (minus inget: den äldsta platsen ingår via `oldest`) -> en jämförelse
+      // i stället för en andra genomläsning (a7).
+      const nv = hist[(this.bodyHistPos + HL - 1) % HL]; const mnRef = nv < riseRef ? nv : riseRef;
       const miniOnset = (bodyPeek - mnRef) > MINI_RISE_DB && bodyPeek > this.bodyPeak - MINI_PEAK_DB && nowWallA - this.lastMiniGoneMs < 4000;
       const miniEdge = miniOnset && !this.wasMiniOnset; this.wasMiniOnset = miniOnset;
       if (miniEdge && this.activeMs > 2000 && nowWallA - this.lastDropMs > MINI_SPACING_MS && nowWallA - this.lastMiniMs > MINI_SPACING_MS
@@ -3469,14 +3655,14 @@ export class Analyser {
     const underNow = this.bodyPeak - bodyPeek;
     // LUGN-SEKTIONS-GRINDEN (se DROP_CALM_GATE). Domen tas per kandidat-hop; den hallna kandidaten (DROP_CALM_LAND_MS) foljs nedan.
     if (fireNow) {
-      const calm = (this.section === 'low' || this.section === 'intro') || this.levelVsHighDb <= -DROP_CALM_DB;
+      const calm = (this.dSec === 'low' || this.dSec === 'intro') || this.dLvh <= -DROP_CALM_DB;
       let strong = this.buildUp >= DROP_CALM_BUILD || underNow < DROP_CALM_Q || bodyRise >= BODY_RISE_DB + DROP_CALM_RISE_DB;
       // STRIKT INTRO (ladan 09-24: 'den gjorde fortfarande drop i intro'): landning vid toppen racker inte i intro - bara en riktig riser.
-      if (this.section === 'intro') strong = this.buildUp >= DROP_CALM_BUILD;
+      if (this.dSec === 'intro') strong = this.buildUp >= DROP_CALM_BUILD;
       if (calm && !strong) {
         fireNow = false;
         if (DROP_CALM_LAND_MS > 0 && this.calmHoldStart === 0) { this.calmHoldStart = nowWallA; this.calmHoldRise = bodyRise; }
-        if (DROP_TRACE && bodyOnsetEdge) console.log(`[dropcalm] wall ${this.wallNow()} ${DROP_CALM_LAND_MS > 0 ? 'HALLS' : 'NEKAD'} sect ${this.section} lvh ${this.levelVsHighDb.toFixed(1)} build ${this.buildUp.toFixed(2)} underPeak ${underNow.toFixed(1)} rise ${bodyRise.toFixed(1)}`);
+        if (DROP_TRACE && bodyOnsetEdge) console.log(`[dropcalm] wall ${this.wallNow()} ${DROP_CALM_LAND_MS > 0 ? 'HALLS' : 'NEKAD'} sect ${this.dSec} lvh ${this.dLvh.toFixed(1)} build ${this.buildUp.toFixed(2)} underPeak ${underNow.toFixed(1)} rise ${bodyRise.toFixed(1)}`);
       }
     }
     if (this.calmHoldStart > 0) {   // verifierad landning: kroppen maste ligga kvar vid toppen hela DROP_CALM_LAND_MS
@@ -3543,7 +3729,7 @@ export class Analyser {
     this.profPunch += (punchNow - this.profPunch) * pr;
     this.profBass += (bassW - this.profBass) * pr;
     this.profBright += (brightW - this.profBright) * pr;
-    this.profBeat += (this.localBpmConfidence - this.profBeat) * pr;
+    this.profBeat += (this.dConf - this.profBeat) * pr;
     // Skala råvärdena till användbara 0..1-spann (typiska musikvärden → full range).
     // Skalningen är KALIBRERAD mot uppmätta råvärden på riktig musik (annars
     // mättar punch på 1.00 och bright ligger konstant högt → ingen diskriminering).
@@ -3558,9 +3744,11 @@ export class Analyser {
   private sectionAggStep(): void {
     const intensity = this.hIntensity, kick = this.hKick, breaking = this.hBreaking, rms = this.hRms, fluxNorm = this.hFlux, nowWallA = this.hNowWall;
     const dtHop = this.dtHop;
+      if (this.bigOn) return;   // stora vägen: aggregatet byggs i långsamma tråden (bigAgg)
       if (SECTION_AGG_HOP) {
         // Aldre vagen: bandens magnitud ur band-dB; odelad analysator kor sectionHop per hop, snabba sidan aggregerar.
-        const sp = this.secSpecHop; for (let i = 0; i < 8; i++) sp[i] = Math.pow(10, this.bandDbRaw[i] / 20);
+        const sp = this.secSpecHop;   // bandDbRaw ändras bara i bigStep (var BIG_EVERY:e hop): potensen räknas om då, samma värden (a7/a8)
+        if (this.secSpecDirty) { this.secSpecDirty = false; for (let i = 0; i < 8; i++) sp[i] = Math.pow(10, this.bandDbRaw[i] / 20); }
         if (this.role === 'fast') {
           const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += this.centSmooth; g.dt += this.dtHop * 1000;
           g.breaking = breaking ? 1 : 0; g.wall = this.wallNow(); g.drops = this.dropCount + this.secBodyRet; g.active = this.activeMs; g.build = this.buildUp;
@@ -3652,20 +3840,39 @@ export const WORKER_RESTART_WINDOW_MS = 10 * 60_000;
  *
  * Testkrokar pa den returnerade analysatorn (bara worker-laget): __worker (aktuell Worker), __stopWorker() (stanger
  * utan omstart), splitRestarts (antal omstarter hittills).
+ *
+ * `mode` (andra argumentet, bara bänken) går före ratten; 'sync' = den RIKTIGA workern i lås-steg (snabba sidan väntar på
+ * varje publicering) - deterministiskt, för att jämföra workern hop för hop mot inline-läget.
+ *
+ * TAKTVÄGEN (split.ts): har systemets profil <prefix>BEAT_FEED 'slow' och en slowHopFeed-fabrik (DMX) körs taktmatningen i den
+ * långsamma vägen; motorn matar den med analyser.hopLane.feed(frame, cfg, analyser). Lotus profil saknar båda: hopLane = null.
  */
-export function createAnalyser(cfg: AnalyserConfig): Analyser {
-  const mode = sysEnv('ANALYSER_SPLIT');
-  if (mode !== 'worker' && mode !== 'inline') return new Analyser(cfg);
-  const buffers = createSplitBuffers();
-  const fast = new Analyser(cfg, { role: 'fast', split: buffers });
-  if (mode === 'inline') { fast.setInlinePeer(new Analyser(cfg, { role: 'slow', split: buffers })); return fast; }
+export function createAnalyser(cfg: AnalyserConfig, modeIn?: 'worker' | 'inline' | 'sync'): Analyser {
+  const mode = modeIn ?? sysEnv('ANALYSER_SPLIT');
+  if (mode !== 'worker' && mode !== 'inline' && mode !== 'sync') return new Analyser(cfg);
+  const sync = mode === 'sync';
+  const feedMk = hopFeedFactory();
+  const buffers = createSplitBuffers(!!feedMk);
+  const fast = new Analyser(cfg, { role: 'fast', split: buffers, sync });
+  if (feedMk) fast.hopLane = new HopLaneFast(buffers, sync);
+  if (mode === 'inline') {
+    fast.setInlinePeer(new Analyser(cfg, { role: 'slow', split: buffers }));
+    if (feedMk) fast.hopLane!.peer = new HopLaneSlow(buffers, feedMk());
+    return fast;
+  }
   // Worker: SAB:arna delas via workerData (structured clone DELAR SharedArrayBuffer). cfg ar ren data och klonas.
-  // Importen ar dynamisk sa modulen fortfarande laddar i miljoer utan worker_threads (bank, webblasare).
-  import('node:worker_threads').then(({ Worker }) => {
+  // Importen ar dynamisk sa modulen fortfarande laddar i miljoer utan worker_threads (bank, webblasare). Synk-läget måste starta
+  // workern innan första process() (den väntar på den) och tar modulen synkront.
+  const withWorker = ({ Worker }: typeof import('node:worker_threads')) => {
     let stopped = false;
     const attempts: number[] = [];   // tidpunkter for omstarter inom fonstret
-    const start = (resumeSeq: number, why: string) => {
-      const data: WorkerData = { cfg: { ...cfg }, buffers, resumeSeq };
+    // STORA VÄGEN + TAKTVÄG (a3): två trådar - 'lane' (bara taktmatningen) och 'slow' (analysatorn: env + stora vägen). Annars en.
+    // PI:NS VERKLIGHET (a3r): EN worker-tråd även med stora vägen - motorn är låst till 2 kärnor (CPUAffinity), en tredje tråd delar
+    // kärna med ljusvägen. Taktvägen får förtur i tråden via bigYield (slowWorker.ts). Delningen 'lane'/'slow' finns kvar i slowWorker.
+    const parts: Array<'all' | 'lane' | 'slow'> = ['all'];
+    const workers: Array<{ postMessage: (m: unknown) => void }> = [];
+    const start = (part: 'all' | 'lane' | 'slow', resumeSeq: number, why: string) => {
+      const data: WorkerData = { cfg: { ...cfg }, buffers, resumeSeq, sync, part };
       // Pekar pa den BYGGDA filen (slowWorker.js bredvid denna).
       const w = new Worker(new URL('./slowWorker.js', import.meta.url), { workerData: data });
       w.on('error', (e) => console.error('[analyser-split] worker FEL:', e?.message ?? e));
@@ -3680,18 +3887,26 @@ export function createAnalyser(cfg: AnalyserConfig): Analyser {
         const delay = WORKER_RESTART_BACKOFF_MS[Math.min(attempts.length, WORKER_RESTART_BACKOFF_MS.length - 1)];
         attempts.push(now);
         console.warn(`[analyser-split] worker dog (kod ${code}) — omstart #${attempts.length} om ${delay} ms, aterupptar vid record ${fast.fastReadSeq()} (skrivet ${fast.fastWriteSeq()})`);
-        const t = setTimeout(() => { if (stopped) return; fast.splitRestarts++; start(fast.fastReadSeq(), 'omstart'); }, delay);
+        const t = setTimeout(() => { if (stopped) return; fast.splitRestarts++; start(part, part === 'lane' ? 0 : fast.fastReadSeq(), 'omstart'); }, delay);
         t.unref();
       });
       w.unref();
-      (fast as unknown as { __worker: unknown }).__worker = w;
-      console.log(`[analyser-split] langsam analysator i worker startad (tempo/gridfas/sektion) — ${why}, fran record ${resumeSeq}`);
+      workers[parts.indexOf(part)] = w;
+      if (part !== 'lane') (fast as unknown as { __worker: unknown }).__worker = w;
+      console.log(`[analyser-split] langsam analysator i worker startad (${part}) — ${why}, fran record ${resumeSeq}`);
     };
     (fast as unknown as { __stopWorker: () => void }).__stopWorker = () => {
       stopped = true;
-      (fast as unknown as { __worker?: { postMessage: (m: unknown) => void } }).__worker?.postMessage({ type: 'stop' });
+      for (const w of workers) w?.postMessage({ type: 'stop' });
     };
-    start(0, 'start');
-  }).catch((e) => console.error('[analyser-split] kunde inte starta worker:', e?.message ?? e));
+    for (const p of parts) start(p, 0, 'start');
+  };
+  if (sync) withWorker((process as unknown as { getBuiltinModule(id: string): typeof import('node:worker_threads') }).getBuiltinModule('node:worker_threads'));
+  else import('node:worker_threads').then(withWorker).catch((e) => console.error('[analyser-split] kunde inte starta worker:', e?.message ?? e));
   return fast;
+}
+
+/** TAKTVÄGEN: systemets taktmatning för den långsamma vägen, om profilen har <prefix>BEAT_FEED 'slow' och en slowHopFeed-fabrik. */
+export function hopFeedFactory(): (() => HopFeed) | undefined {
+  return sysEnv('BEAT_FEED') === 'slow' ? (PROFILE as { slowHopFeed?: () => HopFeed }).slowHopFeed : undefined;
 }
