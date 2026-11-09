@@ -16,7 +16,7 @@
  * pa hop-recorden. Da vantar loopen pa C_WAKE (env- och hop-record) i stallet for C_WRITE.
  */
 import { workerData, parentPort, receiveMessageOnPort } from 'node:worker_threads';
-import { Analyser, type AnalyserConfig } from './analyser.js';
+import { Analyser, hopFeedFactory, type AnalyserConfig } from './analyser.js';
 import { PROFILE } from './analyserProfile.js';
 import { C_WRITE, C_WAITING, C_WAITING_B, C_WAKE, C_HOP_WRITE, seqLow, HopLaneSlow, type HopFeed, type WorkerData, type WorkerMsg } from './split.js';
 
@@ -26,15 +26,9 @@ import { C_WRITE, C_WAITING, C_WAITING_B, C_WAKE, C_HOP_WRITE, seqLow, HopLaneSl
 const { cfg, buffers, resumeSeq, sync, part = 'all' } = workerData as WorkerData & { cfg: AnalyserConfig };
 const ctrl = new Int32Array(buffers.ctrl);
 const an = part === 'lane' ? null : new Analyser(cfg, { role: 'slow', split: buffers, resumeSeq, sync });
-const P = PROFILE as { slowHopFeed?: () => HopFeed; slowHopFeedModule?: string };
 const wantLane = !!buffers.hop && part !== 'slow';
-if (wantLane && !P.slowHopFeed && P.slowHopFeedModule) {   // systemets taktmatning laddas bara med taktvagen (modulen registrerar fabriken)
-  const log = console.log, info = console.info;
-  await import(new URL(P.slowHopFeedModule, import.meta.url).href);
-  console.log = log; console.info = info;   // modulen far inte andra trådens loggning (DMX beatFeed.ts drar in quiet.ts)
-}
-const feedMk = P.slowHopFeed;
-if (wantLane && !feedMk) throw new Error('analyser-split: taktvagen utan slowHopFeed i profilen');
+const feedMk = hopFeedFactory();   // analysatorns klocka (analyserClock.ts, statiskt i analyser.ts)
+if (wantLane && !feedMk) throw new Error('analyser-split: taktvagen utan klocka i profilen (BEAT_FEED)');
 const lane = wantLane && feedMk ? new HopLaneSlow(buffers, feedMk(), sync === true) : null;
 if (lane && an) an.bigYield = () => { lane.drain(); };   // en tråd: taktvägen mellan varje env-/hop-record (Analyser.bigYield)
 const TEST_CRASH = process.env[PROFILE.envPrefix + 'SPLIT_TEST_CRASH'] === '1';

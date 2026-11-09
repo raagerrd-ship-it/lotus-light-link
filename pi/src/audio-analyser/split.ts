@@ -19,7 +19,7 @@
  * createAnalyser) ger BIT-IDENTISKT tempo mot den odelade analysatorn, vilket körbänken bevisar.
  */
 
-export const REC_LEN = 35;
+export const REC_LEN = 37;
 export const RING_N = 1024;                    // ~10 s vid 100 Hz — workern får ligga efter utan att tappa
 export const RING_MARGIN = 8;                  // records workern lämnar orörda mot skrivaren (80 ms) — läses aldrig närmare kanten
 
@@ -31,7 +31,8 @@ export const R_SEQ = 0, R_PERF = 1, R_WALL = 2, R_ENV = 3, R_BASS = 4, R_FLAGS =
   R_SEC_BON = 29 /* NYA SEKTIONSSARDRAG (09-23): basonset-envelope (dB-flux 20-250 Hz, summa per hop) */, R_SEC_BPK = 30 /* basonset-toppar (librosa-lik toppplockning, antal) */,
   R_SEC_FLUX = 31 /* helbandsflux (fluxNorm, summa) */, R_SEC_RMS4 = 32 /* summa rms^4 (dynamik inom blocket) */,
   R_HIGH = 33 /* diskant-onset-ringens sampel (bara med <prefix>HIGH_DIAG/HIGH_VOTE) */,
-  R_BIGSEQ = 34 /* STORA VÄGEN: antal hop-record (stora ringen) skrivna före detta env-record - workern kör dem först */;
+  R_BIGSEQ = 34 /* STORA VÄGEN: antal hop-record (stora ringen) skrivna före detta env-record - workern kör dem först */,
+  R_CLOCK = 35 /* EN KÄLLA (r0): klockans bpm (analysatorns enda tempo) */, R_CLOCK_CONF = 36 /* klockans tillit */;
 
 // Flaggor (bitmask i R_FLAGS)
 export const F_SIL350 = 1, F_SIL10 = 2, F_RESET_TEMPO = 4, F_HINT = 8, F_RESET_BAR = 16, F_VCLOCK_SET = 32, F_VCLOCK_NULL = 64;
@@ -190,25 +191,28 @@ export const SPEC_SLOTS = 16, SPEC_MAX = 1024;   // 16 spektra = 48 hop: en sen 
 // i ett eget tillståndsblock med egen seqlock. Den snabba sidan lägger resultatet i motorns cfg/ram och utför kommandona på SIN
 // analysator (som förr - flaggorna går sedan i env-recorden som vanligt), så kommandoordningen är exakt den gamla i inline-läget.
 // Taktmatningen läser inget ur den långsamma analysatorn: de två körs oberoende i workern.
-export const HOP_REC_LEN = 14;
+export const HOP_REC_LEN = 16;
 export const HOP_RING_N = 4096;                // ~11 s vid 375 Hz
 export const H_SEQ = 0, H_NOW = 1 /* Date.now() vid hoppet = taktmatningens klocka */, H_TS = 2 /* timeOrigin+performance.now(), fördröjningsmått */,
-  H_BPM = 3, H_CONF = 4, H_ANCHOR = 5, H_KICKAT = 6, H_BARSHIFT = 7, H_ON_KICK = 8, H_ON_HIMID = 9, H_ON_TREBLE = 10, H_SA_SUB = 11, H_SA_KICK = 12, H_SA_BASS = 13 /* a5: basgången (ettan) */;
+  H_BPM = 3, H_CONF = 4, H_ANCHOR = 5, H_KICKAT = 6, H_BARSHIFT = 7, H_ON_KICK = 8, H_ON_HIMID = 9, H_ON_TREBLE = 10, H_SA_SUB = 11, H_SA_KICK = 12, H_SA_BASS = 13 /* a5: basgången (ettan) */,
+  H_BOUND = 14 /* låtgränsräknaren (an.trackBoundaries, a4 entempo) */, H_QUIET = 15 /* ms tystnad (an.quietMs, r0: klockans tystnadssignal) */;
 export const C_HOP_WRITE = 4, C_HOP_READ = 5, C_FEED_SEQ = 6 /* taktvägens seqlock */, C_WAKE = 7 /* väckningsord: env- OCH hop-record (bara med taktvägen) */;
 export const FS_HOP_SEQ = 0, FS_BEAT = 1 /* cfg.beat: 0 undefined, -1 null, 1 objekt */, FS_ANCHOR = 2, FS_BPM = 3, FS_BCONF = 4,
   FS_BEATERR = 5 /* NaN = osatt */, FS_FCONF = 6 /* frame.bpmConfidence efter matningen, NaN = orörd */, FS_GRID = 7 /* analysatorns rutnät 0 null/1 */,
   FS_GANCHOR = 8, FS_GBPM = 9, FS_GCONF = 10, FS_RT_CNT = 11 /* resetTempo, räknare */, FS_RB_CNT = 12 /* resetBar, räknare */,
-  FS_PROCESSED = 13, FS_LAG_MS = 14, FS_LAG_MAX = 15, FS_BUSY_US = 16, FS_BUSY_MAX_US = 17, FS_SKIPPED = 18;
-export const FEED_STATE_LEN = 19;
+  FS_PROCESSED = 13, FS_LAG_MS = 14, FS_LAG_MAX = 15, FS_BUSY_US = 16, FS_BUSY_MAX_US = 17, FS_SKIPPED = 18,
+  FS_BARK = 19 /* EN ETTA (klocka r0): klockans taktmodell har dömt en etta 0/1 */;
+export const FEED_STATE_LEN = 20;
 
 /** Det taktmatningen läser ur ramen, och det den skriver (cfg.beat/beatErr, frame.bpmConfidence, analysatorns rutnät/kommandon). */
 export interface HopFrame { bpm: number; bpmConfidence: number; beatAnchorMs: number; kickAtMs: number; barShift: number;
   onset: { kick: number; highMid: number; treble: number }; specAbs: { sub: number; kick: number; bass: number } }
 export interface HopGrid { anchorMs: number; bpm: number; confidence?: number }
 export interface HopCfg { beat?: HopGrid | null; beatErr?: number }
-export interface HopTarget { resetTempo(): void; resetBar(): void; setBeatGrid?(g: HopGrid | null): void }
+export interface HopTarget { resetTempo(): void; resetBar(): void; setClockGrid?(g: HopGrid | null): void; trackBoundaries?: number; quietMs?: number;
+  /** EN KÄLLA (r0): analysatorns tempo/tillit = klockans (cfg.beat efter matningen). */ setClock?(bpm: number, conf: number): void }
 /** Systemets taktmatning (DMX: BeatFeed). `now` = hoppets klocka (Date.now() när hoppet kom, inte när workern kör det). */
-export interface HopFeed { update(frame: HopFrame, cfg: HopCfg, an: HopTarget, now: number): void }
+export interface HopFeed { update(frame: HopFrame, cfg: HopCfg, an: HopTarget, now: number): void; /** EN ETTA (r0): taktmodellen har en etta */ barKnown?(): boolean }
 
 /** Taktvägen, snabba sidan (motorns tråd): skriv hoppet, hämta senaste resultatet och lägg det i motorns cfg/ram/analysator. */
 export class HopLaneFast {
@@ -216,6 +220,10 @@ export class HopLaneFast {
   private readonly s = new Float64Array(FEED_STATE_LEN); private readonly sr = new StateReader();
   private seq = 0; private applied = 0; private rt = 0; private rb = 0;
   private readonly grid = { anchorMs: 0.5, bpm: 0.5, confidence: 0.5 };
+  /** Klockans tempo/tillit efter senaste feed - analysatorn läser dem själv i början av nästa process() (a7r, ingen setClock utifrån). */
+  clockBpm = 0; clockConf = 0;
+  /** EN ETTA (klocka r0): klockans taktmodell har dömt en etta (workerns senaste publicering). */
+  barKnown = false;
   /** inline-läget (bänken): den långsamma sidan körs synkront här. */
   peer: HopLaneSlow | null = null;
   constructor(b: SplitBuffers, private readonly sync = false) {
@@ -228,26 +236,32 @@ export class HopLaneFast {
     r[o + H_BPM] = f.bpm; r[o + H_CONF] = f.bpmConfidence; r[o + H_ANCHOR] = f.beatAnchorMs; r[o + H_KICKAT] = f.kickAtMs; r[o + H_BARSHIFT] = f.barShift;
     r[o + H_ON_KICK] = f.onset?.kick ?? 0; r[o + H_ON_HIMID] = f.onset?.highMid ?? 0; r[o + H_ON_TREBLE] = f.onset?.treble ?? 0;
     r[o + H_SA_SUB] = f.specAbs?.sub ?? 0; r[o + H_SA_KICK] = f.specAbs?.kick ?? 0; r[o + H_SA_BASS] = f.specAbs?.bass ?? 0;
+    r[o + H_BOUND] = an.trackBoundaries ?? 0; r[o + H_QUIET] = an.quietMs ?? 0;
     r[o + H_SEQ] = seq;                                    // sist: seq = recordet ar komplett
     Atomics.store(ctrl, C_HOP_WRITE, seqLow(seq)); Atomics.add(ctrl, C_WAKE, 1);
     if (Atomics.load(ctrl, C_WAITING) || Atomics.load(ctrl, C_WAITING_B)) Atomics.notify(ctrl, C_WAKE);   // alla väntare (en eller två trådar)
     if (this.peer) this.peer.drain();
     else if (this.sync) syncWait(ctrl, C_FEED_SEQ, () => this.sr.read(ctrl, this.state, this.s, C_FEED_SEQ) && this.s[FS_HOP_SEQ] >= seq);
-    const s = this.s;
+    this.apply(cfg, an);
+    // EN KÄLLA (r0): ramen och analysatorn bär klockans tempo och tillit (0/0 utan klocka) - samma tal för ljuset, låtgränsen och sektionerna
+    const b = cfg.beat; f.bpm = b ? b.bpm : 0; f.bpmConfidence = b ? (b.confidence ?? 0) : 0; this.clockBpm = f.bpm; this.clockConf = f.bpmConfidence;   // a7r: analysatorn läser dem själv i nästa process()
+  }
+  private apply(cfg: HopCfg, an: HopTarget): void {
+    const s = this.s, ctrl = this.ctrl;
     if (!this.sr.read(ctrl, this.state, s, C_FEED_SEQ) || s[FS_HOP_SEQ] === 0) return;   // inget resultat an (eller mitt i skrivning: behall forra)
-    const fc = s[FS_FCONF]; if (fc === fc) f.bpmConfidence = fc;   // tilliten (bara om matningen andrade den)
     if (s[FS_HOP_SEQ] === this.applied) return;
     this.applied = s[FS_HOP_SEQ];
     if (s[FS_RT_CNT] !== this.rt) { this.rt = s[FS_RT_CNT]; an.resetTempo(); }
     if (s[FS_RB_CNT] !== this.rb) { this.rb = s[FS_RB_CNT]; an.resetBar(); }
-    if (s[FS_GRID] === 1) { const g = this.grid; g.anchorMs = s[FS_GANCHOR]; g.bpm = s[FS_GBPM]; g.confidence = s[FS_GCONF]; an.setBeatGrid?.(g); }
-    else an.setBeatGrid?.(null);
+    if (s[FS_GRID] === 1) { const g = this.grid; g.anchorMs = s[FS_GANCHOR]; g.bpm = s[FS_GBPM]; g.confidence = s[FS_GCONF]; an.setClockGrid?.(g); }
+    else an.setClockGrid?.(null);
     const bc = s[FS_BEAT];
     if (bc === 1) {
       if (!cfg.beat) cfg.beat = { anchorMs: s[FS_ANCHOR], bpm: s[FS_BPM], confidence: s[FS_BCONF] };
       else { cfg.beat.anchorMs = s[FS_ANCHOR]; cfg.beat.bpm = s[FS_BPM]; cfg.beat.confidence = s[FS_BCONF]; }
     } else cfg.beat = bc === -1 ? null : undefined;
     const be = s[FS_BEATERR]; if (be === be) cfg.beatErr = be;
+    this.barKnown = s[FS_BARK] === 1;
   }
   /** Hälsa: hur långt efter taktvägen ligger (hop och ms), dess kostnad per hop, tappade hop. */
   stats(): { written: number; processed: number; behind: number; lagMs: number; lagMaxMs: number; busyUs: number; busyMaxUs: number; skipped: number } {
@@ -266,7 +280,7 @@ export class HopLaneSlow {
     onset: { kick: 0.5, highMid: 0.5, treble: 0.5 }, specAbs: { sub: 0.5, kick: 0.5, bass: 0.5 } };
   private readonly cfg: HopCfg = { beat: undefined, beatErr: undefined };
   private grid: HopGrid | null = null;
-  private readonly target: HopTarget = { resetTempo: () => { this.rt++; }, resetBar: () => { this.rb++; }, setBeatGrid: (g) => { this.grid = g; } };
+  private readonly target: HopTarget = { trackBoundaries: 0, quietMs: 0, resetTempo: () => { this.rt++; }, resetBar: () => { this.rb++; }, setClockGrid: (g) => { this.grid = g; } };
   constructor(b: SplitBuffers, private readonly feed: HopFeed, private readonly notify = false) {
     this.ctrl = new Int32Array(b.ctrl); this.ring = new Float64Array(b.hop!); this.state = new Float64Array(b.hopState!);
     // Omstart av workern: fortsatt i sekvensen och med raknarna (annars ser snabba sidan ett 'nytt' resetTempo); matningen borjar om.
@@ -283,6 +297,7 @@ export class HopLaneSlow {
       const seq = ++this.seq, o = (seq % HOP_RING_N) * HOP_REC_LEN;
       if (r[o + H_SEQ] !== seq) { this.skipped++; continue; }
       const t0 = performance.now();
+      this.target.trackBoundaries = r[o + H_BOUND]; this.target.quietMs = r[o + H_QUIET];
       fr.bpm = r[o + H_BPM]; fr.bpmConfidence = r[o + H_CONF]; fr.beatAnchorMs = r[o + H_ANCHOR]; fr.kickAtMs = r[o + H_KICKAT]; fr.barShift = r[o + H_BARSHIFT];
       fr.onset.kick = r[o + H_ON_KICK]; fr.onset.highMid = r[o + H_ON_HIMID]; fr.onset.treble = r[o + H_ON_TREBLE];
       fr.specAbs.sub = r[o + H_SA_SUB]; fr.specAbs.kick = r[o + H_SA_KICK]; fr.specAbs.bass = r[o + H_SA_BASS];
@@ -306,6 +321,7 @@ export class HopLaneSlow {
         s[FS_GRID] = g ? 1 : 0; if (g) { s[FS_GANCHOR] = g.anchorMs; s[FS_GBPM] = g.bpm; s[FS_GCONF] = g.confidence ?? 0; }
         s[FS_RT_CNT] = this.rt; s[FS_RB_CNT] = this.rb;
         s[FS_PROCESSED] = this.processed; s[FS_LAG_MS] = lagMs; s[FS_LAG_MAX] = this.lagMaxMs; s[FS_BUSY_US] = this.busyEmaUs; s[FS_BUSY_MAX_US] = this.busyMaxUs; s[FS_SKIPPED] = this.skipped;
+        s[FS_BARK] = this.feed.barKnown?.() ? 1 : 0;
       }, C_FEED_SEQ);
       if (this.notify) Atomics.notify(ctrl, C_FEED_SEQ);
     }

@@ -25,19 +25,27 @@ import {
   S_REP_SIM, S_REP_AGO, S_REP_SEC, S_EXPECT_MS, S_EXPECT_SRC, S_PREV_SEC, S_LVL_HIGH, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
   SECTIONS, sectionCode, viewsOf, stateWrite, stateRead, createSplitBuffers, type SplitBuffers, type WorkerData,
   C_WAKE, syncWait, HopLaneFast, HopLaneSlow, StateReader, type HopFeed,
-  R_BIGSEQ, BIG_REC_LEN, BIG_RING_N, BIG_HOP_MAX, B_SEQ, B_N, B_RMS, B_LVL, B_CENT, B_ACTIVE, B_WALL, B_KICK, B_KICKHIT, B_INT, B_BREAK, B_SEC, B_LVH, B_CONF,
+  R_BIGSEQ, R_CLOCK, R_CLOCK_CONF, BIG_REC_LEN, BIG_RING_N, BIG_HOP_MAX, B_SEQ, B_N, B_RMS, B_LVL, B_CENT, B_ACTIVE, B_WALL, B_KICK, B_KICKHIT, B_INT, B_BREAK, B_SEC, B_LVH, B_CONF,
   B_ENVF, B_ENVBPM, C_WAITING_B, C_BIG_WRITE, C_BIG_READ, C_BIG_SEQ, BS_SEQ, BS_BODY, BS_DROPS, BS_MINI, BS_BUILD, BS_RISER, BS_PUNCH, BS_BASS, BS_BRIGHT, BS_BEAT,
   BS_BASSLINE, BS_SPEC_N, BS_SKIPPED, BIG_STATE_LEN, SPEC_SLOTS, SPEC_MAX,
 } from './split.js';
 import FFT from "fft.js";
+import { BeatFeed, publishPhase, type ClockCfg } from "./analyserClock.js";   // ANALYSATORNS KLOCKA (a7r): tempogram, rutnät, etta, tillit
 
 // ── RATTAR ─────────────────────────────────────────────────────────────────────────────────────
 const ENV: Record<string, string | undefined> | undefined = typeof process !== 'undefined' ? process.env : undefined;
 const ALIAS_PREFIX = PROFILE.envPrefix === 'LOTUS_' ? 'DMX_' : 'LOTUS_';
 /** Ratt MED systemprefix: <eget prefix><name>, sedan <andra prefixet><name> (alias), sedan profilens standard. */
+/** KICKSPÄRRENS TAK (r0 entempo): spärren är 0,6 slag på klockans tempo men högst 330 ms (= 0,6 slag vid 109 BPM). Mätt (r0/verktyg/kick.mjs,
+ *  lang1011 141-300 s): klockan står på 87 där analysatorns egen sökning stod på 110-131; utan tak tog 414 ms-spärren var tredje kick
+ *  (44 kickar/20 s, platt = sektionernas kicktäthet utan kontrast, upp_s 1,35 -> 2,85 s), med taket 148 mot basens 140 per minut. */
+const KICK_CAP_MS = 330;
 function sysEnv(name: string): string | undefined {
   return ENV?.[PROFILE.envPrefix + name] ?? ENV?.[ALIAS_PREFIX + name] ?? PROFILE.sys[name];
 }
+/** TEMPOKÄLLAN (EN KLOCKA FÖR BÅDA, klocka a8 11-09): klockan (analyserClock.ts) är analysatorns ENDA tempo, fas och tillit i BÅDA
+ *  profilerna. Lotus egen sökning (computeBpm/scoreEnv/alignScore/shiftDetect) och gridfasen (computeGridPhase) är borttagna;
+ *  profilen väljer bara VAR klockan körs (sys.BEAT_FEED 'slow' = taktvägen i workern, annars sist i process(), se clockMode). */
 /** Ratt UTAN prefix (namnet som det star), sedan profilens standard. */
 function env(name: string): string | undefined {
   return ENV?.[name] ?? PROFILE.bare[name];
@@ -395,8 +403,6 @@ export class Analyser {
   private static readonly ENV_LEN = 100 * Math.max(3, Math.min(20, Number(sysEnv('TEMPO_ENV_S')) || 5));
   private envRing = new Float32Array(Analyser.ENV_LEN);
   private envPos = 0;
-  /** GRIDFAS (09-20): se computeGridPhase. Opt-in - standardbygget ar oforandrat. */
-  private static readonly GRID_PHASE_ON = sysEnv('GRID_PHASE') === '1';
   /** Fasval: 'sum' = bas+helband (standard), 'bass' = basringen forst, helbandet bara nar basen ar tvetydig (kvot < BASS_MIN). Korbank-A/B. */
 
   /** GRIDFASENS SYSTEMATISKA SLAP (2026-09-23, opt-in LOTUS_GRID_PHASE_TRIM=1). PC-referensen tre dygn i rad:
@@ -641,13 +647,16 @@ export class Analyser {
   splitRestarts = 0;               // fast: antal omstarter av workern (satts av index.ts)
   /** TAKTVÄGEN (split.ts): systemets taktmatning i den långsamma tråden. null = ingen (lotus; DMX utan BEAT_FEED 'slow' eller odelad). */
   hopLane: HopLaneFast | null = null;
+  /** EN KLOCKA (klocka a8): analysatorn matar SJÄLV sin taktväg sist i process() - profilen utan BEAT_FEED (lotus), vars motor inte
+   *  anropar hopLane.feed. DMX (BEAT_FEED 'slow') matar från index.ts som förr. Samma klocka, samma tråd (workern), bara vem som matar. */
+  hopSelf = false;
   private syncWorker = false;      // fast: vänta på workern efter varje record; slow: notify efter publicering (bänkens synk-läge)
   /** HOPPETS VÄRDEN (2026-10-17, skräpjakten): decimaltal som skickas som argument till, eller returneras från, en metod som V8 inte
    *  inlinar blir ett nytt HeapNumber per anrop (process 47 -> 6 kB/s skräp när de gick via fält). De heta stegen läser därför hoppets
    *  värden ur fält som process() skriver. Alla initieras som decimaltal (0,5) så fälten har Double-form från start. */
   private hRms = 0.5; private hNow = 0.5; private hDt = 0.5; private hKickFlux = 0.5; private hEnergy = 0.5; private hHopMs = 0.5;
   private hIntensity = 0.5; private hNowWall = 0.5; private hBody = 0.5; private hKick = false; private hLevel = 0.5; private hFlux = 0.5;
-  private hInZone = false; private hBreaking = false; private hInRiser = false; private hKickAt = 0.5; private hBarShift = 0.5;
+  private hInZone = false; private hBreaking = false; private hInRiser = false; private hKickAt = 0.5;
   /** sectionHop:s summor (samma skäl): anroparen fyller, sectionHop läser. */
   private shIn = { hops: 0.5, intSum: 0.5, kicks: 0.5, breaking: false, nowMs: 0.5, dtMs: 0.5, rms2Sum: 0.5, centSum: 0.5, specOff: 0.5, bonSum: 0.5, bpk: 0.5, fluxSum: 0.5, rms4Sum: 0.5 };
   private secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, drops: 0, active: 0, build: 0, spec: new Float64Array(8), bon: 0, bpk: 0, flux: 0, rms4: 0 };
@@ -857,8 +866,6 @@ export class Analyser {
   /** TAKTFAS: vikt per taktslags-plats (idx mod 4) mot cfg.beat-gridet. Ettan bär
    *  tyngsta slaget i så gott som all dansmusik — den plats som samlar mest
    *  kick-tyngd ÄR ettan. Glöms långsamt så ett låtbyte kan flytta fasen. */
-  private barAcc = new Float64Array(4);
-  private barCount = -0;        // (typstabilt) antal bokförda slag (bevisunderlag för taktfasen)
   /** Perceptuell prior (log-Gauss runt 120 BPM) per lag — lagg→BPM ar fast, sa
    *  de ~78 Math.exp()-anropen per computeBpm-anrop kan bakas en gang. */
   private priorLut = (() => {
@@ -979,7 +986,6 @@ export class Analyser {
   private dropArmUntil = 0; private dropArmAt = 0; private dropArmGoneMs = -1.5;   // armerat drop-fonster (DROP_ARM_MS)
   private calmHoldStart = -0; private calmHoldRise = -0;   // DROP_CALM_LAND_MS: kandidat som halls for verifierad landning
 
-  private barShiftOut = -1;   // kickRefine -> process(): taktfas-forslaget for hopet (Smi -1..3, ingen allokering)
   private goneEpisodeMs = -1.5;   // (double fran start, se dropArmGoneMs) gone-episodens START (lastBodyGoneMs uppdateras varje hop och duger INTE som id)
   private dropCount = 0;         // monoton drop-räknare (edge-säker för konsumenter)
   private lastDropMs = -1.5e9;   // utanfor Smi-intervallet -> Double fran start (typstabilt)
@@ -1083,206 +1089,6 @@ export class Analyser {
     return second;
   }
 
-  /**
-   * BPM (90..180) från onset-envelopens autokorrelation.
-   *  1) Toppen i autokorrelationen ger en kandidat-lag.
-   *  2) SUB-HARMONIC-PREFERENS: om dubbla/tredubbla lagget (halva/tredjedels
-   *     tempot) resonerar nästan lika bra är det oftast det ÄKTA beatet — annars
-   *     låser en tryckare/ballad på sin subdivision (dubbeltakt). Väljer grundtempot.
-   *  3) MEDIAN över ~3s → robust mot enstaka oktav-flippar (istället för att
-   *     bestämma per frame, vilket flimrade). Snäpper vid verkligt oktavbyte,
-   *     glider mjukt vid små avvik.
-   *  (Ref: comb/sub-harmonic + fler-frames-röstning, se @audio/beat och
-   *   OBTAIN-realtidsbeat-tracking.)
-   */
-  /** Autokorrelation + comb + pulse-xcorr + prior för EN onset-envelope.
-   *  Fyller `out[lagMin..lagMax]` med normaliserad score och returnerar bandets
-   *  medelenergi (0 = tyst band → anroparen kan vikta ner det). Scratcharna håller
-   *  efteråt den SENAST scorade envelopen — off-beat-testet och den paraboliska
-   *  interpolationen läser dem, så helbandet måste scoras sist. */
-  private scoreEnv(ring: Float32Array, N: number, out: Float32Array, lagMin: number, lagMax: number): number {
-    const L = Analyser.ENV_LEN;
-    const env = this.envScratch;
-    const pre = this.prefScratch;
-    const preSq = this.prefSqScratch;
-    const start = (this.envPos - N + L) % L;
-    let energy = 0;
-    pre[0] = 0;
-    preSq[0] = 0;
-    // Ringen läses i TVÅ RAKA BLOCK. `% L` i den inre loopen kostade en modulo per
-    // sampel (N upp till 500, två anrop per computeBpm) helt i onödan.
-    const n1 = Math.min(N, L - start);
-    for (let i = 0; i < n1; i++) {
-      const v = ring[start + i];
-      env[i] = v; energy += v; pre[i + 1] = pre[i] + v; preSq[i + 1] = preSq[i] + v * v;
-    }
-    for (let i = n1; i < N; i++) {
-      const v = ring[i - n1];
-      env[i] = v; energy += v; pre[i + 1] = pre[i] + v; preSq[i + 1] = preSq[i] + v * v;
-    }
-
-    // WHITENING: subtrahera ett LOKALT medel (1 s glidande) i stället för det
-    // globala. En långsam nivådrift inom fönstret (uppbyggnad, breakdown, AGC som
-    // andas) läcker annars rakt in i autokorrelationen och lyfter de långa laggen.
-    const half = Analyser.ENV_HZ >> 1;
-    for (let i = 0; i < N; i++) {
-      const lo = i - half > 0 ? i - half : 0;
-      const hi = i + half + 1 < N ? i + half + 1 : N;
-      const width = hi - lo;
-      const mean = (pre[hi] - pre[lo]) / width;
-      const centered = env[i] - mean;
-      if (this.cfg.onset.enhancements) {
-        const variance = Math.max(0, (preSq[hi] - preSq[lo]) / width - mean * mean);
-        // Lokal standardisering håller tempogrammets novelty-kontrast användbar
-        // genom både breakdowns och uppbyggnader utan att ändra rå ljudnivå.
-        env[i] = centered / Math.max(0.01, Math.sqrt(variance));
-      } else {
-        env[i] = centered;
-      }
-    }
-    // 1) Rå autokorrelation, LENGTH-NORMALISERAD: /(N-lag) tar bort biasen mot
-    //    korta lag (annars vinner alltid snabb takt eftersom fler termer bidrar).
-    const ac = this.acScratch;
-    for (let lag = lagMin; lag <= lagMax; lag++) {
-      let sum = 0;
-      const M = N - lag;
-      for (let i = 0; i < M; i++) sum += env[i] * env[i + lag];
-      ac[lag] = sum / M;
-    }
-    // Halvvågsrektifierad envelope (positiv del) — pulse xcorr använder bara energi PÅ slaget.
-    const envPos = this.envPosScratch;
-    for (let i = 0; i < N; i++) envPos[i] = env[i] > 0 ? env[i] : 0;
-    // 2) COMB-SCORING: ac(L) + ½·ac(2L) + ⅓·ac(3L). En äkta beat-period resonerar
-    //    även på dubbla/trippla lag — enskilda toppar gör det inte. (Klapuri.)
-    // 3) PULSE-TRAIN CROSS-CORRELATION (Percival-Tzanetakis 2014, Essentia):
-    //    korrelera envelopen mot en idealiserad pulsserie vid bästa fas. Fångar
-    //    regelbundenheten även när AC är utsmetad (mjuka onsets, synkoperingar).
-    const pulse = this.pulseScratch;
-    const combArr = this.combScratch;
-    let pulseMax = 1e-9, combMax = 1e-9;
-    for (let lag = lagMin; lag <= lagMax; lag++) {
-      let best = 0;
-      // ANTALET TERMER ÄR KÄNT I FÖRVÄG — räkna det inte.
-      // Med q = (N/lag)|0 och r = N - q·lag har faserna 0..r-1 exakt q+1 termer,
-      // resten q. Två divisioner per lag i stället för ~70, och ~39 000 k++ per
-      // anrop försvinner. Uppmätt -7 %, och utfallet är BIT-IDENTISKT: samma
-      // termer adderas i samma ordning, bara räknaren är borta.
-      // DIVISIONEN BEHÅLLS. Att i stället multiplicera med en förberäknad reciprok
-      // hade sparat ytterligare någon nanosekund men är INTE bit-identiskt i
-      // flyttal — och hela poängen med den här ändringen är att den inte får
-      // röra utfallet.
-      const q = (N / lag) | 0;
-      const r = N - q * lag;
-      for (let ph = 0; ph < lag; ph++) {
-        let sAcc = 0;
-        for (let i = ph; i < N; i += lag) sAcc += envPos[i];
-        const k = ph < r ? q + 1 : q;
-        if (k > 0) { const norm = sAcc / k; if (norm > best) best = norm; }
-      }
-      pulse[lag] = best;
-      if (best > pulseMax) pulseMax = best;
-      // NORMALISERA MOT DE VIKTER SOM FAKTISKT ANVANDES (Klapuri gor det).
-      // Utan det far korta lag systematiskt hogre comb bara for att de RYMMER
-      // fler harmoniker inom lagMax — alltsa precis den snabbtakts-bias
-      // comb-scoringen ska motverka. Varre: poangen blev DISKONTINUERLIG dar
-      // antalet termer andras (2*lag och 3*lag passerar lagMax), sa tva tempon
-      // som skiljer 1 BPM bedomdes med olika manga termer.
-      let comb = ac[lag];
-      let wSum = 1;
-      if (2 * lag <= lagMax) { comb += 0.5 * ac[2 * lag]; wSum += 0.5; }
-      if (3 * lag <= lagMax) { comb += COMB3 * ac[3 * lag]; wSum += COMB3; }
-      comb /= wSum;
-      combArr[lag] = comb;
-      if (comb > combMax) combMax = comb;
-    }
-    // Normalisera båda till [0,1] och rösta jämnt — så de kan väga upp varandra.
-    // AC svarar starkt på självlikhet, pulse xcorr på regelbunden energi-fördelning.
-    // 4) PERCEPTUELL PRIOR: log-Gauss runt 120 BPM, σ = 1.0 oktav (Ellis/librosa).
-    for (let lag = lagMin; lag <= lagMax; lag++) {
-      // GUARDET MASTE SITTA PA DIVISIONEN, inte pa initialvardet. `combArr` kan
-      // vara negativ (ac ar en centrerad korrelation), sa combMax kan bli <= 0 —
-      // och da blir kvoten ~1e8 med fel tecken och injiceras i tempogrammet med
-      // a = 0.15, dvs forgiftar det i ~40 anrop. `pulseMax` ar saker (envPos >= 0).
-      const cDen = combMax > 1e-9 ? combMax : 1e-9;
-      out[lag] = (0.5 * (combArr[lag] / cDen) + 0.5 * (pulse[lag] / pulseMax)) * this.priorLut[lag];
-    }
-    return energy / N;
-  }
-
-  /** SLAGPOANG for en kandidatperiod L (i env-sampel @100 Hz) pa en onset-ring over de senaste N samplen:
-   *  slagen laggs ut med basta fas, medel pa slagen (max over i-1..i+1, onsets ar nagra sampel breda)
-   *  delat med medel over fonstret. Fantomer (3/2, 4/3, 7/6) traffar kickarna bara delvis och far lag
-   *  poang. half = medel pa halvslagen / medel pa slagen (oktavtelemetri, PC-regeln: >= 0,6 => dubbla). */
-  private evidSortScratch = new Float32Array(Analyser.ENV_LEN); private evidThresh = 0; private evidThreshN = -1; private evidThreshPos = -1;
-  private alignScore(ring: Float32Array, N: number, L: number): { score: number; half: number; hit: number } {
-    const LEN = Analyser.ENV_LEN;
-    const start = (this.envPos - N + LEN) % LEN;
-    let tot = 0; for (let i = 0; i < N; i++) { const v = ring[(start + i) % LEN]; if (v > 0) tot += v; }
-    const mean = tot / N;
-    if (mean <= 0 || L < 2) { const o = this.asRing[this.asI = (this.asI + 1) & 3]; o.score = 0; o.half = 0; o.hit = 0; return o; }
-    // TRAFFANDEL: andel slag dar en onset verkligen finns (>= 30 % av fonstrets 95-percentil). Medelpoangen
-    // ensam var for snall mot fantomer (3/2 fick 1,8-2,1 mot ratt 2,2-2,5): med bastafas och +-1 sampel
-    // fangar den anda tva av tre kickar. Traffandelen ar 1,0 for ratt tempo, ~0,67 for 3/2, ~0,75 for 4/3.
-    if (this.evidThreshN !== N || this.evidThreshPos !== this.envPos) {       // en percentil per anrop, inte per kandidat
-      const sc = this.evidSortScratch; let n = 0; for (let i = 0; i < N; i++) { const v = ring[(start + i) % LEN]; sc[n++] = v > 0 ? v : 0; }
-      const sub = sc.subarray(0, n); sub.sort(); this.evidThresh = 0.3 * sub[Math.floor(n * 0.95)]; this.evidThreshN = N; this.evidThreshPos = this.envPos;
-    }
-    const th = this.evidThresh;
-    let bestPh = 0, bestSum = -1, bestHits = 0;
-    for (let ph = 0; ph < L; ph++) {
-      let sum = 0, hits = 0; for (let i = ph; i < N; i += L) { const v = alignAt(ring, start, LEN, N, i); sum += v; if (v >= th) hits++; }
-      if (sum > bestSum) { bestSum = sum; bestPh = ph; bestHits = hits; }
-    }
-    const nOn = Math.floor((N - 1 - bestPh) / L) + 1; const on = bestSum / nOn; const hit = bestHits / nOn;
-    let hs = 0, nh = 0; for (let i = bestPh + (L >> 1); i < N; i += L) { hs += alignAt(ring, start, LEN, N, i); nh++; }
-    const half = nh ? hs / nh : 0;
-    const o = this.asRing[this.asI = (this.asI + 1) & 3]; o.score = (on / mean) * (0.5 + hit); o.half = on > 0 ? half / on : 0; o.hit = hit; return o;
-  }
-  /** alignScore:s resultat (2026-10-17): ring av 4 återanvända objekt - anroparna läser direkt, högst två samtidigt. */
-  private asRing = [0, 1, 2, 3].map(() => ({ score: 0.5, half: 0.5, hit: 0.5 })); private asI = 0;
-
-  /** TEMPOVAXLING INOM LAT (opt-in <prefix>TEMPO_SHIFT=1, 2026-10-09). Agaren: tempookningar ska synas i showen. Bank (tempoShift.mjs,
-   *  12 syntetklipp +8/+12/+15 %): ra-estimatet bygger pa den 10 s langa onset-ringen och vander forst 6-7 s efter vaxlingen, laset
-   *  foljer 1,5-4 s senare (+8 % glider via 5 s-medianen) -> omlasning 7-11 s, +8 % aldrig inom 10 s. Har: KORT fonster (SHIFT_S = 4 s
-   *  av basringen) slagpoang (alignScore) for lagar 3,5-19 % fran laset (SHIFT_MAX 1,19 haller 5/4, 4/3, 3/2 och oktaven UTANFOR) mot
-   *  lasets egen poang; samma utmanare (+-1 lag) SHIFT_N anrop i rad (4 Hz) med poang >= SHIFT_K (1,3) x lasets och minst lika hog
-   *  traffandel -> laset flyttas dit. bpmStable/commit behalls (oktavvakten oforandrad); median-/evidens-/latbytesvagarna vilar tills
-   *  ra-estimatet hunnit ikapp (4 anrop inom 3 %) eller hogst 10 s, sa den gamla ringen inte drar tillbaka laset. */
-  private shiftDetect(N: number, bpm: number, now: number): boolean {
-    if (this.localBpm <= 0) { this.shiftVotes = 0; this.shiftLag = 0; this.shiftHoldBpm = 0; this.shiftRefBpm = 0; return false; }
-    if (this.shiftHoldBpm > 0) {
-      let end = this.localBpm !== this.shiftHoldBpm || now >= this.shiftHoldUntilMs;
-      if (!end && Math.abs(bpm / this.localBpm - 1) <= 0.03) end = ++this.shiftAgree >= 4; else if (!end) this.shiftAgree = 0;
-      if (!end) return true;
-      this.shiftHoldBpm = 0; this.bpmHistLen = 0; this.bpmHistPos = 0;
-    }
-    if (this.shiftRefBpm <= 0 || Math.abs(this.localBpm / this.shiftRefBpm - 1) > 0.03) { this.shiftRefBpm = this.localBpm; this.shiftSinceMs = now; }
-    if (now - this.shiftSinceMs < Analyser.SHIFT_STABLE_MS) { this.shiftVotes = 0; this.shiftLag = 0; return false; }   // nytt/osakert las: oktav-/grannrattningen ager det
-    const HZ = Analyser.ENV_HZ; const Ns = Math.min(N, Analyser.SHIFT_S * HZ);
-    const lockLag = Math.round((HZ * 60) / this.localBpm);
-    let ls = 0, lHit = 0;
-    for (let d = -1; d <= 1; d++) { const r = this.alignScore(this.envBassRing, Ns, lockLag + d); if (r.score > ls) { ls = r.score; lHit = r.hit; } }
-    let bs = 0, bL = 0, bHit = 0;
-    const lo = Math.max(2, Math.round(lockLag / Analyser.SHIFT_MAX)), hi = lockLag;
-    for (let L = lo; L <= hi; L++) {
-      if (Math.abs(L - lockLag) <= 1 || Math.abs(L / lockLag - 1) < 0.035) continue;
-      const r = this.alignScore(this.envBassRing, Ns, L); if (r.score > bs) { bs = r.score; bL = L; bHit = r.hit; }
-    }
-    if (bL > 0 && ls > 0 && bs >= ls * Analyser.SHIFT_K && bHit >= lHit) {
-      if (this.shiftLag > 0 && Math.abs(bL - this.shiftLag) <= 1) this.shiftVotes++; else { this.shiftLag = bL; this.shiftVotes = 1; }
-    } else { this.shiftVotes = 0; this.shiftLag = 0; }
-    if (this.shiftVotes < Analyser.SHIFT_N) return false;
-    const sm = this.alignScore(this.envBassRing, Ns, bL - 1).score, sp = this.alignScore(this.envBassRing, Ns, bL + 1).score;
-    const den = sm - 2 * bs + sp; let Lf = bL; if (den < 0) { const dd = 0.5 * (sm - sp) / den; if (Math.abs(dd) < 1) Lf = bL + dd; }
-    const nb = (HZ * 60) / Lf; this.shiftVotes = 0; this.shiftLag = 0;
-    if (nb < Analyser.BPM_MIN || nb >= Analyser.BPM_MAX) return false;   // vikningen skulle byta oktav - inte en tempovaxling
-    this._why = "SHIFT";
-    this.localBpm = Math.round(nb);
-    this.bpmHistLen = 0; this.bpmHistPos = 0;
-    this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.newSongVote = 0; this.challengerBpm = 0; this.evidRelockVotes = 0; this.evidRelockBpm = 0;
-    this.shiftHoldBpm = this.localBpm; this.shiftHoldUntilMs = now + 10000; this.shiftAgree = 0; this.tempoShifts++;
-    return true;
-  }
 
   /** SEKTION (2026-09-20). Realtidens sektionstillstand ur latens EGEN historik - inget latminne, ingen PC, inget moln
    *  (slutlaget: bada Pi-systemen kor allt i realtid). Bygger pa intensity (niva relativt latens robusta baslinje),
@@ -1573,81 +1379,10 @@ export class Analyser {
     this.expectHighMs = exp; this.expectSource = src;
   }
 
-  /** GRIDFAS (2026-09-20). Bankmaterialets handelseloggar (39 latar med ratt tempo i samma oktav): motorns pulser i fas i 5,
-   *  i MOTFAS i 9 (lampan pa off-beaten), resten daremellan. Orsak: motorns PLL initieras pa en kick och slapper bara
-   *  in kickar inom +-1/4 slag - ett grid pa attondelsbasen bekraftar sig sjalvt for alltid. Har mats fasen direkt:
-   *  vid last tempo laggs slagen ut med alla faser (1 env-sampel = 10 ms) over de senaste ~12 slagen pa BAS-ringen
-   *  (kickar) OCH helbandsringen (virvel/hi-hat/gitarr; PC-referensen 09-20: helbandet ar 1,3-1,7x starkare pa slaget an
-   *  pa halvslaget i alla grupper, aven dar motorn lag i motfas). Vinnande fas = max av summan av de normerade
-   *  medelvardena (max over +-1 sampel, onsets ar nagra sampel breda). Utdata: vaggtiden for det senaste slaget i den
-   *  fasen + on/half-kvot. Hysteres: en fas >0,3 slag fran forra estimatet kravs i 3 raka analyser (0,75 s) innan
-   *  den tas - annars foljs forra fasen. Kostnad: ~nPh x 12 x 2 uppslag = ~2 000 per anrop, 4 Hz. */
-  /** Medianen av de senaste on-beat-kickarnas offset mot ra gridfas, klampt. 0 tills 4 kickar mats. */
-
-  /** En detekterad kick bokfors som fasfel mot den RA gridfasen (bara on-beat, |fel| <= 1/4 slag). */
-
-  private computeGridPhase(): void {
-    const bpm = this.localBpmF > 0 ? this.localBpmF : this.localBpm;
-    if (bpm <= 0 || this.envFilled < 200 || this.envLastWallMs <= 0) { this.beatPhaseMs = 0; this.beatPhaseConf = 0; return; }
-    const LEN = Analyser.ENV_LEN, HZ = Analyser.ENV_HZ;
-    const Lf = (HZ * 60) / bpm;                                            // period i env-sampel (flyttal)
-    const N = Math.min(this.envFilled, Math.round(Lf * 12), 600);         // ~12 slag, hogst 6 s
-    if (N < Lf * 4) return;
-    const start = (this.envPos - N + LEN) % LEN;
-    const bass = this.envBassRing, full = this.envRing;
-    let mb = 0, mf = 0; for (let i = 0; i < N; i++) { const j = (start + i) % LEN; mb += bass[j]; mf += full[j]; }
-    mb = mb / N || 1e-9; mf = mf / N || 1e-9;
-    const at = (ring: Float32Array, i: number): number => {
-      const c = ring[(start + i) % LEN]; const a = i > 0 ? ring[(start + i - 1) % LEN] : c; const b = i + 1 < N ? ring[(start + i + 1) % LEN] : c;
-      return c > a ? (c > b ? c : b) : (a > b ? a : b);
-    };
-    const nPh = Math.max(4, Math.min(128, Math.round(Lf))); const scores = this.phaseScratch, sB = this.phaseScratchB, sF = this.phaseScratchF; let bestPh = 0, bestS = -1;
-    for (let p = 0; p < nPh; p++) {
-      const ph = (p * Lf) / nPh; let sb = 0, sf = 0, n = 0;
-      for (let x = ph; x < N; x += Lf) { const i = Math.round(x); if (i >= N) break; sb += at(bass, i); sf += at(full, i); n++; }
-      sB[p] = n ? sb / n / mb : 0; sF[p] = n ? sf / n / mf : 0;
-      const sc = sB[p] + sF[p]; scores[p] = sc;
-      if (sc > bestS) { bestS = sc; bestPh = p; }
-    }
-    const anti = (bestPh + (nPh >> 1)) % nPh; const conf = scores[anti] > 1e-6 ? bestS / scores[anti] : 9;
-    this.dbgPhase.conf = conf; this.dbgPhase.bassOn = sB[bestPh]; this.dbgPhase.bassAnti = sB[anti]; this.dbgPhase.fullOn = sF[bestPh]; this.dbgPhase.fullAnti = sF[anti]; this.dbgPhase.bestPh = bestPh; this.dbgPhase.nPh = nPh; this.dbgPhase.pending = this.phaseAnti;
-    const ph0 = (bestPh * Lf) / nPh; const kLast = Math.floor((N - 1 - ph0) / Lf); const iLast = ph0 + kLast * Lf;
-    const beatMs = this.envLastWallMs - (N - 1 - iLast) * (1000 / HZ);
-    const per = 60000 / bpm;
-    if (this.phaseLastBeatMs > 0) {
-      const d = ((((beatMs - this.phaseLastBeatMs) % per) + per) % per) / per; const err = d < 0.5 ? d : d - 1;
-      if (Math.abs(err) > 0.3) {
-        // forra fasens poang i dagens matning: fasbinet narmast forra slaget
-        const prevPh = ((((this.phaseLastBeatMs - this.envLastWallMs) / (1000 / HZ)) % Lf) + Lf) % Lf;   // env-sampel-offset for forra fasen
-        const prevBin = Math.round((prevPh / Lf) * nPh) % nPh; const prevScore = scores[prevBin];
-        const strongEnough = prevScore <= 1e-6 || bestS >= prevScore * Analyser.STICKY_K;
-        if (!strongEnough || ++this.phaseAnti < Analyser.STICKY_N) {
-          // hall forra fasen: rapportera senaste slaget i DEN fasen (sa foljaren inte ser ett hopp)
-          const kPrev = Math.round((beatMs - this.phaseLastBeatMs) / per); const held = this.phaseLastBeatMs + kPrev * per;
-          this.phaseLastBeatMs = held; this.beatPhaseMs = held; this.beatPhaseConf = prevScore > 1e-6 ? prevScore / Math.max(1e-6, scores[(prevBin + (nPh >> 1)) % nPh]) : conf;
-          if (!strongEnough) this.phaseAnti = 0;
-          return;
-        }
-      }
-      this.phaseAnti = 0;
-    }
-    this.phaseLastBeatMs = beatMs; this.beatPhaseMs = beatMs; this.beatPhaseConf = conf;
-  }
-
   /** Env-steget (100 Hz): tempo pa stride + gridfas. Kors i 'all' direkt och i 'slow' per record. */
   private envStep(): void {
-    if (this.holdSilent) return;   // TEMPO_HOLD: tempo/fas beraknas inte pa tystnad (holdSilent satts bara med flaggan)
-    if (this.holdGrace > 0) {   // TEMPO_HOLD: efter pausen halls laset tills onsetringen ar fylld med ny musik; fasen foljer kickarna
-      this.holdGrace--; if (this.localBpm <= 0) this.holdGrace = 0;
-      if (++this.bpmCounter >= Analyser.ENV_HZ / 4) { this.bpmCounter = 0; if (Analyser.GRID_PHASE_ON && this.localBpm > 0) this.computeGridPhase(); }
-      return;
-    }
-    // Innan lås: räkna på varje ny envelope-sample (100 Hz) för snabbast första estimat.
-    // Efter lås: 4 Hz räcker gott — sparar CPU och förfinar med median. (Mätt 2026-08-09: computeBpm ~470 µs,
-    // scoreEnv 201 µs x 2; 20 Hz olast = ~10 % av en Zero 2 W-karna -> 10 Hz efter 1,5 s utan las.)
-    const stride = this.localBpm !== 0 ? Analyser.ENV_HZ / 4
-      : this.envFilled < 150 ? 1 : 10;
-    if (++this.bpmCounter >= stride) { this.bpmCounter = 0; this.computeBpm(); if (Analyser.GRID_PHASE_ON && this.localBpm > 0) this.computeGridPhase(); }
+    // EN KLOCKA: ingen egen temposökning och ingen egen gridfas - tempo och fas kommer från klockan (analyserClock.ts) i båda profilerna.
+    if (this.holdSilent) return;
   }
 
   /** TYDLIG BASGANG (env-rastret, 100 Hz): se blAccum. */
@@ -1700,6 +1435,7 @@ export class Analyser {
     if (SECTION_AGG_HOP) { r[o + R_DROPS] = g.drops; r[o + R_ACTIVE] = g.active; r[o + R_BUILD] = g.build; }
     else { r[o + R_DROPS] = this.dropCount + this.secBodyRet; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp; }
     r[o + R_FLAGCNT] = packFlagCounts(this.flagCnt);
+    r[o + R_CLOCK] = this.localBpm; r[o + R_CLOCK_CONF] = this.localBpmConfidence;   // EN KÄLLA (r0): klockans tempo/tillit till långsamma sidan
     r[o + R_BIGSEQ] = this.bigSeq;                         // stora vägen: hop-record före detta (workern kör dem först)
     r[o + R_SEQ] = seq;                                    // sist: seq = recordet ar komplett
     g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
@@ -1718,7 +1454,7 @@ export class Analyser {
   private pullSlowState(): void {
     if (!this.stateRd.read(this.splitCtrl!, this.splitState!, this.stateCopy)) return;
     const s = this.stateCopy; if (s[S_REC_SEQ] < this.barrierSeq) return;
-    this.localBpm = s[S_BPM]; this.localBpmConfidence = s[S_CONF]; this.localBpmF = s[S_BPMF];
+    // (EN KÄLLA, r0: med klockan sätts localBpm/localBpmConfidence via setClock - inte av långsamma sidans tillstånd; lotus väg: som förr)
     this.beatPhaseMs = s[S_PHASE_MS]; this.beatPhaseConf = s[S_PHASE_CONF];
     this.section = SECTIONS[s[S_SECTION]] || 'intro'; this.sectionStartMs = s[S_SEC_START]; this.sectionIndex = s[S_SEC_INDEX]; this.sectionTier = s[S_SEC_TIER];
     this.repeatSim = s[S_REP_SIM]; this.repeatAgoMs = s[S_REP_AGO]; this.repeatSection = SECTIONS[s[S_REP_SEC]] || '';
@@ -1881,7 +1617,6 @@ export class Analyser {
       this.envFilled = 0; this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.phaseLastBeatMs = 0; this.phaseAnti = 0; 
       this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
       for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
-      this.barAcc.fill(0); this.barCount = 0;
     }
     if (flags & F_SIL10) { this.localBpm = 0; this.tempoGram.fill(0); this.holdGrace = 0; }
   }
@@ -1895,6 +1630,7 @@ export class Analyser {
     if (HIGH_ON) this.envHighRing[this.envPos] = r[o + R_HIGH];
     this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
     this.envLastWallMs = r[o + R_WALL];
+    this.localBpm = r[o + R_CLOCK], this.localBpmConfidence = r[o + R_CLOCK_CONF];   // EN KÄLLA (r0): klockans tempo, inte en egen sökning
     this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
     if (this.bigOn) {   // stora vägen: sektionens fakta och blocksummor ur den egna hopvägen (hoppen före recordet är redan körda)
       const g = this.secAgg;
@@ -1921,550 +1657,6 @@ export class Analyser {
   /** Sparets tid (s sedan den virtuella epoken) och VETO_WIN-fonstret (diagnostik, bara med sparflaggor). */
   private traceT(): number { return (this.wallNow() - 1700000000000) / 1000; }
   private traceWin(): boolean { if (!VETO_WIN) return false; const [wa, wb] = VETO_WIN.split(',').map(Number); const tt = this.traceT(); return tt >= wa && tt <= wb; }
-  /** TEMPOGRAMMETS LOOP (2026-10-17, skräpjakten): utbruten ur computeBpm. computeBpm körs 4 ggr/s och deoptas på sällsynta grenar;
-   *  V8 optimerar om först efter tusentals anrop, och under tiden boxade looparna här varje flyttal (8,4 kB/anrop). Som egen liten
-   *  metod förblir loopen optimerad. Samma räkning i samma ordning. Resultatet i tg*-fälten. */
-  private tempoGramStep(tg: Float32Array, lagMin: number, lagMax: number, mixN: boolean, wF: number, wB: number, wH: number, wNorm: number, wFull: number, wBass: number, a: number): void {
-    let bestLag = 0, bestVal = 0, scoreSum = 0, scoreCount = 0;
-    for (let lag = lagMin; lag <= lagMax; lag++) {
-      const s = mixN ? (wF * this.scoreFull[lag] + wB * this.scoreBass[lag] + wH * this.scoreHigh[lag]) / wNorm : wFull * this.scoreFull[lag] + wBass * this.scoreBass[lag];
-      const v = tg[lag] + (s - tg[lag]) * a;
-      tg[lag] = v;
-      scoreSum += v; scoreCount++;
-      if (v > bestVal) { bestVal = v; bestLag = lag; }
-    }
-    this.tgBestLag = bestLag; this.tgBestVal = bestVal; this.tgScoreSum = scoreSum; this.tgScoreCount = scoreCount;
-  }
-  private tgBestLag = 0.5; private tgBestVal = 0.5; private tgScoreSum = 0.5; private tgScoreCount = 0.5;
-
-  /** TEMPOHISTORIKEN SORTERAD (2026-10-17, samma skäl som tempoGramStep: 2,4 kB/anrop otolkat). Insättningssortering, n ≤ 20. */
-  private bpmHistSort(scratch: Float64Array, n: number, HN: number): void {
-    for (let i = 0; i < n; i++) scratch[i] = this.bpmHist[(this.bpmHistPos - n + i + HN) % HN];
-    for (let i = 1; i < n; i++) {           // insertion sort (n ≤ 20, redan nästan sorterad)
-      const v = scratch[i]; let j = i - 1;
-      while (j >= 0 && scratch[j] > v) { scratch[j + 1] = scratch[j]; j--; }
-      scratch[j + 1] = v;
-    }
-  }
-
-  /** OFF-BEAT-TESTETS LOOPAR (2026-10-17, samma skäl som tempoGramStep, 10,8 kB/anrop otolkat). Resultatet i ob*-fälten. */
-  private offBeatStep(envPos: Float32Array, P: number, bestLag: number, N: number): void {
-    let bestPhase = 0, bestPhaseSum = -1;
-    for (let ph = 0; ph < P; ph++) {
-      let s = 0; for (let i = ph; i < N; i += P) s += envPos[i];
-      if (s > bestPhaseSum) { bestPhaseSum = s; bestPhase = ph; }
-    }
-    let onE = 0, offE = 0, offC = 0;
-    const offPh = (bestPhase + bestLag) % P;
-    for (let i = bestPhase; i < N; i += P) onE += envPos[i];
-    for (let i = offPh;    i < N; i += P) { offE += envPos[i]; offC++; }
-    let posMean = 0; for (let i = 0; i < N; i++) posMean += envPos[i]; posMean /= N;
-    this.obOnE = onE; this.obOffE = offE; this.obOffAvg = offC > 0 ? offE / offC : 0; this.obPosMean = posMean;
-  }
-  private obOnE = 0.5; private obOffE = 0.5; private obOffAvg = 0.5; private obPosMean = 0.5;
-
-  private computeBpm() {
-    const _b0 = this.localBpm; this._why = "";
-    if (this.envFilled < 50) return;   // ~0.5s → snabbt första grovestimat (täcker ≥~122 BPM;
-                                       //  långsammare spår låser på overton tills fönstret växer),
-                                       //  förfinas löpande. Halverar time-to-first-lock.
-    const N = this.envFilled;
-    const HZ = Analyser.ENV_HZ;
-    const lagMin = Math.floor(HZ * 60 / 185);
-    // MINST HALVA FONSTRET SOM OVERLAPPNING. `ac[lag] = sum / M` med M = N - lag
-    // tar bort BIAS, men lamnar en VARIANS-gradient: vid lag nara N bygger
-    // estimatet pa nagra fa produkter (vid forsta laset ar N = 50, sa lag 49 gav
-    // EN enda produkt) och blir kraftigt brusigt utan att viktas ner — vilket
-    // gynnar langa lag, dvs langsamma tempon. N>>1 stanger det.
-    // Sokfonstret ar fortfarande bredare an vikningen med flit.
-    // TEMPO_LAGMAX 'full' (aldre vagen) tillater lag upp till N - 1.
-    const lagMax = Math.min(TEMPO_LAGMAX === 'full' ? N - 1 : N >> 1, Math.floor(HZ * 60 / 55));
-    if (HIGH_ON) {
-      this._eHigh = this.scoreEnv(this.envHighRing, N, this.scoreHigh, lagMin, lagMax);
-      let bl = lagMin, bv = -1; for (let l = lagMin; l <= lagMax; l++) if (this.scoreHigh[l] > bv) { bv = this.scoreHigh[l]; bl = l; }
-      this._hiTop = (Analyser.ENV_HZ * 60) / bl; this._hiVal = bv;
-    }
-    // FLERBANDS-ONSET: helbandsfluxen smetas ut av sång och synth — slaget bor i
-    // basen. Två OBEROENDE score-kurvor som röstar ihop rättar just de fall där
-    // off-beat-testet annars tvekar mellan ballad och danslåt. Helbandet scoras
-    // SIST eftersom scratcharna (env/envPos) används nedan.
-    const eBass = this.scoreEnv(this.envBassRing, N, this.scoreBass, lagMin, lagMax);
-    const eFull = this.scoreEnv(this.envRing, N, this.scoreFull, lagMin, lagMax);
-    const vetoWin = BPM_TRACE || HIGH_DIAG ? this.traceWin() : false;
-    if (BPM_TRACE && vetoWin) console.log(`[eh] t=${this.traceT().toFixed(1)} eHigh=${this._eHigh.toFixed(4)} eFull=${eFull.toFixed(4)} eBass=${eBass.toFixed(4)} mode=${HIGH_VOTE}`);
-    if (HIGH_DIAG && vetoWin) {
-      let fl = lagMin, fv = -1; for (let l = lagMin; l <= lagMax; l++) if (this.scoreFull[l] > fv) { fv = this.scoreFull[l]; fl = l; }
-      console.log(`[hi] t=${this.traceT().toFixed(1)} lock=${this.localBpm} HIGH top=${this._hiTop.toFixed(0)} val=${this._hiVal.toFixed(3)} | FULL top=${((Analyser.ENV_HZ * 60) / fl).toFixed(0)} val=${fv.toFixed(3)}`);
-    }
-    // DISKANTROST (<prefix>HIGH_VOTE 'always' | 'cond' | 'sharp'; av i standard): diskantringen far vikt i tempogrammet.
-    let wHigh = 0;
-    if (eFull <= 0 && eBass <= 0 && wHigh <= 0) return;
-    const wBass = eBass > eFull * 0.15 ? 0.55 : 0;   // tomt basband → helbandet ensamt
-    const wFull = 1 - wBass;
-    let wF = wFull, wB = wBass, wH = wHigh;
-    const sharp = false;
-    if (sharp) {
-      const k = HIGH_K;
-      const sF = this.sharpOf(this.scoreFull, lagMin, lagMax), sB = wBass > 0 ? this.sharpOf(this.scoreBass, lagMin, lagMax) : 0, sH = this.sharpOf(this.scoreHigh, lagMin, lagMax);
-      wF = Math.pow(sF, k); wB = Math.pow(sB, k); wH = Math.pow(sH, k);
-      if (HIGH_CAP) { const cap = Number(HIGH_CAP); const tot = wF + wB + wH; if (tot > 0 && wH / tot > cap) wH = cap * (wF + wB) / (1 - cap); }
-      if (BPM_TRACE && vetoWin && ((this.traceT() * 10) | 0) % 8 === 0)
-        console.log(`[sharp] t=${this.traceT().toFixed(1)} sF=${sF.toFixed(2)} sB=${sB.toFixed(2)} sH=${sH.toFixed(2)} -> wF=${(wF / (wF + wB + wH)).toFixed(2)} wB=${(wB / (wF + wB + wH)).toFixed(2)} wH=${(wH / (wF + wB + wH)).toFixed(2)}`);
-    }
-    // Normerad blandning bara nar diskantrosten ar med (annars exakt wFull*F + wBass*B som alltid).
-    const mixN = wH !== 0 || sharp; const wNorm = wF + wB + wH;
-    // TEMPOGRAM-ACKUMULERING: förr kastades hela score-kurvan varje anrop och bara
-    // toppen sparades, varpå medianen fick städa upp efteråt (~5 s till lås). Nu
-    // EMA:as HELA lag-kurvan mellan anrop, så bevis ackumuleras där det hör hemma:
-    // låset kommer på 1–2 s och oktav-flippar dör innan de hinner synas.
-    const underChallenge = false;
-    const a = this.localBpm === 0 ? 0.30 : (underChallenge ? TG_ADAPT_A : 0.15);
-    const tg = this.tempoGram;
-    this.diagLagMin = lagMin; this.diagLagMax = lagMax;
-    this.tempoGramStep(tg, lagMin, lagMax, mixN, wF, wB, wH, wNorm, wFull, wBass, a);
-    let bestLag = this.tgBestLag, bestVal = this.tgBestVal; const scoreSum = this.tgScoreSum, scoreCount = this.tgScoreCount;
-    const envPos = this.envPosScratch;   // helbandets rektifierade envelope (scoreEnv körde sist)
-    this.dbgBestLag = bestLag; this.dbgLagMin = lagMin; this.dbgLagMax = lagMax;
-
-    // ── EVIDENSVAL (2026-09-19) ───────────────────────────────────────────────
-    // Rapporten "Tio latar mot referens" (bankmaterial med PC-referensen): argmax pa tempogrammet gav ratt tempo i
-    // 3 av 10 - fantomer 3/2 och 4/3 i fyra, grannfel 7/6 i tva. Kamfiltret har sub-harmoniska toppar
-    // (var annan/tredje tand traffar ett slag) och priorn drar mot 120; toppens HOJD sager inte om
-    // slagen sitter pa kickarna. Har ar tempogrammet KANDIDATGENERATOR: topp-K lokala maxima, och
-    // varje kandidats slag laggs ut pa BAS-onset-envelopen (kickar, inte hi-hats). Vinnaren ar den
-    // vars slag traffar kickarna; tie inom 10 % -> hogre tempogramvarde. Samma metod som PC-referensen
-    // (6/6 pa syntet dar librosas default gav 2/6). Korbank: banken (bench.mjs).
-    // Oktaven lamnas at vikningen (80..160) - under den ar alla fel icke-oktav-fantomer.
-    if (Analyser.EVIDENCE_ON) {
-      const K = Analyser.EVIDENCE_K; const cL = this.candLag, cV = this.candVal, cS = this.candScore, cH = this.candHalf; let nc = 0;
-      for (let lag = lagMin + 1; lag < lagMax; lag++) {
-        const v = tg[lag];
-        if (v <= 0 || v < tg[lag - 1] || v < tg[lag + 1]) continue;                  // lokalt maximum
-        let dup = false;
-        for (let i = 0; i < nc; i++) if (Math.abs(lag / cL[i] - 1) < 0.03) { if (v > cV[i]) { cV[i] = v; cL[i] = lag; } dup = true; break; }
-        if (dup) continue;
-        if (nc < K) { cL[nc] = lag; cV[nc] = v; nc++; }
-        else { let mi = 0; for (let i = 1; i < K; i++) if (cV[i] < cV[mi]) mi = i; if (v > cV[mi]) { cL[mi] = lag; cV[mi] = v; } }
-      }
-      // OKTAVPARTNER (09-20): tempogrammet la "To Keep from Missing You" (referens 160,7) pa lag 75 = 80 BPM (tg 0,53)
-      // med 160 pa bara 0,2 - 160 fanns inte bland kandidaterna alls, sa varken evidensval eller foljare KUNDE
-      // valja den (gamla vagen fick 159,8 av vikningens kant: 79,9 < 80 -> x2, tur). Varje kandidats L/2 och 2L
-      // laggs darfor till (inom fonstret, tak 8), sa slagpoang och halvslagsbevis raknas for bada oktaverna.
-      const nc0 = nc;
-      for (let i = 0; i < nc0 && nc < 8; i++) for (const L2 of [cL[i] >> 1, cL[i] * 2]) {
-        if (L2 < lagMin || L2 > lagMax) continue;
-        let dup = false; for (let j = 0; j < nc; j++) if (Math.abs(L2 / cL[j] - 1) < 0.03) { dup = true; break; }
-        if (!dup) { cL[nc] = L2; cV[nc] = tg[L2] > 0 ? tg[L2] : 0; nc++; }
-      }
-      if (nc > 0) {
-        let bi = -1, bs = -1;
-        for (let i = 0; i < nc; i++) { const r = this.alignScore(this.envBassRing, N, cL[i]); cS[i] = r.score; cH[i] = r.half; this.candHit[i] = r.hit; if (r.score > bs) { bs = r.score; bi = i; } }
-        for (let i = 0; i < nc; i++) if (i !== bi && cS[i] >= bs * 0.9 && cV[i] > cV[bi] * 1.15) { bi = i; bs = cS[i]; }
-        let second = 0; for (let i = 0; i < nc; i++) if (i !== bi && cS[i] > second) second = cS[i];
-        this.evidenceScore = bs; this.evidenceHalf = cH[bi]; this.evidenceCands = nc; this.evidenceSecond = second;
-        let upLag = 0;
-        if (Analyser.TEMPO_UP43 && cL[bi] > HZ * 60 / Analyser.BPM_MAX && cL[bi] <= HZ * 60 / Analyser.BPM_MIN) {
-          let upHit = this.alignScore(this.envRing, N, cL[bi]).hit;
-          for (const f of [0.75, 2 / 3]) {
-            const L = Math.round(cL[bi] * f); if (L <= HZ * 60 / Analyser.BPM_MAX || L < lagMin) continue;
-            const r = this.alignScore(this.envRing, N, L);
-            if (r.hit >= upHit) { upHit = r.hit; upLag = L; this.evidenceScore = r.score; this.evidenceHalf = r.half; }
-          }
-        }
-        if (Analyser.TEMPO_FIVE4) {
-          const base = upLag || cL[bi]; let fHit = this.alignScore(this.envRing, N, base).hit + Analyser.FIVE4_MARGIN;
-          for (const f of [0.8, 1.25]) {
-            const L = Math.round(base * f); if (L <= HZ * 60 / Analyser.BPM_MAX || L > HZ * 60 / Analyser.BPM_MIN || L < lagMin || L > lagMax) continue;
-            const r = this.alignScore(this.envRing, N, L);
-            if (r.hit > fHit) { fHit = r.hit; upLag = L; this.evidenceScore = r.score; this.evidenceHalf = r.half; }
-          }
-        }
-        if (Analyser.EVIDENCE_ON) { bestLag = upLag || cL[bi]; bestVal = tg[cL[bi]]; }   // bestVal = vinnarens topp (konfidensen), aven nar UP43 flyttar lagen
-      }
-    }
-
-    if (bestLag === 0 || bestVal <= 0) return;
-    // Peak-to-mean confidence: en tydlig takttopp sticker ut från medelnivån,
-    // en utsmetad "tempolös" låt eller brus har ~platt scoring. clamp(0..1).
-    const meanScore = scoreSum / Math.max(1, scoreCount);
-    const rawConf = meanScore > 0 ? 1 - meanScore / bestVal : 0;
-    // Skala MÄTT, inte gissad. Kommentaren här sa förut att ~0.35 råvärde är
-    // "helt låst" och mappade 0..0.5 → 0..1. Verkligheten:
-    //   rawConf p05=0.33  p50=0.65  p95=0.72  — och 82-90 % låg ÖVER 0.5.
-    // Alltså mättades nio fall av tio till exakt 1.00 och hela det informativa
-    // området (0.5-0.75) kastades bort. Konfidensen såg levande ut men var en
-    // konstant, och allt som hängde på den stod stilla: beatPulse skulle tona ut
-    // när takten är oklar men gjorde det aldrig, och samma värde styr numera
-    // chase-låsningen och drops.
-    // Golvet 0.35 är inte noll för att även taktlös musik ger en viss topp i
-    // autokorrelationen; det är där diskrimineringen faktiskt börjar.
-    const conf = Math.max(0, Math.min(1, (rawConf - 0.35) / 0.40));
-
-    // OFF-BEAT-TEST → skilj äkta snabb takt (dans) från subdivision (ballad).
-    // Vik onset-envelopen på DUBBLA perioden, jämför energi PÅ slaget vs MELLAN.
-    // Svaga mellanslag → sanna takten är halva; starka → behåll snabb takt.
-    const P = bestLag * 2;
-    if (P <= lagMax) {
-      this.offBeatStep(envPos, P, bestLag, N);
-      const onE = this.obOnE, offE = this.obOffE, offAvg = this.obOffAvg, posMean = this.obPosMean;
-      // Halvera bara om mellanslagen (a) är mycket svagare än slagen OCH (b) inte
-      // har ett EGET onset (ligger nära baslinjen, offAvg < ~1.2× medel). (b)
-      // skiljer en ballad (tomma mellanslag → halvera) från en danslåt med
-      // accent-mönster (svagare men RIKTIGA kick-slag → behåll snabb takt).
-      if (onE > 0 && offE < onE * 0.45 && offAvg < posMean * 1.2) bestLag = P;
-    }
-
-    // Parabolisk interpolation kring toppen → sub-lag-precision (t.ex. 125 ist. 122).
-    // Läser acScratch (råa autokorrelationen), INTE tempoGram: PROVAT (2026-08-23)
-    // att interpolera på samma yta toppen valdes ur, men tempogrammets prior-vikt är
-    // en lutning över lag och drog vertexen mot 120 BPM (128→127, 150→149, taktfas
-    // 128→129). Råkurvan är symmetrisk kring toppen och landar exakt.
-    // ÄVEN PROVAT (2026-08-23): (wFull·scoreFull + wBass·scoreBass) / priorLut, dvs
-    // bandviktad yta med priorn dividerad bort. Samma bias kvar (128→127.0,
-    // 140→139.0, 150→149.0) — comb/pulse-normaliseringen i scoreEnv är inte heller
-    // symmetrisk kring toppen. acScratch ger 128.0/140.0/150.0 exakt. Behålls.
-    let lagF = bestLag;
-    if (bestLag - 1 >= lagMin && bestLag + 1 <= lagMax) {
-      const yl = this.acScratch[bestLag - 1], y0 = this.acScratch[bestLag], yr = this.acScratch[bestLag + 1];
-      const den = yl - 2 * y0 + yr;
-      if (den < 0) { const d = 0.5 * (yl - yr) / den; if (Math.abs(d) < 1) lagF = bestLag + d; }
-    }
-
-    let bpm = (HZ * 60) / lagF;
-    // BPM-FILTER: vik in i 80..160 (exakt en oktav → UNIK representant). Sökningen
-    // (lagMin/lagMax) täcker 55..185, så vikningen tar kanterna: under 80 dubbleras,
-    // från 160 halveras. Vilken oktav som gäller avgörs av off-beat-testet ovan och
-    // oktavgrenarna nedan (symmetriska, 8/8).
-    // Terminering kräver MAX >= 2*MIN; med t.ex. 90..170 blir 175 -> 87.5 -> 175 -> 87.5
-    // i all evighet och motorn hänger.
-    while (bpm < Analyser.BPM_MIN) bpm *= 2;
-    while (bpm >= Analyser.BPM_MAX) bpm /= 2;
-    this.rawBpmLast = bpm;
-
-    // Median över RÅestimaten (utan oktav-tvång) → dämpar brus men låser inte
-    // fast oktaven, så en fel initial låsning kan rättas. Långt fönster (~5s) för
-    // att inte studsa på brusiga/tvetydiga låtar.
-    // TIDSVIKTAD RÖSTNING: före lås körs computeBpm() 100 Hz, så de 20 "rösterna"
-    // var samma 0.2 s data tjugo gånger — ingen medianvinst, bara fördröjning.
-    // Max en röst per 250 ms ⇒ fönstret täcker verkligen ~5 s.
-    const HN = Analyser.BPM_HIST;
-    const voteNow = this.perfNow();
-    if (this.bpmHistLen === 0 || voteNow - this.lastVoteMs >= 250) {
-      this.lastVoteMs = voteNow;
-      this.bpmHist[this.bpmHistPos] = bpm;
-      this.bpmHistPos = (this.bpmHistPos + 1) % HN;
-      if (this.bpmHistLen < HN) this.bpmHistLen++;
-    }
-    const n = this.bpmHistLen;
-    const scratch = this.bpmSortScratch;
-    this.bpmHistSort(scratch, n, HN);
-    const med = scratch[n >> 1];
-    // UPPVARMNING FORE FORSTA LASET. Tidigare togs laset pa det ALLRA forsta
-    // estimatet, nar tempogrammet sett ~0.5 s och ar omoget -- och sedan stanger
-    // commiten (24 estimat) oktav- och grannrattningen, sa ett daligt initiallas
-    // satt kvar hela laten. Det var orsaken till 4/3-felen.
-    // MATT pa 7 Ledin-latar med publicerat referens (SongBPM):
-    //   utan uppvarmning  4/7 ratt, snitt 56.2 %, TVA 4/3-fel
-    //   WARM_N = 24       6/7 ratt, snitt 78.5 %, NOLL 4/3-fel
-    //   "En del av mitt hjarta" 130 -> 99 (referens 98)
-    //   "Hon gor allt..."       137 -> 105 (referens 104)
-    // Kostar 240 ms laslatens (499 -> 739 ms). Syntetsviten oforandrad 7/10.
-    {   // ── LASAPPARATEN (rost-median, glid, oktavroster, grannrattning, latbytesvakt) ──
-    if (this.localBpm === 0 && this.warmCalls++ < Analyser.WARM_N) return;
-    const shiftHold = this.shiftDetect(N, bpm, voteNow);   // TEMPO_SHIFT: vaxling tagen/vilar -> ovriga lasvagar vilar
-    // ── EVIDENSOMLASNING (2026-09-19) ─────────────────────────────────────────
-    // Korbanken visade ra-estimatet RATT i 8/8 med evidensvalet (92,3 for 92, 122,4 for 123 ...) medan det
-    // LASTA vardet satt kvar pa det forsta felet (133 vid t=5 s): commiten stanger oktav-/grannrattningen
-    // och "overwhelming" mater tempogrammets HOJD, inte slagpoangen. Har: ihallande (EVID_RELOCK_N anrop),
-    // sammanhallen (inom 4 %) och tydlig (poang >= 1,15 x tvaan) evidens for ett annat tempo (> 11 % fran
-    // laset) laser om - aven efter commit. Flat basring (breakdown, inga kickar) ger ingen marginal -> ingen
-    // omlasning; lasets egen historik toms sa medianen inte drar tillbaka.
-    if (!shiftHold && Analyser.EVIDENCE_ON && this.localBpm > 0 && this.evidenceCands >= 1) {
-      // Kandidaterna ar oftast GRANNAR till ratt tempo (89-107 med poang 2,0-2,5), sa marginalen mellan dem
-      // sager lite. Jamfor i stallet vinnaren med LASETS egen slagpoang: ar laset en fantom (133 mot 92)
-      // traffar dess slag kickarna tva ganger av tre och far klart lagre poang.
-      const off = Math.abs(bpm / this.localBpm - 1) > 0.11;
-      let worse = false;
-      if (off) {
-        const lockLag = Math.round((HZ * 60) / this.localBpm);
-        const ls = this.alignScore(this.envBassRing, N, lockLag).score;
-        this.evidenceLockScore = ls;
-        worse = this.evidenceScore >= ls * 1.25;
-      }
-      if (worse && (this.evidRelockBpm === 0 || Math.abs(bpm / this.evidRelockBpm - 1) <= 0.04)) {
-        this.evidRelockBpm = this.evidRelockBpm === 0 ? bpm : this.evidRelockBpm + (bpm - this.evidRelockBpm) * 0.3;
-        if (++this.evidRelockVotes >= Analyser.EVID_RELOCK_N) {
-          this._why = "EVIDENCE";
-          this.localBpm = Math.round(this.evidRelockBpm);
-          this.bpmHistLen = 0; this.bpmHistPos = 0;
-          this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.bpmStable = 0; this.newSongVote = 0;
-          this.evidRelockVotes = 0; this.evidRelockBpm = 0; this.evidenceRelocks++;
-        }
-      } else if (this.evidRelockVotes > 0) { this.evidRelockVotes = Math.max(0, this.evidRelockVotes - 2); if (this.evidRelockVotes === 0) this.evidRelockBpm = 0; }
-    }
-    if (this.localBpm === 0) {
-      this._why = "FIRST";
-      this.localBpm = Math.round(med);
-      this.octaveVote = 0;
-      this.bpmStable = 0;
-    } else if (!shiftHold) {
-      // SJÄLVRÄTTANDE OKTAV: håll nuvarande takt för stabilitet, MEN om estimaten
-      // ihållande pekar på en annan oktav (½× eller 2×) → byt efter ~2s bevis, så
-      // en halvtempo-låsning "ökar" till rätt takt istället för att fastna. Ett
-      // enstaka breakdown hinner inte nå tröskeln → ingen flimrig växling.
-      // COMMIT: efter ~6s STABIL lås (24 finjusterings-estimat @4Hz) LÅSES oktaven —
-      // bara finjustering tillåts, aldrig ½×/2× mitt i en låt (en låt byter inte
-      // oktav; halvering nollade takt-gridet & bröt beat-synken).
-      // OBS: fönstret för självrättning är nu ~6s, inte 15s. Ett felaktigt initiallås
-      // som INTE ligger i glid-bandet hinner alltså inte alltid rättas här — därför
-      // är `committedNow` (låtbytesvakten) sänkt till SAMMA 24. Annars uppstod ett
-      // dödläge: oktav-/grannrättning stängd vid 24 medan `bpmStable` bara växer i
-      // glid-grenen ⇒ ett lås 33 % fel (t.ex. 90 mot verkligt 120) kunde inte lämnas
-      // förrän tystnad. Konfidenssläppningen sist i denna metod är andra utvägen.
-      const committed = this.bpmStable >= Analyser.BPM_COMMIT;
-      const ratio = med / this.localBpm;
-      const _lockLag = Math.round((HZ * 60) / this.localBpm);
-      const overwhelming = _lockLag >= lagMin && _lockLag <= lagMax
-        && bestVal > tg[_lockLag] * Analyser.RELOCK_K;
-      if (ratio >= 0.9 && ratio <= 1.11) {
-        this.nearVote = 0; this.nearChallenger = 0;                                 // samma takt → inget grann-fel
-        this._why = "glide";
-        this.localBpm = Math.round(this.localBpm + (med - this.localBpm) * 0.35);   // samma takt → glid
-        this.octaveVote *= 0.5;
-        // Referens för hur STARK takten är när allt är gott — låtbytesgrinden nedan
-        // jämför mot den (ett breakdown har svag takt, en ny låt en full).
-        this.lockPeak = this.lockPeak > 0 ? this.lockPeak + (bestVal - this.lockPeak) * 0.05 : bestVal;
-        // HALL COMMITEN OPPEN TILLS ONSET-RINGEN AR REN.
-        // Ringen ar ENV_LEN = 500 @ 100 Hz = 5 SEKUNDER lang, sa direkt efter ett
-        // latbyte bestar halva autokorrelationen av FORRA laten. `committed`
-        // (bpmStable >= 24, ca 6 s) stanger oktav- och grannrattningen ungefar
-        // samtidigt som ringen blir ren -- ett las taget pa orenad data hann alltsa
-        // aldrig rattas.
-        // Att fordroja LASET provades och lamnar lampan osynkad flera sekunder.
-        // Att fordroja COMMITEN ger tvartom omedelbart las som anda far rattas.
-        // MATT pa 12 latovergangar: overhangets kostnad 60.7 -> 72.0 %.
-        // "Snart tystnar musiken" gick 0 -> 79 %. Stabil plata 50..400, alltsa
-        // ingen knivsegg -- 50 valt som kortaste vardet som nar platan.
-        // Laslatens oforandrad (739 ms), syntetsviten oforandrad 7/10.
-        if (this.holdCalls < Analyser.HOLD_N) this.holdCalls++;
-        else if (this.bpmStable < 100000) this.bpmStable++;                              // stabil tid ackumuleras
-      // Overvaldigande HELHETSBEVIS far bryta commiten. Manga latar byter
-      // trumkomp mellan avsnitt -- MATT pa "Where the Wild Things Are" (referens 117):
-      // bevisen vaxlar 115-115-115-78-78-117-78x8-79-117-117, och 78 ar exakt
-      // 117 * 2/3. Analysatorn har inte fel i de avsnitten; ljudet HAR den
-      // periodiciteten. Felet var att laset foljde AVSNITTET i stallet for LATEN.
-      // Tempogrammet ackumulerar over hela laten och ar darfor latens svar.
-      // MATT: slutlaset (det varde som galler resten av laten) 109/110 -> 110/110.
-      } else if ((!committed || overwhelming) && ratio > 1.4) {
-        this.octaveVote = Math.max(0, this.octaveVote) + 1;                          // estimaten HÖGRE oktav
-        if (this.octaveVote >= Analyser.OCT_UP) { this._why = "OCT-UP"; this.localBpm = Math.round(med); this.octaveVote = 0; this.bpmStable = 0; }
-      } else if ((!committed || overwhelming) && ratio < 0.7) {
-        this.octaveVote = Math.min(0, this.octaveVote) - 1;                          // estimaten LÄGRE oktav
-        if (this.octaveVote <= -(this.subhSuspect(med) ? Analyser.OCT_DOWN * SUBH_MULT : Analyser.OCT_DOWN)) { this._why = "OCT-DOWN"; this.localBpm = Math.round(med); this.octaveVote = 0; this.bpmStable = 0; }
-
-      } else if (!committed) {
-        // GRANNRÄTTNING: ett tidigt lås från 0.5 s fönster kan hamna 10-20 % fel
-        // (MÄTT: brusigt rum 136 låste 122 på en av åtta brus-seeder och satt kvar
-        // hela låten — glid-bandet slutar vid 1.11 och oktav-grenen börjar vid 1.4,
-        // så felet låg i ett dödområde). Räknas bara före commit.
-        // SAMMA TRE SKYDD som låtbytesvägen, av samma mätta skäl:
-        //   1. SAMMANHÅLLEN UTMANARE — brus är oense men pekar ingenstans; utan detta
-        //      kunde estimat som studsar 0.75×↔1.3× rösta fram ett byte och låsa på
-        //      vad `med` råkade vara.
-        //   2. KVALITETSGRIND — conf-golv, annars kan ett intro/en tidig break (där
-        //      råestimatet vandrar) yanka låset under de första 15 s.
-        //   3. HISTORIKEN TÖMS vid omlåsning — annars drar medianfönstret, halvfullt
-        //      av det felaktiga tempot, tillbaka och låset glider i stället för att landa.
-        // LÅTBYTES-HINT (Sonos): under re-acquisition-fönstret sänks kvalitetsgrinden
-        // och röstkravet, så en ny takt kan bekräftas på ~2-3 s i stället för ~5 s.
-        // Skydden finns kvar (sammanhållen utmanare + tömd historik) — bara mildare.
-        // INGEN riktnings-asymmetri här (till skillnad från OCT_UP/OCT_DOWN):
-        // PROVAT 2026-08-30 att kräva dubbla röster nedåt (och 1.5×). Det är ett
-        // GRANN-fel på 10–30 %, inte ett oktavfel — den vanligaste nedåträttningen är
-        // "122 låst mot verkligt 136", alltså precis den rättning vi vill ha. MÄTT
-        // över 8 seeder: dubbla röster nedåt sänkte brusigt rum 45 % → 31 % och
-        // shuffle 29 % → 16 %, utan att ge något tillbaka (OCT_DOWN ensamt räddade
-        // både svag bas 132 och breakdown 142). Symmetriskt behålls.
-        const reacq = voteNow < this.reacqUntilMs;
-        if (conf < (reacq ? 0.55 : 0.75)) {
-          this.nearVote = 0; this.nearChallenger = 0;
-        } else if (this.nearChallenger > 0 && Math.abs(bpm / this.nearChallenger - 1) <= 0.04) {
-          this.nearChallenger += (bpm - this.nearChallenger) * 0.3;
-          this.nearVote++;
-          // HARMONI-VETO. Grann-bandet [1.11,1.4] rymmer 4/3 = 1.333, och [0.7,0.9]
-          // rymmer 3/4 = 0.75 -- alltsa gar en TRIOLTOPP in genom halet som ar avsett
-          // for grannfel, pa atta roster. Och `conf` stoppar den inte: den mater
-          // tempogrammets SKARPA, inte dess korrekthet, och ar 1.00 aven vid 32 % fel.
-          // MATT pa utandig.wav (Ricky Rose, referens 90 BPM): laset satt RATT i 20 s,
-          // gick sedan 90 -> 118 och kom aldrig tillbaka. Vetot: 25.0 % -> 70.6 %
-          // ratt, median 119 -> 89. Ovriga tva klipp ororda, syntetsviten identisk.
-          // Straffet platar vid 4; 6 ar mitten av platan 4-10.
-          // 3/2 och 2/3 behovs inte har -- de ligger utanfor bandet (oktavgrenarna).
-          const _harm = Math.abs(ratio * 0.75 - 1) <= Analyser.HARM_TOL
-                     || Math.abs(ratio / 0.75 - 1) <= Analyser.HARM_TOL;
-          if (this.nearVote >= (reacq ? NEAR_REACQ : 8) * (_harm ? Analyser.HARM_PENALTY : 1) * (this.subhSuspect(med) ? SUBH_MULT : 1)) {
-            this._why = "NEAR";
-            this.localBpm = Math.round(med);
-            this.bpmHistLen = 0; this.bpmHistPos = 0;
-            this.nearVote = 0; this.nearChallenger = 0; this.octaveVote = 0; this.bpmStable = 0;
-          }
-        } else {
-          this.nearChallenger = bpm; this.nearVote = 1;
-        }
-      } else {
-        this.octaveVote *= 0.7;                                                      // committad off-oktav → brus
-      }
-
-      // ── LÅTBYTE UTAN TYSTNADSLUCKA ────────────────────────────────────────────
-      // Låset ovan nollställs annars BARA av 350 ms tystnad — men crossfade, DJ-set
-      // och gapless spelning har ingen. Då satt localBpm fast på första låtens tempo
-      // resten av kvällen och hela takt-gridet var fel.
-      //
-      // Beslutet ligger UTANFÖR median-grenarna och mäts på RÅestimatet. MÄTT
-      // 2026-08-23 på crossfade 128→146: tempogrammet pekade om inom ~0,4 s, men
-      // 5 s-medianen låg kvar innanför ±11 % i sex sekunder — alltså tog "samma
-      // takt"-grenen hand om rutan och rösträkningen startade inte ens förrän 26,9 s.
-      // Omlåsning skedde 28,4 s (8,4 s efter bytet). Med rå bedömning startar
-      // beviset direkt vid bytet; medianen får fortsätta sköta glid och oktav.
-      //
-      // TRE VILLKOR måste hålla SAMTIDIGT, annars vädras beviset ut (×0.7):
-      //   1. RÅ OENIGHET   estimatet ligger >11 % från låset (samma band som glidet).
-      //   2. SAMMA UTMANARE varje estimat inom 4 % glider in i challengerBpm; allt
-      //      annat nollställer. Brus är oense men pekar ingenstans — det ska inte
-      //      kunna ackumulera fram ett låtbyte (MÄTT: brusigt rum tappade takten helt
-      //      när räkningen inte krävde en sammanhållen utmanare).
-      //   3. DOMINANS       hur mycket bättre är utmanarens lag än den låstas i det
-      //      ackumulerade tempogrammet? Ett breakdown gör låset svagare men ger ingen
-      //      dominant rival — en ny låt gör det.
-      // Rösterna räknas i TID, inte i anrop: stride växlar 100→20 Hz med låset.
-      // SAMMA tröskel som oktav-commiten: låtbytesvakten måste öppna i exakt samma
-      // stund som oktav-/grannrättningen stänger, annars finns ett fönster där låset
-      // inte kan lämnas alls (se dödlägesnoten vid `committed` ovan).
-      const committedNow = this.bpmStable >= Analyser.BPM_COMMIT;
-      const rawOff = Math.abs(bpm / this.localBpm - 1) > 0.11;
-      const sameChallenger = this.challengerBpm > 0 && Math.abs(bpm / this.challengerBpm - 1) <= 0.04;
-      // 4. FRISK TAKT. Ett breakdown ser ut som ett låtbyte i allt utom kvaliteten:
-      //    MÄTT 2026-08-23 (breakdown 142) låg conf 0.58–0.70 och tempogram-toppen på
-      //    ~0.5 mot 0.9 i den friska delen, och råestimatet vandrade till ~107 medan
-      //    basen kom tillbaka — tillräckligt för att fälla låset (BPM 142→111).
-      //    En riktig ny låt har full topp och conf ~1.0. Så: bara ett TYDLIGT tempo
-      //    får rösta bort ett fungerande lås.
-      const healthy = conf >= 0.9 && (this.lockPeak <= 0 || bestVal >= this.lockPeak * 0.8);
-      if (!committedNow || !rawOff || !healthy) {
-        this.newSongVote *= 0.7;
-        if (this.newSongVote < 0.5) { this.newSongVote = 0; this.challengerBpm = 0; }
-      } else if (!sameChallenger) {
-        this.challengerBpm = bpm;                 // ny riktning → beviset börjar om
-        this.newSongVote = 0;
-        this.lastSongVoteMs = voteNow;
-      } else {
-        this.challengerBpm += (bpm - this.challengerBpm) * 0.2;
-        const lockLag = Math.round((HZ * 60) / this.localBpm);
-        const rival = lockLag >= lagMin && lockLag <= lagMax
-          ? bestVal / Math.max(1e-9, tg[lockLag]) : 1;
-        // Dominant rival ⇒ 1,5 s bevis. Svag ⇒ 25 s, som förr: MÄTT tidigare att 6 s
-        // halverade BPM 145→73→144 mitt i en låt när ett breakdown nådde tröskeln.
-        // HAR SATT TIDIGARE ETT HARMONI-VETO. BORTTAGET 2026-09-01.
-        // Det mattes till NOLL effekt nar det lades in, och visade sig sedan vara
-        // aktivt skadligt: "LINEDANCE" (referens 145) har 26 s tvetydigt intro dar
-        // bevisen pekar pa 90-100 och laset committar pa 96; forst vid 28 s
-        // framtrader ratt tempo (146.3 @0.77, 3.5x starkare an 96.8). Kvoten
-        // 146/96 = 1.52 ligger 1.3 % fran 3/2, sa vetot hojde beviskravet fran
-        // 4 s till 24 s -- omojligt att na. Vetot i GRANNRATTNINGEN ar validerat
-        // (+45 procentenheter) och star kvar; bara den har vagen tas bort.
-        const needMs0 = rival > 2.5 ? 1500 : rival > 1.6 ? 4000 : 25000;
-        // Provrattar (inerta i standard): DEADBEAT = dott las (ra ac vid lasets lag < DEADBEAT_TH) slapps pa DEADBEAT_MS,
-        // CONFBLEED = lag konfidens halverar 25 s-kravet, SUBH_GUARD = 2/3-kandidat kraver 4x, GHOST_WAIT = 2/3-fantom vantar.
-        let needMs1 = needMs0;
-        const rawLockNow = (lockLag >= lagMin && lockLag <= lagMax) ? this.acScratch[lockLag] : 0;
-        if (BPM_TRACE && this.traceWin())
-          console.log(`[ns] t=${this.traceT().toFixed(1)} lock=${this.localBpm} ch=${this.challengerBpm.toFixed(0)} rival=${rival.toFixed(2)} rawLock=${rawLockNow.toFixed(3)} conf=${this.localBpmConfidence.toFixed(2)} nsv=${this.newSongVote.toFixed(0)} needMs=${needMs1}`);
-        let needMs = this.subhSuspect(this.challengerBpm) ? needMs1 * 4 : needMs1;
-        const ghostRef = this.localBpm;
-        if (GHOST_WAIT && ghostRef > 0) {
-          const gr = this.challengerBpm / ghostRef;
-          if (Math.abs(gr - 2 / 3) < 0.04) needMs = rival > 3.0 ? GHOST_MS : 25000;
-        }
-        const dtVote = this.lastSongVoteMs > 0 ? Math.min(200, voteNow - this.lastSongVoteMs) : 0;
-        this.lastSongVoteMs = voteNow;
-        this.newSongVote += dtVote;
-        // ── RÅ-AC-VETO MOT SUBHARMONIKER ────────────────────────────────────────
-        // MEKANISMEN: `rival` mäts i tempoGram, som är comb-filtrerat
-        // (ac[L] + ½·ac[2L] + ⅓·ac[3L]). En 2/3-kandidat ligger på lag 1.5P där den
-        // RÅA autokorrelationen är svag — slagen möts inte — men ac[3P] träffar
-        // perfekt och comb-filtret adderar den med vikt 0,5. Comb-filtret är alltså
-        // självt orsaken: subharmoniken har ingen egen självlikhet, den lånar sin
-        // styrka från sin egen tredje harmonisk. Därför duger INTE `scoreBass` som
-        // diskriminator (samma out[]-formel ⇒ ärver exakt samma fel) — bara den råa
-        // `acScratch` (helbandet, scoreEnv körde sist) skiljer dem.
-        // ASYMMETRI: en subharmonisk är alltid LÅNGSAMMARE än låset. Åt det hållet
-        // krävs egen självlikhet i nivå med låsets; uppåt (äkta snabbare låt, eller
-        // ett lås som fastnat på en subharmonisk) hålls kravet lågt så omlåsningen
-        // inte bromsas. Noll ny kostnad: två array-uppslagningar.
-        const chLag = Math.round((HZ * 60) / this.challengerBpm);
-        let vetoed = false;
-        if (chLag >= lagMin && chLag <= lagMax && lockLag >= lagMin && lockLag <= lagMax) {
-          const rawCh = this.acScratch[chLag];
-          const rawLock = this.acScratch[lockLag];
-          const slower = this.challengerBpm < this.localBpm;
-          const need = slower ? 0.95 : 0.55;
-          vetoed = rawLock > 0 && rawCh < rawLock * need;
-          const pCh = this.pulseScratch[chLag], pLock = this.pulseScratch[lockLag];
-          if (BPM_TRACE && this.newSongVote >= needMs * 0.85)
-            console.log(`[veto] t=${this.traceT().toFixed(1)} lock=${this.localBpm} ch=${this.challengerBpm.toFixed(0)} rawCh=${rawCh.toFixed(3)} rawLock=${rawLock.toFixed(3)} kvot=${(rawLock > 0 ? rawCh / rawLock : 0).toFixed(2)} need=${need} pCh=${pCh.toFixed(4)} pLock=${pLock.toFixed(4)} pKvot=${(pLock > 0 ? pCh / pLock : 0).toFixed(2)} vetoed=${vetoed} rival=${rival.toFixed(2)} needMs=${needMs} nsv=${this.newSongVote.toFixed(0)}`);
-        }
-        if (vetoed) {
-          this.newSongVote *= 0.7;   // vädra ut beviset, precis som en osund ruta
-          if (this.newSongVote < 0.5) { this.newSongVote = 0; this.challengerBpm = 0; }
-        } else if (this.newSongVote >= needMs) {
-          // Lås på UTMANAREN, inte medianen, och kasta historiken: ett medianfönster
-          // halvfullt av förra låtens tempo kostade flera sekunder till rätt takt.
-          this._why = "NEWSONG";
-          this.localBpm = Math.round(this.challengerBpm);
-          this.bpmHistLen = 0; this.bpmHistPos = 0; this.lastVoteMs = 0;
-          this.challengerBpm = 0;
-          this.newSongVote = 0;
-          this.octaveVote = 0;
-          this.bpmStable = 0;   // nytt lås får byggas om från början
-          this.lockPeak = 0;
-        }
-      }
-
-    }
-    // Smooth confidence (undvik hoppig UI); attack snabbt, release långsamt.
-    // TIDSBASERAD alpha: computeBpm() körs 100 Hz olåst men 4 Hz låst (adaptiv
-    // stride). Med fasta 0.35/0.08 rörde konfidensen sig 5× olika snabbt beroende
-    // på läge — och den grindar kick-gridet (>0.5), PLL-frekvenstermen (>0.4) och
-    // hjärtslagets djup. Tidskonstanterna (25 ms upp, 120 ms ner) är valda så att
-    // beteendet i OLÅST läge är exakt som förut.
-    }
-    const dt = this.lastConfMs > 0 ? Math.min(0.5, (voteNow - this.lastConfMs) / 1000) : 0.01;
-    this.lastConfMs = voteNow;
-    if (this.bpmStable >= Analyser.BPM_COMMIT) this.lastGoodBpm = this.localBpm;
-    if (BPM_TRACE && this.localBpm !== _b0) console.log(`[bpmchg] t=${this.traceT().toFixed(1)} ${this._why || "?"} ${_b0}->${this.localBpm} stable=${this.bpmStable} nsv=${this.newSongVote.toFixed(0)} ch=${this.challengerBpm} oct=${this.octaveVote} near=${this.nearVote} conf=${this.localBpmConfidence.toFixed(2)}`);
-    const confUse = conf;
-    const cA = this.localBpmConfidence;
-    const aC = 1 - Math.exp(-dt / (confUse > cA ? 0.025 : 0.120));
-    this.localBpmConfidence = cA + (confUse - cA) * aC;
-    // ── KONFIDENSBASERAD LÅSSLÄPPNING ─────────────────────────────────────────
-    // Sista utvägen ur ett fel lås. Oktav- och grannrättning stänger vid
-    // BPM_COMMIT, och låtbytesvakten kräver FRISK takt (conf ≥ 0.9) — ett lås som
-    // är fel och där takten aldrig blir frisk hade därför ingen väg ut alls, utom
-    // 350 ms tystnad. Håller konfidensen sig under 0.3 i 8 s är låset i praktiken
-    // inte längre en beskrivning av musiken: släpp det MJUKT (behåll tempot som
-    // startgissning, töm historik och röster, vidga sökningen) i stället för hårt.
-    // KVARSTÅENDE HÅL: ett SJÄLVSÄKERT men felaktigt lås (conf ≥ 0.3) fyrar inte
-    // här. Det är därför `committedNow` sänktes till samma 24 som `committed`.
-    if (this.localBpmConfidence >= 0.3) {
-      this.lowConfSinceMs = voteNow;
-    } else if (this.lowConfSinceMs > 0 && voteNow - this.lowConfSinceMs > 8000) {
-      this.lowConfSinceMs = voteNow;
-      this.hintTrackChange(5000, SECTION_HINT_LOWCONF);
-    } else if (this.lowConfSinceMs === 0) {
-      this.lowConfSinceMs = voteNow;
-    }
-  }
-
   /** Nollställ tempoläget — anropas när låtminnet BEKRÄFTAT en låtgräns. Då vet vi
    *  att historiken tillhör förra låten; att medianrösta vidare på den kostade 6 s
    *  omlåsning. Nästa estimat får låsa direkt (localBpm === 0 ⇒ första röst låser). */
@@ -2475,7 +1667,6 @@ export class Analyser {
     this.bpmHistLen = 0; this.bpmHistPos = 0;
     this.clearLockVotes();
     this.tempoGram.fill(0);
-    this.barAcc.fill(0); this.barCount = 0;
   }
 
   /**
@@ -2488,7 +1679,16 @@ export class Analyser {
    *   • lockPeak nollas så nya låtens takt inte jämförs mot förra låtens styrka,
    *   • under `windowMs` sänks grann-rättningens conf-grind och röstkrav.
    */
+  /** LÅTGRÄNSEN (a4 entempo): antal låtgränser (boundaryDetector -> hintTrackChange). Klockan läser den per hop (hop-recordet H_BOUND) -
+   *  det är klockans ENDA signal om låtbyte. */
+  trackBoundaries = 0;
+  /** Tystnad i ms (klockans tystnadssignal, hop-recordet H_QUIET; > 10 s släpper klockan som förr F_SIL10 släppte tempot). */
+  get quietMs(): number { return this.silentMs; }
+  /** EN KÄLLA (r0 entempo): analysatorns ENDA tempo och tillit = klockans (taktvägen i analysatorns långsamma väg, efter varje hop).
+   *  Läses av kickspärren/-grinden (via rutnätet), sectionBars, basgången, sektionernas långsamma sida (env-recordet R_CLOCK) och ramen. */
+  setClock(bpm: number, conf: number): void { this.localBpm = bpm > 40 ? bpm : 0; this.localBpmConfidence = bpm > 40 ? conf : 0; }
   hintTrackChange(windowMs = 5000, sections = true): void {
+    if (this.role !== 'slow') this.trackBoundaries++;
     if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} HINT bpm=${this.localBpm} conf=${this.localBpmConfidence.toFixed(2)}`);
     // A5: reacq-fönstret jämförs mot perfNow() (samma tidbas som voteNow).
     // Date.now() gjorde `voteNow < reacqUntilMs` alltid falskt → hinten var död.
@@ -2507,7 +1707,6 @@ export class Analyser {
     const k = Analyser.TG_KEEP;
     if (k <= 0) this.tempoGram.fill(0); else if (k < 1) for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= k;
     this.clearLockVotes();
-    this.barAcc.fill(0); this.barCount = 0;
     // NY LAT = NY STRUKTUR. Tempot bars over (se ovan), men sektionshistoriken tillhor forra laten och maste bort:
     // annars rangordnas nya laten mot gamla block och 'intro' intraffar aldrig. sectionReset() ar samma nollning
     // som 10 s tystnad redan gor - enda skillnaden ar att vi nu ocksa litar pa latbytes-signalen.
@@ -2533,7 +1732,7 @@ export class Analyser {
   }
 
   /** Taktfasen är applicerad av motorn (ankaret flyttat) → börja om räkningen. */
-  resetBar(): void { this.flagSlow(F_RESET_BAR); this.barAcc.fill(0); this.barCount = 0; }
+  resetBar(): void { this.flagSlow(F_RESET_BAR); }
 
   private envelope: number;
   private lastKick = 0;
@@ -2639,7 +1838,13 @@ export class Analyser {
   /** Taktrastret (kick-grind + taktfas). Nastlad konfig: motorns eget objekt (lases lopande); platt: internt, via setBeatGrid. */
   private beatSrc: { beat?: BeatGrid | null };
 
-  setBeatGrid(grid: BeatGrid | null): void { this.beatSrc.beat = grid; }
+  /** EN KLOCKA: rutnätet utifrån (lotus PLL via setAnalyserBeatGrid, bänkens BENCH_GRID) är INGEN rutnätskälla - kickgrinden läser
+   *  klockans inre rutnät (setClockGrid). Det sparas bara som REFERENS för slagindexet i frame.barShift (EN ETTA, publishPhase):
+   *  klockans etta uttryckt i systemets eget rutnäts index. */
+  setBeatGrid(grid: BeatGrid | null): void { this.extGrid = grid; }
+  private extGrid: BeatGrid | null = null;
+  /** Klockans inre rutnät (analyserClock.update / taktvägen HopLaneFast) - analysatorns enda rutnät. */
+  setClockGrid(grid: BeatGrid | null): void { this.beatSrc.beat = grid; }
 
   constructor(cfgIn: AnalyserConfig, splitIn?: SplitInit) {
     this.role = splitIn?.role ?? cfgIn.role ?? 'all';
@@ -2769,6 +1974,7 @@ export class Analyser {
 
   /** Feed a hop-sized chunk of mono samples, get a frame back. */
   process(samples: Float32Array): Frame {
+    if (this.hopLane) this.setClock(this.hopLane.clockBpm, this.hopLane.clockConf);   // EN KÄLLA (a7r): klockans tal ur analysatorns EGEN taktväg (förra hoppets publicering)
     if (this.role === 'fast') this.pullSlowState();
     // Slide buffer left by hop, append new samples at end.
     const hop = samples.length;
@@ -2926,9 +2132,8 @@ export class Analyser {
     // #2 Förfina förra kickens fas: nu har vi y(-1)=kfPrev2, y(0)=kfPrev, y(+1)=kickFlux
     // runt kick-hopet. Parabelns topp ger sub-hop-offset δ ∈ [-0.5,0.5] hop.
     let kickAtMs = 0;
-    let barShift = -1;
 
-    if (this.pendingKickMs > 0) { this.kickRefine(); kickAtMs = this.hKickAt; barShift = this.barShiftOut; }
+    if (this.pendingKickMs > 0) { this.kickRefine(); kickAtMs = this.hKickAt; }
     if (kick) {
       this.beatAnchorMs = this.wallNow();
       this.pendingKickMs = this.beatAnchorMs;
@@ -3023,7 +2228,7 @@ export class Analyser {
       this.profileStep();
     }
     this.hLevel = level; this.hFlux = fluxNorm; this.hIntensity = intensity; this.hInZone = inZone; this.hBreaking = breaking; this.hInRiser = inRiser;
-    this.hKickAt = kickAtMs; this.hBarShift = barShift;
+    this.hKickAt = kickAtMs;
     return this.fillFrame();
   }
 
@@ -3087,7 +2292,10 @@ export class Analyser {
     if (dk === null) this.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.gain, rms: this.dbgRms, env: this.envelope, locked: this.gainLocked };
     else { dk.flux = kickFlux; dk.thresh = kickThresh; dk.med = this.kickMed; dk.mad = this.kickMad; dk.energy = energy; dk.gain = this.gain; dk.rms = this.dbgRms; dk.env = this.envelope; dk.locked = this.gainLocked; }
     // ms → hindrar sub-beat-dubbelfyr. 0 i ratten = tempoanpassad (0,6 slag, minst 170 ms, nar tempot ar kant).
-    const KICK_COOLDOWN = Analyser.KICK_COOLDOWN_MS > 0 ? Analyser.KICK_COOLDOWN_MS : (this.localBpm > 40 ? Math.max(170, (60000 / this.localBpm) * 0.6) : 170);
+    const gk = this.beatSrc.beat;   // EN KÄLLA (r0): klockans rutnät; null = klockan i coast -> öppen grind och 170 ms (som förr utan tempo)
+    const cb = gk && gk.bpm > 40 ? gk.bpm : 0;
+    const KICK_COOLDOWN = Analyser.KICK_COOLDOWN_MS > 0 ? Analyser.KICK_COOLDOWN_MS
+      : (cb > 0 ? Math.max(170, Math.min(KICK_CAP_MS, (60000 / cb) * 0.6)) : 170);
     let above = kickFlux > kickThresh && energy > Analyser.KICK_EFLOOR;
     // ── TAKT-GRID-GRIND ──────────────────────────────────────────────────────
     // Morfologiska filter kan INTE skilja en synth-stot fran en bastrumma - matt
@@ -3105,7 +2313,7 @@ export class Analyser {
     // efter `% gridMs` blev en konstant men helt godtycklig fasförskjutning: grinden
     // släppte igenom transienter i fel fas och kastade äkta kickar.
     const grid = this.beatSrc.beat;
-    if (above && grid && grid.bpm > 40 && this.localBpmConfidence > 0.5) {
+    if (above && grid && grid.bpm > 40 && (grid.confidence ?? 0) > 0.5) {
       const beatMs = 60000 / grid.bpm;
       const gridMs = beatMs / 2;                    // attondelar: four-on-the-floor + upptakter
       const offset = ((this.wallNow() - grid.anchorMs) % gridMs + gridMs) % gridMs;
@@ -3153,7 +2361,6 @@ export class Analyser {
         for (let i = 0; i < this.tempoGram.length; i++) this.tempoGram[i] *= 0.5;
         this.envBassAccum = 0;
         if (HIGH_ON) this.envHighAccum = 0;
-        this.barAcc.fill(0); this.barCount = 0;
         this.flagSlow(F_SIL350);
       } else if (this.silenceArmed && this.silentMs > 10000 && this.localBpm !== 0) {
         this.localBpm = 0;
@@ -3200,7 +2407,6 @@ export class Analyser {
       if (this.bigOn) { this.bigEnvFlag = 1; this.bigEnvBpm = this.localBpm; } else { this.dBpm = this.localBpm; this.stepBassline(); }
       if (HIGH_ON) this.envHighRing[this.envPos] = _h;
       this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
-      if (Analyser.GRID_PHASE_ON) this.envLastWallMs = this.wallNow();
       this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
       this.envAccum = 0;
       this.envBassAccum = 0;
@@ -3210,10 +2416,10 @@ export class Analyser {
       if (this.role === 'fast') { this.pushSlowRecord(_e, _b, _h); } else { this.envStep(); if (!SECTION_AGG_HOP) this.sectionFlushAgg(); }
   }
 
-  /** Forfinar forra kickens fas (parabel) och bokfor taktfasen. Returnerar kickAtMs; taktfas-forslaget laggs i barShiftOut (-1 = inget). */
+  /** Forfinar forra kickens fas (parabel). Returnerar kickAtMs (i hKickAt). */
   private kickRefine(): void {
     const kickFlux = this.hKickFlux, hopMs = this.hHopMs;
-    let kickAtMs = 0; let barShift = -1;
+    let kickAtMs = 0;
       const ym1 = this.kfPrev2, y0 = this.kfPrev, yp1 = kickFlux;
       const denom = ym1 - 2 * y0 + yp1;
       if (denom < 0) {                                   // konkav → äkta topp
@@ -3225,37 +2431,7 @@ export class Analyser {
       this.pendingKickMs = 0;
       // Slaget är färdigmätt → lämna över dess EXAKTA tid till PLL:en.
       kickAtMs = this.beatAnchorMs;
-      // TAKTFAS: bokför slagets tyngd på sin plats i fyrtakten. Vikten är slagets
-      // EGEN styrka (ABSOLUT flux — kvoten mot troskeln mattade — kvadrerad sa
-      // skillnaden mellan ettans
-      // tunga och mellanslagens lätta trumma verkligen separerar). Bandenergin gick
-      // inte att använda: den är utjämnad över ~100 ms och gav alla fyra platser
-      // samma vikt ⇒ ingen marginal, ingen taktfas (MÄTT 2026-08-23).
-      const g = this.beatSrc.beat;
-      if (g && g.bpm > 40 && this.localBpmConfidence > 0.5) {
-        const bMs = 60000 / g.bpm;
-        const slot = Math.round((kickAtMs - g.anchorMs) / bMs) & 3;
-        this.barAcc[slot] += this.pendingKickW * this.pendingKickW;
-        if (this.barCount < 1000) this.barCount++;
-        // GLOMSKAN AR ~83 TAKTER, INTE 4. Raden korr en gang per DETEKTERAT SLAG,
-        // sa 0.997 ger tidskonstanten 1/0.003 = 333 slag = ~83 takter = ~2,5 min.
-        // Kommentaren sa forut "~4 takters glomska" — fel med faktor 20, och en
-        // tuningfalla: taktfasen bars over latgranser utom dar barAcc nollas explicit.
-        for (let i = 0; i < 4; i++) this.barAcc[i] *= 0.997;
-        // VINNANDE PLATS räknas ut HÄR, inte varje hop: barAcc ändras bara när ett
-        // slag bokförs, så mellanliggande hops gav exakt samma svar. Vinsten är
-        // dessutom att förslaget kommer högst en gång per slag i stället för i varje
-        // ruta fram till att motorn hunnit flytta ankaret.
-        // Kravet: TYDLIG marginal (35 %) och nog med bevis (~16 slag). Annars -1 —
-        // bättre ingen taktfas än en som sitter en åtta bort.
-        // `second` raknas om i sin egen loop nedan over alla i != bi, sa att satta
-        // den har var en dod tilldelning (och startvardet -1 alltid overskrivet).
-        let bi = 0, best = this.barAcc[0], second = 0;
-        for (let i = 1; i < 4; i++) if (this.barAcc[i] > best) { best = this.barAcc[i]; bi = i; }
-        for (let i = 0; i < 4; i++) if (i !== bi && this.barAcc[i] > second) second = this.barAcc[i];
-        if (this.barCount >= 16 && best > second * 1.35) barShift = bi;
-      }
-    this.barShiftOut = barShift;
+      // (EN ETTA, klocka r0: analysatorns kick-taktfas (barAcc) är borta - frame.barShift = klockans taktmodell, se analyserClock publishPhase.)
     this.hKickAt = kickAtMs;
   }
 
@@ -3765,7 +2941,7 @@ export class Analyser {
   /** Muterar det ateranvanda Frame:t (spec/onset/drum + alla skalarer) och kor sektionsaggregatet. Bara skalarer in: ingen allokering per hop. */
   private fillFrame(): Frame {
     const level = this.hLevel, fluxNorm = this.hFlux, kick = this.hKick, intensity = this.hIntensity, bodyNow = this.hBody, inZone = this.hInZone, breaking = this.hBreaking,
-      inRiser = this.hInRiser, kickAtMs = this.hKickAt, barShift = this.hBarShift, nowWallA = this.hNowWall;
+      inRiser = this.hInRiser, kickAtMs = this.hKickAt, nowWallA = this.hNowWall;
     const FB = Analyser.FAST_BANDS, L = FB ? this.fbLvl : this.bandLvl, A = FB ? this.fbAbs : this.bandAbs, O = FB ? this.fbOn : this.bandOn;   // ljusfälten
     const spec = this.outSpec, specAbs = this.outSpecAbs, onset = this.outOnset;
     spec.sub = L[0]; spec.kick = L[1]; spec.bass = L[2]; spec.lowMid = L[3]; spec.mid = L[4]; spec.highMid = L[5]; spec.treble = L[6]; spec.air = L[7];
@@ -3788,7 +2964,7 @@ export class Analyser {
     }
     { let s2 = 1e-12; for (let b = 3; b < 8; b++) { const lin = Math.pow(10, (FB ? this.fbDbRaw : this.bandDbRaw)[b] / 20); s2 += lin * lin; } f.midHiDb = 20 * Math.log10(Math.sqrt(s2)); }
     f.dropCount = this.dropCount; f.miniDropCount = this.miniDropCount; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
-    f.kickAtMs = kickAtMs; f.barShift = barShift;
+    f.kickAtMs = kickAtMs; f.barShift = -1;   // EN ETTA (r0): klockans etta sätts av publishPhase nedan (lotus); DMX läser ettan i cfg.beat
     // Gridfasen ut: konstant offset (detektorns slap) och/eller trim. Bada 0/av som standard => oforandrad fas.
     f.beatPhaseMs = this.beatPhaseMs > 0 ? this.beatPhaseMs - Analyser.GRID_PHASE_OFFSET_MS : this.beatPhaseMs;
     f.beatPhaseConf = this.beatPhaseConf;
@@ -3799,8 +2975,19 @@ export class Analyser {
     f.expectHighInMs = this.section === 'high' ? 0 : this.expectHighMs > 0 ? Math.max(0, this.expectHighMs - nowS) : -1;
     f.prevSection = this.prevSection; f.levelVsHighDb = this.levelVsHighDb;
     f.sectionBars = this.localBpm > 0 && this.sectionStartMs > 0 ? (nowS - this.sectionStartMs) / (240000 / this.localBpm) : 0;
+    if (this.clock || this.hopSelf) {
+      if (this.clock) this.clock.update(f, this.clockOut, this, Date.now());   // KLOCKAN I process() (BEAT_FEED 'inline', eller ingen delning)
+      else this.hopLane!.feed(f, this.clockOut, this);                          // KLOCKAN I WORKERN (lotus delad: taktvägen, egen matning)
+      // EN FAS OCH EN ETTA (r0): ramens fas och etta = klockans publicerade rutnät och taktmodell (publishPhase, analyserClock.ts)
+      publishPhase(f, this.clockOut.beat, this.clock ? this.clock.barKnown() : this.hopLane!.barKnown, this.extGrid, Date.now(), Analyser.GRID_PHASE_OFFSET_MS);
+    }
     return f;
   }
+  /** ANALYSATORNS KLOCKA utan taktväg (a7r; lotus profil, eller DMX utan delning): körs sist i process(), utfallet här. */
+  clock: BeatFeed | null = null;
+  readonly clockOut: ClockCfg = { beat: undefined, beatErr: undefined };
+  /** Klockans utfall till motorn (som hopLane.feed gör med taktvägen): rutnätet och fasfelet. */
+  publishClock(cfg: ClockCfg): void { cfg.beat = this.clockOut.beat; cfg.beatErr = this.clockOut.beatErr; }
 }
 
 /** Asymmetrisk EMA (snabb attack, långsam release) — modulnivå så tick-vägen
@@ -3849,12 +3036,14 @@ export const WORKER_RESTART_WINDOW_MS = 10 * 60_000;
  */
 export function createAnalyser(cfg: AnalyserConfig, modeIn?: 'worker' | 'inline' | 'sync'): Analyser {
   const mode = modeIn ?? sysEnv('ANALYSER_SPLIT');
-  if (mode !== 'worker' && mode !== 'inline' && mode !== 'sync') return new Analyser(cfg);
+  const cm = clockMode();
+  if (mode !== 'worker' && mode !== 'inline' && mode !== 'sync') { const a = new Analyser(cfg); a.clock = new BeatFeed(); return a; }
   const sync = mode === 'sync';
-  const feedMk = hopFeedFactory();
+  const feedMk = cm === 'slow' ? hopFeedFactory() : undefined;
   const buffers = createSplitBuffers(!!feedMk);
   const fast = new Analyser(cfg, { role: 'fast', split: buffers, sync });
-  if (feedMk) fast.hopLane = new HopLaneFast(buffers, sync);
+  if (cm === 'inline') fast.clock = new BeatFeed();
+  if (feedMk) { fast.hopLane = new HopLaneFast(buffers, sync); fast.hopSelf = sysEnv('BEAT_FEED') === undefined; }
   if (mode === 'inline') {
     fast.setInlinePeer(new Analyser(cfg, { role: 'slow', split: buffers }));
     if (feedMk) fast.hopLane!.peer = new HopLaneSlow(buffers, feedMk());
@@ -3908,5 +3097,8 @@ export function createAnalyser(cfg: AnalyserConfig, modeIn?: 'worker' | 'inline'
 
 /** TAKTVÄGEN: systemets taktmatning för den långsamma vägen, om profilen har <prefix>BEAT_FEED 'slow' och en slowHopFeed-fabrik. */
 export function hopFeedFactory(): (() => HopFeed) | undefined {
-  return sysEnv('BEAT_FEED') === 'slow' ? (PROFILE as { slowHopFeed?: () => HopFeed }).slowHopFeed : undefined;
+  return clockMode() === 'slow' ? () => new BeatFeed() : undefined;
 }
+/** VAR KLOCKAN KÖRS - profilen på ETT ställe (sys.BEAT_FEED): 'slow' = i taktvägen (analysatorns långsamma väg, workern) när
+ *  analysatorn är delad, annars sist i process(); 'inline' = alltid sist i process() (ingen taktväg); osatt (lotus) = som 'slow', men analysatorn matar taktvägen själv (hopSelf; EN KLOCKA: det finns ingen annan tempoväg). */
+function clockMode(): 'slow' | 'inline' { return sysEnv('BEAT_FEED') === 'inline' ? 'inline' : 'slow'; }
