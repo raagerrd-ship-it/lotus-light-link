@@ -696,12 +696,12 @@ function emitBands(frame: Frame): void {
 
   // Den ABSOLUTA bandmagnituden används bara som SPEKTRAL ANDEL (bas kontra
   // resten) — aldrig som nivå, eftersom den är AGC:ad.
-  // BASEN TILL 120 Hz (ägaren 11-09 i källaren: lampan 'hoppar snabbt i olika ljusstyrkor' i vissa partier): nivåns basandel är bara
-  // sub + kick (20–120 Hz). Basgångens noter (bass-bandet 120–250 Hz) ritade av varje not som ett steg i grundnivån. Totalen behåller
-  // bass-bandet, så midHi-andelen är oförändrad.
-  const lowAbs = a.sub + a.kick;
+  // BASEN TILL 60 Hz (ägaren 11-09 i källaren: lampan 'hoppar snabbt i olika ljusstyrkor' i vissa partier; först 120 Hz, sedan 'kör 60 Hz'):
+  // nivåns basandel är bara sub (20–60 Hz). Kickens kropp (60–120) och basgångens noter (120–250) ritade av varje anslag/not som ett steg
+  // i grundnivån - pulserna tar anslagen. Totalen behåller kick + bass, så midHi-andelen är oförändrad.
+  const lowAbs = a.sub;
   const hiAbs = a.lowMid + a.mid + a.highMid + a.treble + a.air;
-  const totAbs = lowAbs + a.bass + hiAbs + 1e-9;
+  const totAbs = lowAbs + a.kick + a.bass + hiAbs + 1e-9;
   const lowFrac = lowAbs / totAbs;
   const hiFrac = hiAbs / totAbs;
   // share/0.5 → en jämnt fördelad mix ger 1.0 i båda tapparna (inget tapp vid w=0.5).
