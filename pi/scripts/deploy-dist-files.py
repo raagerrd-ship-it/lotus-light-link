@@ -1,11 +1,11 @@
 """Ordnad deploy av enskilda filer ur pi/dist/ till Pi:n (samma stege som deploy-analyser-dir.py, 2026-09-21):
 md5-diff per fil, upp till /tmp, node --check, backup <fil>.bak-<ts>, sudo cp, importtest av angivna moduler, EN omstart,
 vanta pa API + BLE. Filerna anges relativt dist/ (t.ex. piEngine.js ble-driver/raster.js). Inga hemligheter i repot:
-  PI_PASS=... [PI_HOST=192.168.1.174] python pi/scripts/deploy-dist-files.py [--dry] [--no-restart] [--import=ble-driver/raster.js] fil...
+  [PI_KEY=~/.ssh/id_pidmx] [PI_HOST=192.168.1.174] python pi/scripts/deploy-dist-files.py [--dry] [--no-restart] [--import=ble-driver/raster.js] fil...
 Bevisa forst att Pi:ns dist bara skiljer sig fran ett rent HEAD-bygge dar du vantar dig det (git stash -u; build; md5 mot Pi:n)."""
 import hashlib, os, sys, time, paramiko
-HOST = os.environ.get('PI_HOST', '192.168.1.174'); PW = os.environ.get('PI_PASS')
-if not PW: sys.exit('PI_PASS saknas')
+HOST = os.environ.get('PI_HOST', '192.168.1.174'); KEY = os.path.expanduser(os.environ.get('PI_KEY', '~/.ssh/id_pidmx'))   # NYCKEL (11-09): inget lösenord
+if not os.path.exists(KEY): sys.exit(f'nyckeln saknas ({KEY})')
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 DRY = '--dry' in sys.argv; NORESTART = '--no-restart' in sys.argv
 IMPORTS = [a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--import=')]
@@ -17,10 +17,10 @@ REMOTE = '/opt/lotus-light/pi/dist'
 sys.path.insert(0, HERE); import analyser_shared
 analyser_shared.check(os.path.join(HERE, '..', 'src', 'audio-analyser'), os.path.join(HERE, '..', '..', '..', 'dmx-control', 'pi-dmx', 'engine', 'src'), os.path.join(LOCAL, 'audio-analyser'))
 c = paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-c.connect(HOST, username='pi', password=PW, timeout=15, look_for_keys=False, allow_agent=False)
+c.connect(HOST, username='pi', key_filename=KEY, timeout=15, look_for_keys=False, allow_agent=False)
 def run(cmd, t=300):
     i, o, e = c.exec_command(cmd, timeout=t); rc = o.channel.recv_exit_status(); return rc, o.read().decode('utf-8', 'replace'), e.read().decode('utf-8', 'replace')
-def sudo(cmd, t=300): return run(f"echo {PW} | sudo -S sh -c '{cmd}' 2>/dev/null", t)
+def sudo(cmd, t=300): return run(f"sudo -n sh -c '{cmd}' 2>/dev/null", t)
 files = {f: open(os.path.join(LOCAL, f), 'rb').read().replace(b'\r\n', b'\n') for f in args}
 rc, out, _ = run(f"cd {REMOTE} && md5sum {' '.join(args)} 2>/dev/null"); remote = {l.split()[1]: l.split()[0] for l in out.splitlines() if len(l.split()) == 2}
 todo = [f for f, d in files.items() if remote.get(f) != hashlib.md5(d).hexdigest()]
