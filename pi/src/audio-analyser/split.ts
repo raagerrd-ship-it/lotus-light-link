@@ -179,8 +179,10 @@ export const B_SEQ = 0, B_N = 1, B_RMS = 2, B_LVL = 3, B_CENT = 4, B_ACTIVE = 5,
   B_SEC = 11, B_LVH = 12, B_CONF = 13, B_ENVF = 14, B_ENVBPM = 15;
 export const C_BIG_WRITE = 8, C_BIG_READ = 9, C_BIG_SEQ = 10 /* stora vägens seqlock */, C_WAITING_B = 11 /* analysatortråden väntar (två trådar, se slowWorker) */;
 export const BS_SEQ = 0, BS_BODY = 1, BS_DROPS = 2, BS_MINI = 3, BS_BUILD = 4, BS_RISER = 5, BS_PUNCH = 6, BS_BASS = 7, BS_BRIGHT = 8, BS_BEAT = 9,
-  BS_BASSLINE = 10, BS_SPEC_N = 11 /* antal 2048-spektra skrivna */, BS_SKIPPED = 12;
-export const BIG_STATE_LEN = 13;
+  BS_BASSLINE = 10, BS_SPEC_N = 11 /* antal 2048-spektra skrivna */, BS_SKIPPED = 12,
+  // EN DROPDETEKTOR + LYFT (a3): kandidaterna, minidrop-klasserna, flankens styrka, nästan-drop/lyft/stopp (VAD + styrka)
+  BS_CAND = 13, BS_DEMOTED = 14, BS_SPACED = 15, BS_DROPRISE = 16, BS_NEAR = 17, BS_NEARDIP = 18, BS_LIFT = 19, BS_STOPS = 20, BS_STOPSEC = 21;
+export const BIG_STATE_LEN = 22;
 export const SPEC_SLOTS = 16, SPEC_MAX = 1024;   // 16 spektra = 48 hop: en sen worker tappar inget till låtgränsens sink
 
 // ── TAKTVÄGEN (2026-11-08, ägaren: 'en analysator, två vägar - den snabba och den som ger dirigenten information') ─────────────
