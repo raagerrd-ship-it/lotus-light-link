@@ -38,6 +38,7 @@ function classify(facit, an) {
   return ['annat', r];
 }
 
+const BENCH_EPOCH = 1700000000000; const BENCH_WALL = process.env.BENCH_WALLCLOCK === '1';   // BENCH_WALLCLOCK=1 = gamla beteendet (Date.now = väggtid)
 function runOne(y, rate) {
   const HOP = 128;
   const an = createAnalyser({ sampleRate: rate, hopSize: HOP, autoGainTarget: 0.75, maxGain: 200, noiseFloor: 0.0015, onsetEnhancements: process.env.BENCH_ENH === '1' });   // standard AV = som Pi:n; BENCH_ENH=1 = 09-07-mergens onset-DSP (12/64 mot 30/64)
@@ -48,6 +49,7 @@ function runOne(y, rate) {
   for (let i = 0; i + HOP <= y.length; i += HOP) {
     buf.set(y.subarray(i, i + HOP));
     an.setAudioClockMs?.(hopCount * HOP / rate * 1000);
+    if (!BENCH_WALL) { const _ms = hopCount * HOP / rate * 1000; Date.now = () => BENCH_EPOCH + _ms; }   // BÄNKKLOCKAN (2026-11-10): EN KLOCKA (analyserClock) anropas med Date.now() - följ ljudtiden som lotusbank.py, annars ser klockan väggtid (bänken 396 -> 80/503)
     if (hopCount === 0) an.setVirtualClock?.(0); else an.advanceVirtualClock?.(hopCount * HOP / rate * 1000);   // setVirtualClock EN gang (lagesbyte nollar ankare), sedan bara advance
     const f = an.process(buf); hopCount++;
     if (process.env.BENCH_GRID === '1' && f && f.bpm > 0 && f.beatAnchorMs > 0) an.setBeatGrid?.({ bpm: f.bpm, anchorMs: f.beatAnchorMs });   // som motorn: analysatorn grindar kickar mot gridet
