@@ -113,9 +113,15 @@ const TG_GRID_EXTRA_MS = 5;   // oktavkanten +-3 %; övre oktaven bara om analys
  *  M1 (--mat, snabbt läge när fasträffarna < 0,7 = i praktiken alltid i pop): mix_las 3,49 -> 2,10, mix_hopp 0,10 -> 0,03, låtgränsen 9 -> 11 av 15. */
 /** TVÅ MINNEN I SAMMA SÖKNING (a2f entempo): tempogrammet bär ett LÅNGSAMT minne (5 s / 0,21 = r0: stabil topp -> fasen, gridfel
  *  r0 15,2 mot a2r 22,1 ms) och ett SNABBT (3,5 s / 0,4 = a2r: låser om på ~2 s efter en skarv). Klockans tempo är alltid det
- *  långsammas topp; pekar det snabba på ett annat tempo (> TG_SW_STEPS steg, inte ett 4:3/3:2-syskon) TG_SW_N varv i följd ersätter
+ *  långsammas topp; pekar det snabba på ett annat tempo (> TG_SW_STEPS steg, se TEMPOHOPPEN) TG_SW_N varv i följd ersätter
  *  det snabba minnet det långsamma, så toppen byter direkt; tills det långsamma fönstret är fullt (kallstart, relock vid låtgräns) styr
- *  det snabba (a2f M1 utan det: upp_s 1,35 -> 2,85 = lang1021-skiftet 2,3 s efter låtgränsen). Samma hypoteser, samma poäng - två EMA:er. */
+ *  det snabba (a2f M1 utan det: upp_s 1,35 -> 2,85 = lang1021-skiftet 2,3 s efter låtgränsen). Samma hypoteser, samma poäng - två EMA:er.
+ *  TEMPOHOPPEN (2026-11-10, lotus i källaren: 125 -> 82-86 -> 125 inom sekunder, tilliten på golvet; backup-tagg backup/fore-tempohopp-20261110):
+ *  bytet krävde förr bara att det snabba pekade ANNANSTANS två varv (0,74 s); kronans marginal gällde bara exakta 4:3/3:2-syskon (±1 %).
+ *  Det snabba minnet (3,5 s) följer fills och breaks, och fantomerna ligger ofta 1,38-1,46 x eller 1-3 % bredvid 3:2: 359 av 528 tempobyten
+ *  i 128 min ljud kom den vägen, de flesta studsade tillbaka. Nu måste det snabba minnets topp slå det regerande tempots poäng i samma
+ *  minne med TG_HOLD (kronan) för ALLA tempon. En ny låt utan låtgräns klarar det: förra låtens poäng dör ur det snabba fönstret på ~3 s.
+ *  Mätt (tools/natt/tempohopp-2026-11-10.md): utflykter (tempot lämnar och kommer tillbaka inom 15 s) 1,45 -> 1,00/min, tid i utflykt 4,6 -> 2,9 %. */
 const TG_WIN_MS = 5000, TG_FULL_N = 900, TG_FWIN_MS = 3500, TG_FFULL_N = 630, TG_FA = 0.4, TG_SW_STEPS = 6, TG_SW_N = 2;
 /** a3 TOPPRÖSTEN (se peakVote): syskonen, faktor, varv i följd; oktaven under kanten (se tgStep). */
 const HV_R = [4 / 3, 3 / 4, 3 / 2, 2 / 3, 5 / 4, 4 / 5], HV_K = 1.25, HV_N = 5, HV_AGE = 30, TG_OCT_LO = 79.6, TG_OCT_LO_N = 8;
@@ -290,9 +296,9 @@ export class BeatFeed {
         let fk = -1, fv = 0; for (let i = 0; i < TG_K; i++) if (accF[i] > fv) { fv = accF[i]; fk = i; }
         const kc0 = ((Math.round(Math.log(this.tempoBpm / 80) / Math.log(TG_STEP)) % TG_K) + TG_K) % TG_K;
         const d0 = fk < 0 ? 0 : ((fk - kc0) % TG_K + TG_K) % TG_K, dd = Math.min(d0, TG_K - d0);
-        let sib0 = false; for (let i = 0; i < TG_SIB.length; i++) { const q = TG_SIB[i]; if (Math.abs(d0 - q) <= 2 || Math.abs(d0 - (TG_K - q)) <= 2) sib0 = true; }   // utan closure
-        const fc = Math.max(accF[kc0], accF[(kc0 + 1) % TG_K], accF[(kc0 + TG_K - 1) % TG_K]);   // syskon: bara med kronans marginal i det snabba
-        if (fk >= 0 && dd > TG_SW_STEPS && (!sib0 || fv >= fc * TG_HOLD)) { if (++this.tgSw >= TG_SW_N) { acc.set(accF); this.tgSw = 0; this.tgSwitches++; } } else this.tgSw = 0;
+        const fc = Math.max(accF[kc0], accF[(kc0 + 1) % TG_K], accF[(kc0 + TG_K - 1) % TG_K]);   // det regerande tempots poäng i det snabba
+        // TEMPOHOPPEN (11-10): kronans marginal mot ALLA tempon, inte bara syskonen
+        if (fk >= 0 && dd > TG_SW_STEPS && fv >= fc * TG_HOLD) { if (++this.tgSw >= TG_SW_N) { acc.set(accF); this.tgSw = 0; this.tgSwitches++; } } else this.tgSw = 0;
       }
       let bk = -1, bv = 0; for (let i = 0; i < TG_K; i++) if (acc[i] > bv) { bv = acc[i]; bk = i; }
       if (bk < 0) { this.tempoBpm = 0; return; }
