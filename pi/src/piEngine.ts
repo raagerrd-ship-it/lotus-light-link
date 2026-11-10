@@ -56,6 +56,9 @@ export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
  * ännu inte hunnit se (look-ahead inom ett paket). Pulsloggen (notePulse) får slagets exakta tid → PC-facit mäter −lead exakt.
  */
 export const PULSE_PREDICT = TICK_SYNC && process.env.LOTUS_PULSE_PREDICT === '1';
+/** LOTUS ENDA EFFEKT - ANDNING I TAKT (11-10). Som DMX-effekterna bestammer effekten sjalv om energilagret (niva, sektion, drop)
+ *  far laggas pa: energy false = ljuset ar bara klockans andning medan tempo finns (agaren 11-10). */
+const ANDNING = { energy: false };
 /** Sektionsminnets konsumenter (2026-09-21, se steg 6 i tick): forvarning fore refrang och dynamik mot latens egen refrang. */
 const EXPECT_LIFT_MS = Math.max(0, Number(process.env.LOTUS_EXPECT_LIFT_MS ?? 3000) || 0);
 const SECTION_DYN_DB = Math.max(0, Number(process.env.LOTUS_SECTION_DYN_DB ?? 12) || 0);
@@ -891,7 +894,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _syncMul = 1; private _ceilSlow = 0;
+  private _syncMul = 1; private _ceilSlow = 0; private _effW = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -3215,7 +3218,14 @@ export class PiLightEngine {
     { const _tau = Math.max(50, this.cal.energyRiseTauMs ?? 400); this._ceilSlow = this._ceilSlow <= 0 ? ceil : this._ceilSlow + (ceil - this._ceilSlow) * Math.min(1, (this.tickMs || 18) / _tau); }
     const _riseK = this.cal.energyRiseK ?? 3;
     const pnRise = _riseK > 0 && this._ceilSlow > 0.02 ? Math.max(0, Math.min(1, (ceil / this._ceilSlow - 1) * _riseK)) : 0;
-    const energyForm = composeEnergy(ceil, this._secScale, _build, bd, Math.max(pnEff, pnRise), this._dropBoost);
+    const withEnergy = composeEnergy(ceil, this._secScale, _build, bd, Math.max(pnEff, pnRise), this._dropBoost);
+    // EFFEKTEN STYR SJALV (agaren 11-10: 'pulsen ar lite svag ibland och den flimrar ... effekten borde ju styra sjalv, lagg till att den
+    // far stanga av energi-lagret'): ANDNING.energy = false -> nar klockan gar ar ljuset BARA andningen (1 - bd) + bd*pn pa fullt tak:
+    // ingen niva, sektionsskala, forvantan, nivastigning eller drop ovanpa. Utan tempo tar energilagret over; overgangen glider
+    // (in 0,3 s, ut 1,5 s) sa ett tappat tempo inte blir ett hopp.
+    const _on = bd > 0 ? 1 : 0;
+    this._effW += (_on - this._effW) * Math.min(1, (this.tickMs || 18) / (_on ? 300 : 1500));
+    const energyForm = ANDNING.energy ? withEnergy : this._effW * ((1 - bd) + bd * pnEff) + (1 - this._effW) * withEnergy;
     const outN = toNormalized(energyForm, floorN);
     es.energyForm = energyForm; es.outN = outN;
   }
