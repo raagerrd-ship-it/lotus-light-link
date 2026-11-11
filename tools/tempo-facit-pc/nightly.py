@@ -9,15 +9,16 @@ FORCE = '--force' in sys.argv
 TODAY = time.strftime('%Y-%m-%d')
 # 'live' = det som kor pa Pi:n (tempo-variant.conf: evidensval + 10 s ring + kickgrind av + cooldown 100, sedan 2026-09-20 10:23).
 # 'standard' = gamla vagen utan flaggor. BENCH_GRID=1 pa alla = som motorn (analysatorn grindar kickar mot sitt grid).
-LIVE = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100', 'LOTUS_GRID_PHASE': '1',
-        'LOTUS_TEMPO_UP43': '1', 'LOTUS_TEMPO_FIVE4': '1', 'LOTUS_TEMPO_SHIFT': '1', 'LOTUS_TEMPO_HOLD': '1'}   # SHIFT+HOLD LIVE 10-10 22:26 (tempo-shift-hold.conf)
-          # FIVE4 (five4.conf) LIVE sedan 10-05 17:53, med har fran 10-06 (live 388 -> 395/503 = Pi:ns faktiska); + gridfas sedan 09-20 12:42 (LOTUS_PHASE_FOLLOW ar motorns flagga, syns ej i banken); UP43 (drop-in tempo-up43.conf, LIVE sedan 09-24) saknades har till 10-05
+LIVE = {}   # 11-11 morgonagenten: = Pi:n sedan DMX-profilbytet 11-10 (inga TEMPO_/KICK_/SECTION-env i drop-ins; PHASE_FOLLOW ar motorns).
+# Fore 11-11 satte 'live' KICK_COOLDOWN=100/KICK_NOGATE som analysatorn fortfarande laser men Pi:n inte satter => 'live' var inte Pi:n.
+LIVE_GAMMAL = {'LOTUS_TEMPO_EVIDENCE': '1', 'LOTUS_TEMPO_ENV_S': '10', 'LOTUS_KICK_NOGATE': '1', 'LOTUS_KICK_COOLDOWN': '100', 'LOTUS_GRID_PHASE': '1',
+        'LOTUS_TEMPO_UP43': '1', 'LOTUS_TEMPO_FIVE4': '1', 'LOTUS_TEMPO_SHIFT': '1', 'LOTUS_TEMPO_HOLD': '1'}   # Pi:ns drop-ins t.o.m. 11-10 (kickvarianterna utgar fran den)
 # FRYST LATLISTA (10-05): tempovarianterna kors bara pa bench-manifest.txt (bench_manifest.py) - jamforbara dygn. Sektionsbanken kor utan.
 MANIFEST = os.path.join(HERE, 'bench-manifest.txt')
 VARIANTS = {'standard': {}, 'live': LIVE, 'evidence': {'LOTUS_TEMPO_EVIDENCE': '1'}, 'ring10': {'LOTUS_TEMPO_ENV_S': '10'}, 'evidlock': {'LOTUS_TEMPO_EVIDLOCK': '1'},
-            'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120'),
+            'live-cd80': dict(LIVE, LOTUS_KICK_COOLDOWN='80'), 'live-cd120': dict(LIVE, LOTUS_KICK_COOLDOWN='120'), 'live-gammal': LIVE_GAMMAL,
             'live-utan-five4': {k: v for k, v in LIVE.items() if k != 'LOTUS_TEMPO_FIVE4'}}   # referens: live fore 10-05 17:53 (388/503) - aterganget om FIVE4 skulle tappa
-GRID = {'BENCH_GRID': '1'}
+GRID = {'BENCH_GRID': '1', 'LOTUS_ANALYSER_SPLIT': ''}   # SPLIT '' = inline: lotus-profilen har ANALYSER_SPLIT 'worker' sedan 11-10 och workern ger tempo 0 i banken (korpus 0/503 11-11, som lotusbank ddf8251)
 SB = os.path.join(HERE, 'scoreboard.jsonl'); MD = os.path.join(HERE, 'scoreboard.md'); DAILY = os.path.join(HERE, 'daily')
 
 
@@ -159,7 +160,7 @@ def sections_step():
 # upprepningsfacitet (repeat_facit.py -> repeats/<id>.json, backfyllt forst for nya langfangster). Bada faciten ar svaga var for
 # sig (10/26 overens om refrang 2) - rapportera alltid bada. Baslinje 09-22 test: tier 0/13 <=4 s, vers 2 0,26; akustiskt 11/30,
 # median 5,1 s, vers 2 0,46; sektionsfacit 0,27/0,54/0,65/0,52; forutsagelse 4/45 @ 2,0/min. LOTUS_NIGHTLY_SECTIONS=0 stanger av.
-SECTION_ENV = {'LOTUS_SECTION': '1', 'LOTUS_GRID_PHASE': '1', 'LOTUS_SECTION_REPEAT': os.environ.get('LOTUS_NIGHTLY_SECTION_REPEAT', '117'), 'LOTUS_SECTION_W_HIGH': os.environ.get('LOTUS_NIGHTLY_SECTION_W_HIGH', '1.0'), 'LOTUS_SECTION_EARLY_S': '45', 'LOTUS_SECTION_ON_HINT': '1'}   # = Pi:ns drop-ins (W_HIGH sedan 09-23; EARLY_S + ON_HINT sedan 09-29 - saknades, morgonagenten 09-29)
+SECTION_ENV = {k: v for k, v in (('LOTUS_SECTION_REPEAT', os.environ.get('LOTUS_NIGHTLY_SECTION_REPEAT')), ('LOTUS_SECTION_W_HIGH', os.environ.get('LOTUS_NIGHTLY_SECTION_W_HIGH'))) if v}   # 11-11: = Pi:n (DMX-profilen, inga sektions-env sedan 11-10; forr REPEAT 117/W_HIGH/EARLY_S/ON_HINT)
 REPEATS = os.path.join(HERE, 'repeats')
 def repeats_step():
     py = os.path.join(HERE, '.venv', 'Scripts', 'python.exe'); py = py if os.path.exists(py) else sys.executable
