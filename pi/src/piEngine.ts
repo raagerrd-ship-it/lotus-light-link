@@ -59,9 +59,11 @@ export const PULSE_PREDICT = TICK_SYNC && process.env.LOTUS_PULSE_PREDICT === '1
 /** LOTUS DIRIGENT + TVA EFFEKTER (agaren 11-11: 'varfor inte kora dirigent pa lotus ocksa? och tva effekter bara?', 'ja bygg steg ett').
  *  Analysatorn ger taktlaget, dirigenten valjer effekt, effekten styr ljuset. Effekterna vet inget om valet: NIVA vet inget om takt,
  *  ANDNING vet inget om las. Bytet glider (inMs till andningen, utMs tillbaka) sa sista pulsen klingar ut i stallet for att klippas. */
-type LotusEffekt = 'niva' | 'andning';
+type LotusEffekt = 'niva' | 'andning' | 'refrang';
 const DIRIGENT = { inMs: 300, utMs: 1500 };
-const dirigent = (takt: boolean): LotusEffekt => takt ? 'andning' : 'niva';
+/** STEG TVA (11-11, agaren: 'bygg steg tva'): dirigenten laser aven analysatorns SEKTION (frame.section, samma falt som DMX-dirigenten).
+ *  Takt + 'high' (refrang/drop) -> REFRANG, takt annars -> ANDNING, ingen takt -> NIVA. */
+const dirigent = (takt: boolean, sektion: string): LotusEffekt => !takt ? 'niva' : sektion === 'high' ? 'refrang' : 'andning';
 /** Effekt NIVA: ljuset foljer musikens styrka (tak x sektionsskala x forvantan, dropen lyfter mot 1). Ingen puls. */
 const effektNiva = (ceil: number, secScale: number, build: number, dropBoost: number): number => composeEnergy(ceil, secScale, build, 0, 0, dropBoost);
 /** Effekt ANDNING I TAKT (11-10): klockans puls med fast djup pa FRASENS tak (glidande over slowMs, aldrig per slag, sa lugna/starka
@@ -70,6 +72,12 @@ const effektNiva = (ceil: number, secScale: number, build: number, dropBoost: nu
  *  over slowMs. Matt live: fonstret (shape) tillbaka pa 0,5 s efter tystnad, ljuset pa 90 % forst efter 4,3-5,7 s. */
 const ANDNING = { uppMs: 200, slowMs: 2500 };
 const effektAndning = (tak: number, djup: number, pn: number): number => tak * ((1 - djup) + djup * pn);
+/** Effekt REFRANG: samma klockpuls, men slaget gar fullt ut - fullt djup (inget golv under pulsen) och toppen lyft till frasens tak
+ *  (lyft: klockpulsen toppar matt pa ~0,87 av nominell). Taket ar FRASENS (samma som andningen), inte 1: analysatorn haller kvar
+ *  'high' genom tysta partier (matt 11-11: 12 s med fonstret pa 0 och ljuset pa 31-34 %), dar ska refrangen inte pulsa pa 100 %.
+ *  In over inMs (forsta refrangslaget tar), ut over utMs (aldrig snabbare an andningens tak faller). */
+const REFRANG = { lyft: 1.15, inMs: 300, utMs: 2500 };
+const effektRefrang = (tak: number, pn: number): number => tak * Math.min(1, pn * REFRANG.lyft);
 /** Sektionsminnets konsumenter (2026-09-21, se steg 6 i tick): forvarning fore refrang och dynamik mot latens egen refrang. */
 const EXPECT_LIFT_MS = Math.max(0, Number(process.env.LOTUS_EXPECT_LIFT_MS ?? 3000) || 0);
 const SECTION_DYN_DB = Math.max(0, Number(process.env.LOTUS_SECTION_DYN_DB ?? 12) || 0);
@@ -901,7 +909,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _syncMul = 1; private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effCeil = 0;
+  private _syncMul = 1; private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -2029,7 +2037,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; syncMul: number; effekt: LotusEffekt; effektW: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; syncMul: number; effekt: LotusEffekt; effektW: number; effektR: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -2044,7 +2052,7 @@ export class PiLightEngine {
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
       syncMul: this._syncMul,
-      effekt: this._effekt, effektW: this._effW,
+      effekt: this._effekt, effektW: this._effW, effektR: this._effR,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -3220,14 +3228,18 @@ export class PiLightEngine {
     // DIRIGENTEN (11-11) valjer effekt ur analysatorns taktlage: tempo finns -> ANDNING I TAKT, annars NIVA. Kriteriet ar hasBeat (det
     // API:t kallar locked), inte konfidensen - den dippade till 0,2 i kallaren och vaxlade effekten 4 ggr / 3 min (11-10).
     // Vikten glider in 0,3 s / ut 1,5 s; ppTick later sista pulsen klinga ut nar tempot tappas. toNormalized = golv..1 (output-lagret).
-    this._effekt = dirigent(hasBeat(this._beat));
-    const _mot = this._effekt === 'andning' ? 1 : 0;
+    this._effekt = dirigent(hasBeat(this._beat), _f?.section ?? '');
+    const _mot = this._effekt === 'niva' ? 0 : 1;
     this._effW += (_mot - this._effW) * Math.min(1, (this.tickMs || 18) / (_mot ? DIRIGENT.inMs : DIRIGENT.utMs));
     const w = this._effW < 0.001 ? 0 : this._effW;
+    // Andra vikten (steg tva): andning <-> refrang inom taktsidan.
+    const _motR = this._effekt === 'refrang' ? 1 : 0;
+    this._effR += (_motR - this._effR) * Math.min(1, (this.tickMs || 18) / (_motR ? REFRANG.inMs : REFRANG.utMs));
+    const r = this._effR < 0.001 ? 0 : this._effR;
     // Pulsen las ur bada vagarna (utan LOTUS_PULSE_PREDICT gar rastret via onsetBoost).
     const pnEff = Math.min(1, Math.max(this._ppOut, this.onsetBoost) / PULSE_NOMINAL);
     { const _c = ceil * this._secScale; this._effCeil = this._effCeil <= 0 ? _c : this._effCeil + (_c - this._effCeil) * Math.min(1, (this.tickMs || 18) / (_c > this._effCeil ? ANDNING.uppMs : ANDNING.slowMs)); }
-    const energyForm = w * effektAndning(this._effCeil, tc.beatDepth * this._secPulse, pnEff)
+    const energyForm = w * ((1 - r) * effektAndning(this._effCeil, tc.beatDepth * this._secPulse, pnEff) + r * effektRefrang(this._effCeil, pnEff))
       + (1 - w) * effektNiva(ceil, this._secScale, _build, this._dropBoost);
     const outN = toNormalized(energyForm, floorN);
     es.energyForm = energyForm; es.outN = outN;
