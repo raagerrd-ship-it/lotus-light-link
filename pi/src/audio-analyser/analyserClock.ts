@@ -171,6 +171,7 @@ export function publishPhase(f: { beatPhaseMs: number; beatPhaseConf: number; ba
 }
 
 export class BeatFeed {
+  private trustSm = 0; private trustAt = 0;   // dirigenternas tillit (trustStep), stegad sist i update
   onBeatRate = 0;          // andel kickar med |fasfel| < 0.25 (coasten; tilliten utan TRUST_REPEAT)
   repeatRate = 0;          // TRUST_REPEAT: andel kickar på slaget ELLER som upprepar en kick två slag tidigare (tilliten)
   pllKicks = 0;            // hur mycket bevis fasprediktionen faktiskt vilar pa
@@ -482,6 +483,8 @@ export class BeatFeed {
     } else { this.innerValid = false; an.setClockGrid?.(null); }
     frame.bpm = b ? b.bpm : 0; frame.bpmConfidence = b ? (b.confidence ?? 0) : 0;   // EN TILLIT: ramen bär klockans tal
     an.setClock?.(frame.bpm, frame.bpmConfidence);   // odelad väg: analysatorn direkt (taktvägen: HopLaneFast.feed)
+    // EN TILLIT TILL DIRIGENTERNA (11-11): stegas här så varje väg som matar klockan direkt får den (taktvägen: HopLaneFast.feed på motorns tråd)
+    { const dt = this.trustAt > 0 ? now - this.trustAt : 0; this.trustAt = now; frame.beatTrust = this.trustSm = trustStep(this.trustSm, frame.bpmConfidence, cfg.beatErr ?? 0, dt > 250 ? 250 : dt); }
   }
 
   private updateInner(frame: Frame, cfg: EngineConfig, now: number, quietMs: number): void {

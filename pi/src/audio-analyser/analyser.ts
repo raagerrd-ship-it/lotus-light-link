@@ -30,7 +30,7 @@ import {
   BS_BASSLINE, BS_SPEC_N, BS_SKIPPED, BS_CAND, BS_DEMOTED, BS_SPACED, BS_DROPRISE, BS_NEAR, BS_NEARDIP, BS_LIFT, BS_STOPS, BS_STOPSEC, BIG_STATE_LEN, SPEC_SLOTS, SPEC_MAX,
 } from './split.js';
 import FFT from "fft.js";
-import { BeatFeed, publishPhase, trustStep, type ClockCfg } from "./analyserClock.js";   // ANALYSATORNS KLOCKA (a7r): tempogram, rutnät, etta, tillit
+import { BeatFeed, publishPhase, type ClockCfg } from "./analyserClock.js";   // ANALYSATORNS KLOCKA (a7r): tempogram, rutnät, etta, tillit
 
 // ── RATTAR ─────────────────────────────────────────────────────────────────────────────────────
 const ENV: Record<string, string | undefined> | undefined = typeof process !== 'undefined' ? process.env : undefined;
@@ -3083,7 +3083,7 @@ export class Analyser {
     f.prevSection = this.prevSection; f.levelVsHighDb = this.levelVsHighDb;
     f.sectionBars = this.localBpm > 0 && this.sectionStartMs > 0 ? (nowS - this.sectionStartMs) / (240000 / this.localBpm) : 0;
     if (this.clock || this.hopSelf) {
-      if (this.clock) { this.clock.update(f, this.clockOut, this, Date.now()); f.beatTrust = this.trustSm = trustStep(this.trustSm, f.bpmConfidence, this.clockOut.beatErr ?? 0, this.hopMs); }   // KLOCKAN I process() (BEAT_FEED 'inline', eller ingen delning)
+      if (this.clock) this.clock.update(f, this.clockOut, this, Date.now());   // KLOCKAN I process() (BEAT_FEED 'inline', eller ingen delning)
       else this.hopLane!.feed(f, this.clockOut, this);                          // KLOCKAN I WORKERN (lotus delad: taktvägen, egen matning)
       // EN FAS OCH EN ETTA (r0): ramens fas och etta = klockans publicerade rutnät och taktmodell (publishPhase, analyserClock.ts)
       publishPhase(f, this.clockOut.beat, this.clock ? this.clock.barKnown() : this.hopLane!.barKnown, this.extGrid, Date.now(), Analyser.GRID_PHASE_OFFSET_MS);
@@ -3091,7 +3091,7 @@ export class Analyser {
     return f;
   }
   /** ANALYSATORNS KLOCKA utan taktväg (a7r; lotus profil, eller DMX utan delning): körs sist i process(), utfallet här. */
-  clock: BeatFeed | null = null; private trustSm = 0;
+  clock: BeatFeed | null = null;
   readonly clockOut: ClockCfg = { beat: undefined, beatErr: undefined };
   /** Klockans utfall till motorn (som hopLane.feed gör med taktvägen): rutnätet och fasfelet. */
   publishClock(cfg: ClockCfg): void { cfg.beat = this.clockOut.beat; cfg.beatErr = this.clockOut.beatErr; }
