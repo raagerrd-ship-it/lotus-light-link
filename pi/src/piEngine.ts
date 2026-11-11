@@ -56,10 +56,18 @@ export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
  * ännu inte hunnit se (look-ahead inom ett paket). Pulsloggen (notePulse) får slagets exakta tid → PC-facit mäter −lead exakt.
  */
 export const PULSE_PREDICT = TICK_SYNC && process.env.LOTUS_PULSE_PREDICT === '1';
-/** LOTUS ENDA EFFEKT - ANDNING I TAKT (11-10). Som DMX-effekterna bestammer effekten sjalv om energilagret (niva, sektion, drop)
- *  far laggas pa: energy 'off' = bara klockans andning medan tempo finns, 'slow' = andningen pa frasens glidande tak, 'full' = allt. */
-const ANDNING = { energy: 'slow' as 'off' | 'slow' | 'full', slowMs: 2500 };   // 'slow' (11-10 18:4x, 'nastan monotont ljus' med 'off'):
-// energin bara som FRASENS dynamik - taket glidande over slowMs, aldrig per slag, sa lugna/starka partier syns utan flimmer.
+/** LOTUS DIRIGENT + TVA EFFEKTER (agaren 11-11: 'varfor inte kora dirigent pa lotus ocksa? och tva effekter bara?', 'ja bygg steg ett').
+ *  Analysatorn ger taktlaget, dirigenten valjer effekt, effekten styr ljuset. Effekterna vet inget om valet: NIVA vet inget om takt,
+ *  ANDNING vet inget om las. Bytet glider (inMs till andningen, utMs tillbaka) sa sista pulsen klingar ut i stallet for att klippas. */
+type LotusEffekt = 'niva' | 'andning';
+const DIRIGENT = { inMs: 300, utMs: 1500 };
+const dirigent = (takt: boolean): LotusEffekt => takt ? 'andning' : 'niva';
+/** Effekt NIVA: ljuset foljer musikens styrka (tak x sektionsskala x forvantan, dropen lyfter mot 1). Ingen puls. */
+const effektNiva = (ceil: number, secScale: number, build: number, dropBoost: number): number => composeEnergy(ceil, secScale, build, 0, 0, dropBoost);
+/** Effekt ANDNING I TAKT (11-10): klockans puls med fast djup pa FRASENS tak (glidande over slowMs, aldrig per slag, sa lugna/starka
+ *  partier syns utan flimmer). Ingen niva per slag, forvantan eller drop ovanpa. */
+const ANDNING = { slowMs: 2500 };
+const effektAndning = (tak: number, djup: number, pn: number): number => tak * ((1 - djup) + djup * pn);
 /** Sektionsminnets konsumenter (2026-09-21, se steg 6 i tick): forvarning fore refrang och dynamik mot latens egen refrang. */
 const EXPECT_LIFT_MS = Math.max(0, Number(process.env.LOTUS_EXPECT_LIFT_MS ?? 3000) || 0);
 const SECTION_DYN_DB = Math.max(0, Number(process.env.LOTUS_SECTION_DYN_DB ?? 12) || 0);
@@ -348,10 +356,6 @@ export interface LightCalibration {
   /** OSYNK = OSAKER (agaren 19:02: 'battre den gar tillbaka till energi an kor osynk'): rastrets tillit skalas ner nar fasfelet
    *  (|_beatErr|, andel av ett slag) overstiger denna grans (0 vid dubbla), och ar 0 i ateratagningsfonstret efter latbyte. */
   beatSyncErrFrac?: number;
-  /** ENERGI DIREKT (2026-09-24, agaren: 'energi skall styra direkt och inte pa nasta puls som heart-beat kor'): nar taket stiger snabbare
-   *  an sitt eget glidande medel (tau energyRiseTauMs) raknas stigningen som puls direkt, sa lampan ljusnar mellan slagen i stallet for
-   *  forst pa nasta. pnEff = max(pnEff, min(1, (ceil/ceilSlow - 1) x energyRiseK)). 0 = av. */
-  energyRiseK?: number; energyRiseTauMs?: number;
   /** MÄTVERKTYG: spela in N faktiskt skickade BLE-ramar till frames.csv.
    *  Triggas genom att sätta fältet till ett NYTT värde. 0 = av. */
   recordFrames: number;
@@ -895,7 +899,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _syncMul = 1; private _ceilSlow = 0; private _effW = 0; private _effCeil = 0; private _effBd = 0;
+  private _syncMul = 1; private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effCeil = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -2023,7 +2027,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; syncMul: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; syncMul: number; effekt: LotusEffekt; effektW: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -2038,6 +2042,7 @@ export class PiLightEngine {
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
       trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
       syncMul: this._syncMul,
+      effekt: this._effekt, effektW: this._effW,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
       shapeSlow: this._shapeSlow,
@@ -3210,32 +3215,18 @@ export class PiLightEngine {
       if (this._dropBoost < 0.01) this._dropBoost = 0;
     }
 
-    // EN EFFEKT - ANDNING I TAKT (agaren 11-10: 'snyggare/mjukare men anda i takt', 'bygg effekten'): klockans puls (rastret, lead sa
-    // toppen landar pa slaget) med FAST djup beatDepth x sektionens pulsskala. Utan tempo: bd 0 = skenet foljer bara nivan (taket).
-    // Borta: anslagspulsen, tillits-/bevisvikten, hord-takt-vikten och djup efter anslagstathet - de vaxlade och gav hoppen.
-    // DJUPET GLIDER (11-10): in 0,3 s, ut 1,5 s. Forr slog det om 0 <-> beatDepth pa en tick = hopp upp till taket nar tempot
-    // tappades och ner till dalen nar det kom tillbaka. Pulsen las ur bada vagarna (utan LOTUS_PULSE_PREDICT gar rastret via onsetBoost).
+    // DIRIGENTEN (11-11) valjer effekt ur analysatorns taktlage: tempo finns -> ANDNING I TAKT, annars NIVA. Kriteriet ar hasBeat (det
+    // API:t kallar locked), inte konfidensen - den dippade till 0,2 i kallaren och vaxlade effekten 4 ggr / 3 min (11-10).
+    // Vikten glider in 0,3 s / ut 1,5 s; ppTick later sista pulsen klinga ut nar tempot tappas. toNormalized = golv..1 (output-lagret).
+    this._effekt = dirigent(hasBeat(this._beat));
+    const _mot = this._effekt === 'andning' ? 1 : 0;
+    this._effW += (_mot - this._effW) * Math.min(1, (this.tickMs || 18) / (_mot ? DIRIGENT.inMs : DIRIGENT.utMs));
+    const w = this._effW < 0.001 ? 0 : this._effW;
+    // Pulsen las ur bada vagarna (utan LOTUS_PULSE_PREDICT gar rastret via onsetBoost).
     const pnEff = Math.min(1, Math.max(this._ppOut, this.onsetBoost) / PULSE_NOMINAL);
-    const _bdT = hasBeat(this._beat) ? tc.beatDepth * this._secPulse : 0;
-    this._effBd += (_bdT - this._effBd) * Math.min(1, (this.tickMs || 18) / (_bdT > this._effBd ? 300 : 1500));
-    const bd = this._effBd < 0.001 ? 0 : this._effBd;
-
-    // KOMPOSITION (heartbeat.ts composeEnergy): tak × sektionsskala × förväntan × ((1−bd) + bd·pn); dropen lyfter MOT taket
-    // i stället för att adderas — kan aldrig klippa och betyder mest när ljuset är lågt. toNormalized = golv..1 (output-lagrets steg).
-    // ENERGI DIREKT: stigande tak = omedelbar puls (se energyRiseK)
-    { const _tau = Math.max(50, this.cal.energyRiseTauMs ?? 400); this._ceilSlow = this._ceilSlow <= 0 ? ceil : this._ceilSlow + (ceil - this._ceilSlow) * Math.min(1, (this.tickMs || 18) / _tau); }
-    const _riseK = this.cal.energyRiseK ?? 3;
-    const pnRise = _riseK > 0 && this._ceilSlow > 0.02 ? Math.max(0, Math.min(1, (ceil / this._ceilSlow - 1) * _riseK)) : 0;
-    const withEnergy = composeEnergy(ceil, this._secScale, _build, bd, Math.max(pnEff, pnRise), this._dropBoost);
-    // EFFEKTEN STYR SJALV (agaren 11-10: 'pulsen ar lite svag ibland och den flimrar ... effekten borde ju styra sjalv, lagg till att den
-    // far stanga av energi-lagret'): ANDNING.energy 'off' -> nar klockan gar ar ljuset BARA andningen (1 - bd) + bd*pn pa fullt tak ('slow' = pa frasens glidande tak):
-    // ingen niva, sektionsskala, forvantan, nivastigning eller drop ovanpa. Utan tempo tar energilagret over; overgangen glider
-    // (in 0,3 s, ut 1,5 s) sa ett tappat tempo inte blir ett hopp.
-    const _on = _bdT > 0 ? 1 : 0;
-    this._effW += (_on - this._effW) * Math.min(1, (this.tickMs || 18) / (_on ? 300 : 1500));
     { const _c = ceil * this._secScale; this._effCeil = this._effCeil <= 0 ? _c : this._effCeil + (_c - this._effCeil) * Math.min(1, (this.tickMs || 18) / ANDNING.slowMs); }
-    const _effTak = ANDNING.energy === 'slow' ? this._effCeil : 1;
-    const energyForm = ANDNING.energy === 'full' ? withEnergy : this._effW * _effTak * ((1 - bd) + bd * pnEff) + (1 - this._effW) * withEnergy;
+    const energyForm = w * effektAndning(this._effCeil, tc.beatDepth * this._secPulse, pnEff)
+      + (1 - w) * effektNiva(ceil, this._secScale, _build, this._dropBoost);
     const outN = toNormalized(energyForm, floorN);
     es.energyForm = energyForm; es.outN = outN;
   }
