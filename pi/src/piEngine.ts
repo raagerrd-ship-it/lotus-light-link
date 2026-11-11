@@ -65,8 +65,10 @@ const dirigent = (takt: boolean): LotusEffekt => takt ? 'andning' : 'niva';
 /** Effekt NIVA: ljuset foljer musikens styrka (tak x sektionsskala x forvantan, dropen lyfter mot 1). Ingen puls. */
 const effektNiva = (ceil: number, secScale: number, build: number, dropBoost: number): number => composeEnergy(ceil, secScale, build, 0, 0, dropBoost);
 /** Effekt ANDNING I TAKT (11-10): klockans puls med fast djup pa FRASENS tak (glidande over slowMs, aldrig per slag, sa lugna/starka
- *  partier syns utan flimmer). Ingen niva per slag, forvantan eller drop ovanpa. */
-const ANDNING = { slowMs: 2500 };
+ *  partier syns utan flimmer). Ingen niva per slag, forvantan eller drop ovanpa.
+ *  11-11 SNABBT UPP (agaren: "har det varit tyst och en punch kommer sa syns inte det"): taket stiger over uppMs, faller som forut
+ *  over slowMs. Matt live: fonstret (shape) tillbaka pa 0,5 s efter tystnad, ljuset pa 90 % forst efter 4,3-5,7 s. */
+const ANDNING = { uppMs: 200, slowMs: 2500 };
 const effektAndning = (tak: number, djup: number, pn: number): number => tak * ((1 - djup) + djup * pn);
 /** Sektionsminnets konsumenter (2026-09-21, se steg 6 i tick): forvarning fore refrang och dynamik mot latens egen refrang. */
 const EXPECT_LIFT_MS = Math.max(0, Number(process.env.LOTUS_EXPECT_LIFT_MS ?? 3000) || 0);
@@ -3224,7 +3226,7 @@ export class PiLightEngine {
     const w = this._effW < 0.001 ? 0 : this._effW;
     // Pulsen las ur bada vagarna (utan LOTUS_PULSE_PREDICT gar rastret via onsetBoost).
     const pnEff = Math.min(1, Math.max(this._ppOut, this.onsetBoost) / PULSE_NOMINAL);
-    { const _c = ceil * this._secScale; this._effCeil = this._effCeil <= 0 ? _c : this._effCeil + (_c - this._effCeil) * Math.min(1, (this.tickMs || 18) / ANDNING.slowMs); }
+    { const _c = ceil * this._secScale; this._effCeil = this._effCeil <= 0 ? _c : this._effCeil + (_c - this._effCeil) * Math.min(1, (this.tickMs || 18) / (_c > this._effCeil ? ANDNING.uppMs : ANDNING.slowMs)); }
     const energyForm = w * effektAndning(this._effCeil, tc.beatDepth * this._secPulse, pnEff)
       + (1 - w) * effektNiva(ceil, this._secScale, _build, this._dropBoost);
     const outN = toNormalized(energyForm, floorN);
