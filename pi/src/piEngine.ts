@@ -490,7 +490,7 @@ const DEFAULT_CAL: LightCalibration = {
                              // forgiftas av den sparade filen (20 lastes som 2000 %).
   beatSyncStrength: 0.2,     // 09-18: 0,1 (k 0,17) holl inte emot tempodriften; 0,2 (k 0,34) med I-gain 8 (var 0.10)
   dropSource: 'analyser',
-  barAccent: 1.6,            // ettans accent
+  barAccent: 1,              // ettans accent AV (agaren 11-11 "kanns mycket battre"): andningen klipper pulsen vid full hojd, sa 1,6 gjorde ettan bredare (slag 1+2 smalte ihop), inte hogre. Forr 1,6.
   onsetRiseMs: 40,           // 0 gav uppsteg median 26 enheter = strobe; 40 → median 2
   onsetRiseHoldK: 2.0,       // håll målet stilla medan boosten klättrar (bunden hålltid)
   beatTrustLoConf: 0.30,
