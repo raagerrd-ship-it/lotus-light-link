@@ -222,6 +222,14 @@ export interface Frame {
   specAbs: Spectrum;
   /** BASKROPPEN I RA dB (negativt tal, medel av sub+kick+bas), utan AGC - drop-detektorns kropp. */
   bodyDb: number;
+  /** BASENERGIN 0..1 (arenan basenergi 2026-11-11, EN mätning för båda systemen; förr DMX effects.ts bHi/bLo/eBass): bastrycket
+   *  (sub+kick i rå dB, vikt 0,25/0,75) mätt med SLAGET SOM TIDSENHET (klockans tempo; utan klocka 500 ms). 1 = så starkt som de
+   *  starkaste slagen på senare tid, 0 = basens dal (direkt ner, tillbaka på ett kvarts slag). TVÅ SKALOR, samma dal:
+   *  bassEnergy = mot FRASEN (toppen glöms på BE_TOP_BEATS slag: starka och svaga partier skiljs åt), bassEnergyShort = mot TAKTEN
+   *  (toppen glöms på BE_FAST_BEATS slag: varje slag mot sina närmaste grannar, ikapp två slag efter ett nivåbyte). bassEnergyShort >=
+   *  bassEnergy. Bara dB-skillnader: oberoende av ingångsnivån; 0 när ramen är tyst. Ren mätning - vilken skala ljuset följer, kurva,
+   *  uttoning och dropläge ligger i effekterna. Se bassEnergyStep. */
+  bassEnergy: number; bassEnergyShort: number;
   /** ABSOLUT mid+diskant-niva i dB (band 3-7, >250 Hz), RMS-kombinerad, ingen AGC. */
   midHiDb: number;
   /** KICKENS STIGNING, OMÄTTAD (10-28, fynd 10-22/10-27): basens (specAbs sub+kick) stigning i dB mot KICK_RISE_HOPS hop sedan,
@@ -399,6 +407,31 @@ export class Analyser {
   private bandOn = new Float32Array(8);    // scratch: per-band onset denna frame
   private static readonly KICK_RISE_HOPS = 6;   // kickRise-fönstret (16 ms), = DMX:s FEED_RISE_HOPS
   private kickRiseDb = new Float64Array(Analyser.KICK_RISE_HOPS); private kickRisePos = 0;
+  /** BASENERGIN MED SLAGET SOM TIDSENHET (frame.bassEnergy / bassEnergyShort). Alla tider räknas i SLAG ur klockans tempo (60000 / bpm,
+   *  hållet inom BE_BEAT_MIN_MS..BE_BEAT_MAX_MS så ett halv-/dubbeltempo inte flyttar skalan långt; utan klocka BE_FALLBACK_MS):
+   *  TOPPEN följer basen direkt upp och glöms mot den på BE_TOP_BEATS slag (frasens skala) resp. BE_FAST_BEATS slag (taktens skala),
+   *  DALEN följer direkt ner och glider tillbaka på BE_LO_BEATS slag - varje bastryck mäts från sin egen dal, och hur fort skalan
+   *  hinner ikapp ett nivåbyte följer musikens tempo i stället för en klocka i sekunder. Minst BE_MIN_DB brett. Bara dB-SKILLNADER:
+   *  ingen tystnadsgrind och ingen absolut nivå i mätningen (oberoende av ingångsnivån). Fyra tal i tillstånd, inga objekt per hop.
+   *  (Provat och förkastat i arenan: toppen som kvantil/median av de 32 senaste slagtopparna - plattare ljus, sämre takt i bänken.) */
+  private static readonly BE_TOP_BEATS = 16; private static readonly BE_FAST_BEATS = 2; private static readonly BE_LO_BEATS = 0.25; private static readonly BE_MIN_DB = 6;
+  private static readonly BE_BEAT_MIN_MS = 300; private static readonly BE_BEAT_MAX_MS = 600; private static readonly BE_FALLBACK_MS = 500;
+  private beHi = NaN; private beHiShort = NaN; private beLo = NaN; private beShort = 0;
+  /** Stegar skalorna ett hop; returnerar frasens värde, taktens ligger i beShort. */
+  private bassEnergyStep(sub: number, kick: number): number {
+    const x = 5 * Math.log10(sub + 1e-7) + 15 * Math.log10(kick + 1e-7), hopMs = this.dtHop * 1000;   // 0,25 x sub dB + 0,75 x kick dB
+    let per = this.localBpm > 40 ? 60000 / this.localBpm : Analyser.BE_FALLBACK_MS;   // slagets längd ur klockan
+    per = per < Analyser.BE_BEAT_MIN_MS ? Analyser.BE_BEAT_MIN_MS : per > Analyser.BE_BEAT_MAX_MS ? Analyser.BE_BEAT_MAX_MS : per;
+    this.beHi = !(x <= this.beHi) ? x : this.beHi + (x - this.beHi) * (hopMs / (Analyser.BE_TOP_BEATS * per));
+    this.beHiShort = !(x <= this.beHiShort) ? x : this.beHiShort + (x - this.beHiShort) * (hopMs / (Analyser.BE_FAST_BEATS * per));
+    this.beLo = !(x >= this.beLo) ? x : this.beLo + (x - this.beLo) * (hopMs / (Analyser.BE_LO_BEATS * per));
+    const lo = this.beLo, m = Analyser.BE_MIN_DB;
+    let span = this.beHiShort - lo > m ? this.beHiShort - lo : m, e = (x - (this.beHiShort - span)) / span;
+    this.beShort = e > 0 ? (e < 1 ? e : 1) : 0;
+    span = this.beHi - lo > m ? this.beHi - lo : m; e = (x - (this.beHi - span)) / span;
+    return e > 0 ? (e < 1 ? e : 1) : 0;
+  }
+
   private bigCounter = 0;                  // decimering av 2048-FFT:n (se BIG_EVERY)
   private static readonly BIG_EVERY = 3;   // kor stor-FFT var N:e hop → analysen ryms i realtid
   /** bandPeak-decay per stor-FFT (τ ≈ 3.8 s oavsett BIG_EVERY). */
@@ -2006,7 +2039,7 @@ export class Analyser {
     this.outFrame = {
       silent: true, level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
-      dropCount: 0, miniDropCount: 0, dropDemoted: 0, dropSpaced: 0, dropRiseDb: 0, nearDropDb: 0, nearDipDb: 0, liftDb: 0, stopCount: 0, stopS: 0, bodyDb: 0, midHiDb: -120, kickRise: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
+      dropCount: 0, miniDropCount: 0, dropDemoted: 0, dropSpaced: 0, dropRiseDb: 0, nearDropDb: 0, nearDipDb: 0, liftDb: 0, stopCount: 0, stopS: 0, bodyDb: 0, bassEnergy: 0, bassEnergyShort: 0, midHiDb: -120, kickRise: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
       kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, beatTrust: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
@@ -3062,7 +3095,7 @@ export class Analyser {
     f.energy = this.engSmooth;
     f.centroid = this.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
     f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
-    f.bodyDb = bodyNow;
+    f.bodyDb = bodyNow; { const be = this.bassEnergyStep(A[0], A[1]); f.bassEnergy = f.silent ? 0 : be; f.bassEnergyShort = f.silent ? 0 : this.beShort; }
     {   // kickRise: basens dB mot KICK_RISE_HOPS hop sedan (ringen håller de senaste), halvvåg
       const db = 20 * Math.log10(A[0] + A[1] + 1e-7), old = this.kickRiseDb[this.kickRisePos];
       this.kickRiseDb[this.kickRisePos] = db; this.kickRisePos = (this.kickRisePos + 1) % Analyser.KICK_RISE_HOPS;
