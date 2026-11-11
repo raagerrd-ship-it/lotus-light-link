@@ -12,6 +12,16 @@
 import type { Frame } from "./analyser.js";
 /** Klockans grind: under denna tillit räknas takten som osäker (hasBeat i beatClock.ts). */
 export const MIN_BEAT_CONFIDENCE = 0.20;
+/** TILLITEN TILL TAKTEN (2026-11-11, EN källa för båda systemen: frame.beatTrust; förr räknad i DMX effects.ts och i lotus piEngine).
+ *  Klockans tillit över grinden (ramp MIN_BEAT_CONFIDENCE .. +0,37), nerdragen av ihållande fasfel (> SYNC_ERR_FRAC av ett slag) och
+ *  utjämnad över TRUST_TAU_MS. Förr 0,06 per RENDERRUTA i DMX = 81 ms vid rastrets 200 Hz (bildfrekvensberoende); nu i tid, per hop. */
+export const SYNC_ERR_FRAC = 0.2, TRUST_TAU_MS = 81;
+export function trustStep(prev: number, conf: number, beatErr: number, dtMs: number): number {
+  let raw = (conf - MIN_BEAT_CONFIDENCE) / 0.37; raw = raw > 0 ? (raw > 1 ? 1 : raw) : 0;
+  const se = beatErr < 0 ? -beatErr : beatErr;
+  if (se > SYNC_ERR_FRAC) { const m = 1 - (se - SYNC_ERR_FRAC) / SYNC_ERR_FRAC; raw *= m > 0 ? m : 0; }
+  return dtMs > 0 ? prev + (raw - prev) * (1 - Math.exp(-dtMs / TRUST_TAU_MS)) : prev;
+}
 /** Effektklockan ligger så många ms före vikningstoppen (se beatClock.ts). */
 export const GRID_EARLY_MS = 20;
 let isLogOn: () => boolean = () => false;

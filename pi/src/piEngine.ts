@@ -30,7 +30,7 @@ import { bleStats as bleStatsState } from './ble-driver/state.js';
 import { triggerIdleDisconnect, getHardcodedConnected } from './ble-driver/connect.js';
 import { isControllerDrainAttached, getOutstandingPackets } from './ble-driver/controllerDrain.js';
 import { nextRasterEventAt, getRasterStats, resetRasterWindow, NOMINAL_PERIOD_MS } from './ble-driver/raster.js';
-import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, trustRaw, trustSmooth, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams, type PulseSplitOut, PULSE_NOMINAL } from './heartbeat/heartbeat.js';
+import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, ceilingFrom, composeEnergy, toNormalized, type PulseShapeParams, type PulseSplitOut, PULSE_NOMINAL } from './heartbeat/heartbeat.js';
 
 /**
  * TICK-SYNK (2026-09-21, opt-in LOTUS_TICK_SYNC=1): motorn tickar i fas med radions
@@ -868,7 +868,6 @@ export class PiLightEngine {
   private _prevTarget = 0;
   private _riseHold = 0;
   /** Utjämnad trust (0..1) — ersätter det binära hasBeat-beslutet. */
-  private _trustSm?: number;
   private _quietSince = 0; private _musicSinceGc = false; private _lastQuietGc = -1e9;   // LOTUS_GC_QUIET_MS
   private _oldLive = 0; private _lastTrackGc = -1e9; private _gcObs: PerformanceObserver | null = null;   // LOTUS_GC_TRACK
   /** Låtbytesstädningen (se GC_TRACK_FRAC): anropas av index.ts vid varje nytt låtnamn. */
@@ -909,7 +908,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _syncMul = 1; private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0;
+  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -2037,7 +2036,7 @@ export class PiLightEngine {
     locked: boolean; bpm: number; confidence: number; phase: number;
     nextBeatMs: number; beatErr: number; gridPulses: number; leadMs: number; chainMs: number;
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
-    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; syncMul: number; effekt: LotusEffekt; effektW: number; effektR: number;} {
+    dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; effekt: LotusEffekt; effektW: number; effektR: number;} {
     const now = Date.now();
     const lead = this.cal.beatLeadMs;
     return {
@@ -2050,8 +2049,7 @@ export class PiLightEngine {
       gridPulses: this._gridPulseCount,
       subdivLevel: this._subdivLevel,
       octave: { on: this._octOn, hint: this._octHint, ringMs: Math.round(this._octRingMs), perBeat: Math.round(this._octPerBeat * 100) / 100, reg: Math.round(this._octReg * 100) / 100 },
-      trust: Math.max(this.cal.beatTrustFloor ?? 0.35, this._trustSm ?? 0),
-      syncMul: this._syncMul,
+      trust: getLatestFrame()?.beatTrust ?? 0,   // analysatorns tillit (frame.beatTrust), samma tal som DMX-dirigenten laser
       effekt: this._effekt, effektW: this._effW, effektR: this._effR,
       energySm: this.smoothed,
       shapeSm: this._shapeSm,
@@ -3137,23 +3135,8 @@ export class PiLightEngine {
     const _lv = _f ? ((_f as any).levelVsHighDb ?? 0) : 0;
     const ceil = ceilingFrom(shapeUse, bu, cal.buildUpGain ?? 0, one, cal.barAccentLift ?? 0.30, _lv, SECTION_DYN_DB, SECTION_DYN_FLOOR);
 
-    // TRUST — mjuk ramp i stället för binärt. MIN_BEAT_CONFIDENCE är bara 0.20,
-    // så det binära beslutet gav FULLT pulsdjup på mycket svag takt, och snäppte
-    // av/på när konfidensen vandrade kring tröskeln (locked flippade 4×/3 min).
-    // Golvet låter modulationen leva på FAKTISKA transienter när takten är otydlig.
-    const _c = this._beat?.confidence ?? 0;
-    const _lo = this.cal.beatTrustLoConf ?? 0.30;
-    const _hi = this.cal.beatTrustHiConf ?? 0.70;
-    let _tRaw = trustRaw(_c, hasBeat(this._beat), _lo, _hi);
-    // OSYNK -> ENERGI: fasfel over gransen eller ateratagning efter latbyte drar ner den raa tilliten (smoothingen ger 0,8 s ner / 0,4 s upp).
-    const _syncLim = Math.max(0.02, this.cal.beatSyncErrFrac ?? 0.12), _syncErr = Math.abs(this._beatErr);
-    const _syncMul = Date.now() < this._reacqUntil ? 0 : _syncErr <= _syncLim ? 1 : Math.max(0, 1 - (_syncErr - _syncLim) / _syncLim);
-    _tRaw *= _syncMul; this._syncMul = _syncMul;
-    // Rampen ensam räcker inte: conf kan falla 0.79 → 0.00 mellan två ramar.
-    // ASYMMETRISK (09-21): snabbt upp (beatTrustSmoothMs 400), langsamt ner (beatTrustDownMs 3000) - en 3-5 s konfidensdipp
-    // (fill/break) slackte pulsen till 25 % djup pa 0,4 s = "nastan konstant ljus" (sampler 15:41: trust 0,41-0,45 = plattast).
-    const _up = this.cal.beatTrustSmoothMs ?? 400, _down = this.cal.beatTrustDownMs ?? 3000;
-    this._trustSm = trustSmooth(_tRaw, this._trustSm, TICK_PERIOD_MS, _up, _down);
+    // (TILLITEN ar analysatorns sedan 11-11: frame.beatTrust, trustStep i analyserClock.ts. Motorns egen kopia - _trustSm/_syncMul -
+    //  raknades varje tick men nadde aldrig ljuset; borttagen.)
 
     // ── SEKTIONSBETEENDE ────────────────────────────────────────────────
     // Kraver att vi VET var i laten vi ar. Klockan sager null tills den har
@@ -3683,7 +3666,7 @@ export class PiLightEngine {
             const _hb = hasBeat(this._beat);
             const _ph = _hb ? beatPhase(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0)) : -1;
             this._recBuf.push([Math.round(performance.now() - this._recT0), pct, _ph,
-                               this._beat?.bpm ?? 0, this._trustSm ?? 0, this._shapeSm ?? 0,
+                               this._beat?.bpm ?? 0, getLatestFrame()?.beatTrust ?? 0, this._shapeSm ?? 0,
                                this.onsetBoost ?? 0].join(','));
             if (this._recBuf.length === _rf) {
               const _csv = 'tms,pct,phase,bpm,trust,shape,boost\n' + this._recBuf.join('\n') + '\n';

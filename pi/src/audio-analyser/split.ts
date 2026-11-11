@@ -19,6 +19,7 @@
  * createAnalyser) ger BIT-IDENTISKT tempo mot den odelade analysatorn, vilket körbänken bevisar.
  */
 
+import { trustStep } from "./analyserClock.js";   // tilliten utjämnas i hoppets tid (11-11)
 export const REC_LEN = 37;
 export const RING_N = 1024;                    // ~10 s vid 100 Hz — workern får ligga efter utan att tappa
 export const RING_MARGIN = 8;                  // records workern lämnar orörda mot skrivaren (80 ms) — läses aldrig närmare kanten
@@ -207,7 +208,7 @@ export const FS_HOP_SEQ = 0, FS_BEAT = 1 /* cfg.beat: 0 undefined, -1 null, 1 ob
 export const FEED_STATE_LEN = 20;
 
 /** Det taktmatningen läser ur ramen, och det den skriver (cfg.beat/beatErr, frame.bpmConfidence, analysatorns rutnät/kommandon). */
-export interface HopFrame { bpm: number; bpmConfidence: number; beatAnchorMs: number; kickAtMs: number; barShift: number;
+export interface HopFrame { bpm: number; bpmConfidence: number; beatAnchorMs: number; kickAtMs: number; barShift: number; beatTrust?: number;
   onset: { kick: number; highMid: number; treble: number }; specAbs: { sub: number; kick: number; bass: number } }
 export interface HopGrid { anchorMs: number; bpm: number; confidence?: number }
 export interface HopCfg { beat?: HopGrid | null; beatErr?: number }
@@ -223,7 +224,7 @@ export class HopLaneFast {
   private seq = 0; private applied = 0; private rt = 0; private rb = 0;
   private readonly grid = { anchorMs: 0.5, bpm: 0.5, confidence: 0.5 };
   /** Klockans tempo/tillit efter senaste feed - analysatorn läser dem själv i början av nästa process() (a7r, ingen setClock utifrån). */
-  clockBpm = 0; clockConf = 0;
+  clockBpm = 0; clockConf = 0; private trust = 0; private trustAt = 0;
   /** EN ETTA (klocka r0): klockans taktmodell har dömt en etta (workerns senaste publicering). */
   barKnown = false;
   /** inline-läget (bänken): den långsamma sidan körs synkront här. */
@@ -234,7 +235,8 @@ export class HopLaneFast {
   /** Ett hop (efter analysatorn, före effekterna - där motorn förr anropade taktmatningen). */
   feed(f: HopFrame, cfg: HopCfg, an: HopTarget): void {
     const r = this.ring, ctrl = this.ctrl, seq = ++this.seq, o = (seq % HOP_RING_N) * HOP_REC_LEN;
-    r[o + H_NOW] = Date.now(); r[o + H_TS] = performance.timeOrigin + performance.now();
+    const now = Date.now();
+    r[o + H_NOW] = now; r[o + H_TS] = performance.timeOrigin + performance.now();
     r[o + H_BPM] = f.bpm; r[o + H_CONF] = f.bpmConfidence; r[o + H_ANCHOR] = f.beatAnchorMs; r[o + H_KICKAT] = f.kickAtMs; r[o + H_BARSHIFT] = f.barShift;
     r[o + H_ON_KICK] = f.onset?.kick ?? 0; r[o + H_ON_HIMID] = f.onset?.highMid ?? 0; r[o + H_ON_TREBLE] = f.onset?.treble ?? 0;
     r[o + H_SA_SUB] = f.specAbs?.sub ?? 0; r[o + H_SA_KICK] = f.specAbs?.kick ?? 0; r[o + H_SA_BASS] = f.specAbs?.bass ?? 0;
@@ -247,6 +249,8 @@ export class HopLaneFast {
     this.apply(cfg, an);
     // EN KÄLLA (r0): ramen och analysatorn bär klockans tempo och tillit (0/0 utan klocka) - samma tal för ljuset, låtgränsen och sektionerna
     const b = cfg.beat; f.bpm = b ? b.bpm : 0; f.bpmConfidence = b ? (b.confidence ?? 0) : 0; this.clockBpm = f.bpm; this.clockConf = f.bpmConfidence;   // a7r: analysatorn läser dem själv i nästa process()
+    // EN TILLIT TILL DIRIGENTERNA (11-11): utjämnad i hoppets tid (trustStep, analyserClock.ts)
+    { const dt = this.trustAt > 0 ? now - this.trustAt : 0; this.trustAt = now; f.beatTrust = this.trust = trustStep(this.trust, f.bpmConfidence, cfg.beatErr ?? 0, dt > 250 ? 250 : dt); }
   }
   private apply(cfg: HopCfg, an: HopTarget): void {
     const s = this.s, ctrl = this.ctrl;

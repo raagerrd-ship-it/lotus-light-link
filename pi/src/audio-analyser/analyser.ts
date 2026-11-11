@@ -30,7 +30,7 @@ import {
   BS_BASSLINE, BS_SPEC_N, BS_SKIPPED, BS_CAND, BS_DEMOTED, BS_SPACED, BS_DROPRISE, BS_NEAR, BS_NEARDIP, BS_LIFT, BS_STOPS, BS_STOPSEC, BIG_STATE_LEN, SPEC_SLOTS, SPEC_MAX,
 } from './split.js';
 import FFT from "fft.js";
-import { BeatFeed, publishPhase, type ClockCfg } from "./analyserClock.js";   // ANALYSATORNS KLOCKA (a7r): tempogram, rutnät, etta, tillit
+import { BeatFeed, publishPhase, trustStep, type ClockCfg } from "./analyserClock.js";   // ANALYSATORNS KLOCKA (a7r): tempogram, rutnät, etta, tillit
 
 // ── RATTAR ─────────────────────────────────────────────────────────────────────────────────────
 const ENV: Record<string, string | undefined> | undefined = typeof process !== 'undefined' ? process.env : undefined;
@@ -194,6 +194,9 @@ export interface Frame {
   beatPhaseMs: number;
   /** Gridfasens on/half-kvot (>1 = slagfasen starkare an halvslagsfasen; ~1 = tvetydig). */
   beatPhaseConf: number;
+  /** TILLITEN TILL TAKTEN 0..1 (11-11): klockans tillit över grinden, nerdragen av fasfel, utjämnad (trustStep i analyserClock.ts).
+   *  Dirigenternas grind i båda systemen - ingen motor räknar en egen. */
+  beatTrust: number;
   /** SEKTION (09-20, opt-in LOTUS_SECTION=1) - realtidens sektionstillstand relativt LATENS EGEN historik, for
    *  orkestrering (DMX-dirigenten, Lotus show): 'intro' | 'low' (vers/lugnt) | 'build' (uppbyggnad) | 'high' (refrang/drop)
    *  | 'break' (svacka efter topp). Ingen latkunskap kravs; refrangen kanns igen som upprepning (repeat*). */
@@ -2004,7 +2007,7 @@ export class Analyser {
       silent: true, level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
       dropCount: 0, miniDropCount: 0, dropDemoted: 0, dropSpaced: 0, dropRiseDb: 0, nearDropDb: 0, nearDipDb: 0, liftDb: 0, stopCount: 0, stopS: 0, bodyDb: 0, midHiDb: -120, kickRise: 0, inZone: false, breaking: false, buildUp: 0, inRiser: false, profile: this.outProfile, beatAnchorMs: 0,
-      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
+      kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, beatTrust: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
       spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
     };
     // Ramen och dess delobjekt skrivs varje hop av optimerad kod: ge alla talfalt Double-form redan har (se stabiliseNumbers).
@@ -3080,7 +3083,7 @@ export class Analyser {
     f.prevSection = this.prevSection; f.levelVsHighDb = this.levelVsHighDb;
     f.sectionBars = this.localBpm > 0 && this.sectionStartMs > 0 ? (nowS - this.sectionStartMs) / (240000 / this.localBpm) : 0;
     if (this.clock || this.hopSelf) {
-      if (this.clock) this.clock.update(f, this.clockOut, this, Date.now());   // KLOCKAN I process() (BEAT_FEED 'inline', eller ingen delning)
+      if (this.clock) { this.clock.update(f, this.clockOut, this, Date.now()); f.beatTrust = this.trustSm = trustStep(this.trustSm, f.bpmConfidence, this.clockOut.beatErr ?? 0, this.hopMs); }   // KLOCKAN I process() (BEAT_FEED 'inline', eller ingen delning)
       else this.hopLane!.feed(f, this.clockOut, this);                          // KLOCKAN I WORKERN (lotus delad: taktvägen, egen matning)
       // EN FAS OCH EN ETTA (r0): ramens fas och etta = klockans publicerade rutnät och taktmodell (publishPhase, analyserClock.ts)
       publishPhase(f, this.clockOut.beat, this.clock ? this.clock.barKnown() : this.hopLane!.barKnown, this.extGrid, Date.now(), Analyser.GRID_PHASE_OFFSET_MS);
@@ -3088,7 +3091,7 @@ export class Analyser {
     return f;
   }
   /** ANALYSATORNS KLOCKA utan taktväg (a7r; lotus profil, eller DMX utan delning): körs sist i process(), utfallet här. */
-  clock: BeatFeed | null = null;
+  clock: BeatFeed | null = null; private trustSm = 0;
   readonly clockOut: ClockCfg = { beat: undefined, beatErr: undefined };
   /** Klockans utfall till motorn (som hopLane.feed gör med taktvägen): rutnätet och fasfelet. */
   publishClock(cfg: ClockCfg): void { cfg.beat = this.clockOut.beat; cfg.beatErr = this.clockOut.beatErr; }
