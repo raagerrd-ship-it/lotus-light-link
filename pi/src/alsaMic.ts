@@ -511,6 +511,8 @@ export function getLatestFrameAt(): number { return _mn.latestFrameAt; }
 export function setAnalyserBeatGrid(grid: { bpm: number; anchorMs: number } | null): void {
   analyser.setBeatGrid(grid);
 }
+/** Klockans ihållande fasfel (andel av ett slag) - telemetri till UI:t. */
+export function getAnalyserBeatErr(): number { return analyser.clockOut.beatErr ?? 0; }
 /** Mjuk låtbytes-hint till tempo-sökningen (Sonos trackName ändrades). */
 export function hintAnalyserTrackChange(windowMs = 5000): void {
   analyser.hintTrackChange(windowMs);

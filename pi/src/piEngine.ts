@@ -21,7 +21,7 @@ import { BASS_BODY, BASS_SUBKICK, BassBodyWindow, subKickDb } from './bassBody.j
 import { renderBegin, renderEnd } from './perfStats.js';   // GC/tick/loop alltid på, GET /api/perf (10-18, samma fil som dmx-control)
 import { getHeapStatistics, getHeapSpaceStatistics } from 'v8';
 import { constants as perfConstants } from 'node:perf_hooks';
-import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getRecentKicksInto, getLatestKickAt } from './alsaMic.js';
+import { getLatestBands, getLatestFrame, getLatestFrameAt, resetFluxState, onFFTReady, onFluxReady, stopMic, setBeatCutoffHz, setAnalyserBeatGrid, getAnalyserBeatErr, hintAnalyserTrackChange, FRAME_MS, getLightRawRms, audioClockMs, onLandmarks as micOnLandmarks, resetLandmarks, startFineEnergy, stopFineEnergy, getRecentKicks, getRecentKicksInto, getLatestKickAt } from './alsaMic.js';
 import type { Frame } from './audio-analyser/index.js';
 import { hasBeat, beatIndex, beatPhase, nextBeatIn, MIN_BEAT_CONFIDENCE, type Beat } from './audio-analyser/beatClock.js';
 import { sendToBLE, clearQueuedWrite, flushQueuedWriteNow, hasQueuedWrite, setIdleColor, setSlotLeaseMs, startKeepAlive, stopKeepAlive } from './ble-driver/protocol.js';
@@ -159,30 +159,7 @@ const SYNC_MAX_MS = 3000;
  * satt LOTUS_SYNC_PROBE=1 nar den behovs.
  */
 const SYNC_PROBE_ON = process.env.LOTUS_SYNC_PROBE === '1';
-/** OPT-IN (LOTUS_PLL_RING=1): PLL:en fasar mot kick-RINGEN (analysatorns sub-hop-tid per slag) i stallet for
- *  motorns egen onset vid ticktid. MATT 09-18: ringens kickar ar GRINDADE mot vart eget grid i analysatorn
- *  (+-max(30, 0,15*slag) ms runt attondelslinjerna) och forsta transienten efter att fonstret oppnar rapporteras
- *  -> PLL:en jagar sin egen grindkant: err = -0,9 x tolerans i alla lagen (-65 @130, -75..-80 @105-113,
- *  -7..-20 @224) oavsett gain och tempo, ankaret drev -20 ms/slag, och integratorn tolkade jakten som
- *  snabbare tempo (skenade till 2x). Motorns onset vid ticktid har i stallet en KONSTANT fordrojning
- *  (err -5..-35 @124, drift = bara analysatorns heltalskvantisering) som beatLeadMs absorberar. */
-const PLL_RING_ON = process.env.LOTUS_PLL_RING === '1';
-/** GRIDFAS-FOLJARE (2026-09-20, opt-in LOTUS_PHASE_FOLLOW=1): analysatorns beatPhaseMs (fasanalys pa bas- + helbandsringen,
- *  LOTUS_GRID_PHASE=1) styr gridets fas i stallet for enskilda kickar. Korpusens handelseloggar: pulserna i motfas (lampan pa
- *  off-beaten) i 9 av 39 latar med ratt tempo - kick-PLL:en slapper bara in kickar inom +-1/4 slag och bekraftar darfor ett
- *  grid pa attondelsbasen for alltid. Foljaren tillater fel upp till ett halvt slag (tva raka matningar med kvot >= 1,3
- *  flyttar fasen), annars sma steg (0,3 av felet per ny matning, 4 Hz). Kick-PLL:en ar AV nar foljaren ar pa. */
-const PHASE_FOLLOW_ON = process.env.LOTUS_PHASE_FOLLOW === '1';
-const PHASE_TRACE = process.env.LOTUS_PHASE_TRACE === '1';   // tillfallig sparlogg (4 Hz, forsta 400 matningarna)
-/** Halvslagsflip i foljaren: kvot >= 2,0 i 4 raka matningar (1 s). Var 1,3/2 - 903 flippar pa 2 h. Korbank f3 (1,6/4) = f1 i fas, sa strangt kostar inget. */
-const PHASE_FLIP_CONF = Number(process.env.LOTUS_PHASE_FLIP_CONF) || 2.0;
-const PHASE_FLIP_VOTES = Number(process.env.LOTUS_PHASE_FLIP_VOTES) || 4;
-/** Live 15:14-15:45: pulserna lag KONSTANT 50-100 ms fel per lat (Status del tva +96 ms, IQR 15) = gridets tempo (12 s-median)
- *  slapar 1-2 % efter analysatorns -> foljaren jagar med konstant slap (err_ss = drift/kP). Integralterm: bpm foljer fasdriften,
- *  klampad till +-4 % av analysatorns bpm. Bias: analysatorns fasmatning ligger 20 ms sen mot Beat This! (bank, 136 latar). */
-const PHASE_KP_HI = Number(process.env.LOTUS_PHASE_KP_HI) || 0.4;
-const PHASE_KP_LO = Number(process.env.LOTUS_PHASE_KP_LO) || 0.2;
-const PHASE_KI_BPM = Number(process.env.LOTUS_PHASE_KI_BPM) || 0.8;      // BPM per slag fasfel per matning (4 Hz)
+/** Klockans fas ligger 20 ms sen mot Beat This! (bank, 136 latar) - dras fran analysatorns ankare i updateBeatClock. */
 const PHASE_BIAS_MS = Number(process.env.LOTUS_PHASE_BIAS_MS ?? 20);
 
 /**
@@ -825,10 +802,8 @@ export class PiLightEngine {
   private _learnLastAt = 0; private _learnLastRingAt = 0; private _learnLastKick = 0; private _learnStartAt = 0;
   private _learnSaver: ((artist: string, title: string, summary: Record<string, number>) => void) | null = null;
   /** TEMPOSTABILITET (09-19): 1 Hz-fonster av analysatorns (bpm, conf); gridet far den viktade medianen. */
-  private _tempoWin: { t: number[]; bpm: number[]; conf: number[] } = { t: [], bpm: [], conf: [] };
   // Arbetsbuffertar (10-18): tempofonstrets goda sampel sorterade (~beatTempoSmoothS st), kickringen, oktavregelns fack. Ett objekt = inte motorns tillstand.
   private _scr = { twB: new Float64Array(256), twC: new Float64Array(256), ks: new Float64Array(64), obK: new Float64Array(64), obC: new Float64Array(64) };
-  private _tempoWinLastAt = 0; private _tempoSm = 0;
   /** Oktavregelns senaste ringmatt (per slag) + rakning for inlarningsraden. */
   private _octRingMs = 0; private _octPerBeat = 0; private _octReg = 0; private _octOn = false; private _octBeats = 0; private _octBeatsTotal = 0;
   /** AUTOMATISK OKTAVLEDTRAD (09-19): lard ur facit vid forra spelningen av samma lat (2 = analysatorn en oktav under, 0.5 = over, 1 = ratt/okand). */
@@ -934,10 +909,7 @@ export class PiLightEngine {
 
   // ── Taktklocka (beatClock) + PLL ──
   private _beat: Beat | null = null;   // fas + tempo, knuffad av verkliga kicks
-  private _beatDetBpm = 0;             // senast om-ankrat BPM från analysatorn
   private _beatErr = 0;                // utsmetat fasfel (endast telemetri)
-  private _pllLastKick = 0;            // senaste ring-kick PLL:en konsumerat (LOTUS_PLL_RING)
-  private _phaseLastMs = 0; private _phaseFlipVotes = 0; private _phaseFlips = 0; private _phaseTraceN = 0;   // gridfas-foljaren (LOTUS_PHASE_FOLLOW)
   private _lastGridIdx = -1;           // senaste taktnummer som fyrade en puls
   private _lastGridIdxH = -1;          // senaste HALVSLAG som fyrade en puls (auto-dubbel)
   private _subdivLevel = 0;             // -1 = ½×, 0 = 1×, 1 = 2×
@@ -945,8 +917,6 @@ export class PiLightEngine {
   private _pulseIntervalMs = 0;
   private _gridPulseCount = 0;
   private _reacqUntil = 0;             // vidgat re-lås-fönster efter låtbyte
-  private _beatConfidentAt = 0;        // senast takten var pålitlig (coast-timeout)
-  private _beatWasLocked = false;      // har låset varit bekräftat i denna låt?
 
   private cal: LightCalibration;
 
@@ -1708,7 +1678,6 @@ export class PiLightEngine {
     this.learnReset();
     this._octOn = false; this._octBeats = 0; this._octBeatsTotal = 0; this._octRingMs = 0; this._octPerBeat = 0; this._octReg = 0; this._octHint = 1;
     this._tempoHintRatio = 1; this._tempoHintAnBpm = 0; this._tempoHintApplied = false;
-    this._tempoWin.t.length = 0; this._tempoWin.bpm.length = 0; this._tempoWin.conf.length = 0; this._tempoWinLastAt = 0; this._tempoSm = 0;   // nytt fonster for ny lat (re-acq kor ra i 5 s)
     this._songBpm = 0;
     this._songEntry = null;
     this._metaBpm = 0; this._metaSource = ''; this._metaRatio = 0; this._metaVerdict = ''; this._metaDrives = false;
@@ -1785,31 +1754,20 @@ export class PiLightEngine {
 
     const now = Date.now();
     this._reacqUntil = now + 5000;
-    this._beatWasLocked = false;      // coast gäller inom EN låt
-    this._beatConfidentAt = now;      // ge nya låten full coast-budget
-    this._beatDetBpm = 0;             // nästa analysator-BPM får om-ankra direkt
     hintAnalyserTrackChange(5000);
     dlog('beat', `Track change → re-acquisition window 5s (guess ${Math.round(this._beat?.bpm ?? 0)} BPM)`);
   }
 
-  private updateBeatClock(kick: boolean): void {
+  /** MOTORNS TAKT = ANALYSATORNS KLOCKA (11-11, agaren: klockan in i analysatorn - samma klocka som DMX laser via cfg.beat).
+   *  Ramen bar klockans publicerade rutnat: bpm, bpmConfidence och beatPhaseMs (ankaret). Motorn raknar inget eget langre: ingen
+   *  tempomedian (12 s), ingen gridfas-foljare, ingen kick-PLL, ingen egen utrullning (klockan rullar sjalv genom break och slapper
+   *  efter 10 s tystnad), inget tempo ur latminne/katalog. Det enda motorn ager ar SLAGINDEXET: ankaret flyttas hela slag sa att
+   *  index + fas fortsatter (annars fyrar gridpulsen pa indexhoppet, 17:15-buggen). PHASE_BIAS_MS: klockans fas ligger 20 ms sent
+   *  mot Beat This! (bank, 136 latar). Bank (lotusbank 11-10, 'foljare raw' = detta, 'f1' = gamla foljaren): puls on-beat 0,97 mot
+   *  0,99, i fas 239 mot 240 latar, IQR 11 mot 13 ms, |offset| 9 mot 9 ms. Backup: backup/fore-klockan-ur-analysatorn-20261111. */
+  private updateBeatClock(): void {
     const frame = getLatestFrame();
-    // KÄNT TEMPO SLÅR ANALYSATORNS. Fasen kommer fortfarande från micen — den är
-    // BRA på fas (uppmätt −8 ms) och dålig på tempo, och det är precis tempot
-    // minnet tar över. Sonos egen position duger inte till fas: den är
-    // kvantiserad till hela sekunder (uppmätt), alltså ±500 ms = ett helt slag.
-    // Samma reglage galler tempot: ar inspelningen avstangd ska INGET komma ur
-    // minnet, annars vore jamforelsen mot realtid inte arlig.
-    const _useRec = this.cal.useRecording !== false;
-    let _memBpm = _useRec ? this._songBpm : 0;
-    // KATALOGTEMPO (09-18): nar latminnet inte driver far ett publicerat BPM (Deezer via Sonos
-    // artist+titel) gora det — men bara om det stammer med analysatorn: kvot 1/2, 1, 2
-    // (analysatorns fonster [80,160) viker oktaver) eller 2/3, 3/2 (dess kanda fantomer), inom
-    // +-5 %. En felmatchad lat far aldrig styra ljuset. Tills analysatorn har ett sakert varde
-    // galler katalogen provisoriskt (battre an ingenting). Domen sparas i katalogcachen.
-    // FACIT-LAGE (09-18, anvandarens beslut): domen falls ALLTID (det ar lardatan), men katalogen far
-    // driva gridet bara med useMetaTempo=true. Lampan ska ga pa var analysator - katalogen lar den.
-    this._metaDrives = false;
+    // KATALOGTEMPO SOM FACIT (09-18): domen falls alltid (lardata i katalogcachen), katalogen driver aldrig rutnatet.
     if (this._metaBpm > 0 && this._metaVerdict === 'vantar') {
       const an = frame?.bpm ?? 0, ac = frame?.bpmConfidence ?? 0;
       if (an > 40 && ac >= 0.6) {
@@ -1821,214 +1779,21 @@ export class PiLightEngine {
         try { this._metaVerdictSaver?.(this._songArtist, this._songTitle, this._metaVerdict, an, r); } catch { /* cachen far aldrig falla motorn */ }
       }
     }
-    if (_memBpm <= 0 && this._metaBpm > 0 && this.cal.useMetaTempo === true && this._metaVerdict !== 'avvisat') { _memBpm = this._metaBpm; this._metaDrives = true; }
     if (isDebugEnabled()) this.learnSample(frame);   // inlarningen (facit/statistik per lat) bara med felsokning (2026-10-04)
-    const nowMs = Date.now();
-    const reacq = nowMs < this._reacqUntil;
-    // TEMPOSTABILITET (09-19): analysatorns ogonblicksvarde hoppade 97-108 pa 45 s ("Kla av mig",
-    // conf 0,5-0,96) -> atta om-ankringar och fasfel -50..+38 vid varje. Medianen over samma 45 s
-    // var 101 hela tiden. Gridet far darfor ett konfidensviktat median-tempo over de senaste
-    // beatTempoSmoothS sekunderna (1 Hz-sampel, conf >= 0,5); ra-vardet bara under re-acquisition
-    // (ny lat) och tills fonstret har 5 sampel. Reagerar pa ett riktigt tempobyte pa ~halva fonstret.
-    const rawBpm = frame?.bpm ?? 0, rawConf = frame?.bpmConfidence ?? 0;
-    const smoothS = this.cal.beatTempoSmoothS ?? 12;
-    if (smoothS > 0 && nowMs - this._tempoWinLastAt >= 1000) {
-      this._tempoWinLastAt = nowMs;
-      // (skrapjakten 10-18: tre talarrayer i st f ett objekt per sekund + filter/kopia/sort/reduce; de goda sorteras stabilt
-      // efter bpm med insattningssortering = samma ordning som Array.sort, och summorna tas i samma ordning)
-      const W = this._tempoWin;
-      if (rawBpm > 40) { W.t.push(nowMs); W.bpm.push(rawBpm); W.conf.push(rawConf); }
-      while (W.t.length && nowMs - W.t[0] > smoothS * 1000) { W.t.shift(); W.bpm.shift(); W.conf.shift(); }
-      const gb = this._scr.twB, gc = this._scr.twC; let ng = 0;
-      for (let i = 0; i < W.t.length && ng < gb.length; i++) if (W.conf[i] >= 0.5) {
-        const b = W.bpm[i], c = W.conf[i]; let j = ng - 1;
-        while (j >= 0 && gb[j] > b) { gb[j + 1] = gb[j]; gc[j + 1] = gc[j]; j--; }
-        gb[j + 1] = b; gc[j + 1] = c; ng++;
-      }
-      if (ng >= 5) {
-        let tot = 0; for (let i = 0; i < ng; i++) tot += gc[i];
-        let acc = 0; let m = gb[0];
-        for (let i = 0; i < ng; i++) { acc += gc[i]; if (acc >= tot / 2) { m = gb[i]; break; } }
-        this._tempoSm = m;
-      } else this._tempoSm = 0;
+    const bpm = frame?.bpm ?? 0, pm = frame?.beatPhaseMs ?? 0;
+    this._beatErr = getAnalyserBeatErr();
+    // Ingen klocka: takten slapps (hasBeat falskt via tilliten 0) men rutnatet ligger kvar, sa slagindexet fortsatter framat nar klockan ar tillbaka.
+    if (!(bpm > 40) || pm <= 0) { if (this._beat) this._beat.confidence = 0; setAnalyserBeatGrid(null); return; }
+    const per = 60000 / bpm, target = pm - PHASE_BIAS_MS, conf = frame?.bpmConfidence ?? 0;
+    if (!this._beat) this._beat = { anchorMs: target, bpm, confidence: conf };
+    else {
+      const nowMs = Date.now();
+      const n = Math.round((nowMs - this._beat.anchorMs) / (60000 / this._beat.bpm) - (nowMs - target) / per);   // hela slag mellan motorns index och klockans
+      this._beat.anchorMs = target - n * per; this._beat.bpm = bpm; this._beat.confidence = conf;
     }
-    let anBpm = (!reacq && smoothS > 0 && this._tempoSm > 0) ? this._tempoSm : rawBpm;
-    // TEMPOLEDTRAD (09-19, rapporten "Tio latar mot facit"): analysatorn hade ratt tempo i 3 av 10, fantom 3/2
-    // eller 4/3 i 4, halva i 1. Domen vid latslut sparas som klass pa laten; nasta spelning multipliceras
-    // analysatorns (medianade) varde med klassen - men bara nar analysatorn ligger inom +-8 % av vad den
-    // sa forra gangen, sa en analysator som denna gang har ratt inte forstors. Inlarning tillampad,
-    // inte katalogstyrning: fasen och tempot kommer fortfarande ur ljudet.
-    if (!reacq && this._tempoHintRatio !== 1 && anBpm > 0 && this._tempoHintAnBpm > 0 && Math.abs(anBpm / this._tempoHintAnBpm - 1) < 0.08) {
-      anBpm *= this._tempoHintRatio;
-      if (!this._tempoHintApplied) { this._tempoHintApplied = true; console.log(`[takt] tempoledtrad tillampad: analysatorn ${(anBpm / this._tempoHintRatio).toFixed(1)} -> grid ${anBpm.toFixed(1)}`); }
-    }
-    const bpm = _memBpm > 0 ? _memBpm : anBpm;
-    // Ett känt tempo är inte en gissning — låt inte en svag mic sänka förtroendet.
-    const conf = _memBpm > 0 ? Math.max(rawConf, 0.9) : rawConf;
-
-    if (bpm > 40) {
-      // Under re-acquisition räcker 0.5 BPM avvikelse för att om-ankra (annars 2),
-      // så en ny takt landar utan att glida in via PLL:en.
-      if (!this._beat || Math.abs(bpm - this._beatDetBpm) > (reacq ? 0.5 : 2)) {
-        this._beatDetBpm = bpm;
-        let anchor = frame?.beatAnchorMs || nowMs;
-        let bpmNew = bpm;
-        if (this._beat) {
-          // TEMPO (09-18): analysatorns BPM ar HELTAL och hoppade 105-114 pa en lat vars
-          // kick-ring gav 110,8 (parsummor av attondelsintervall). Varje hopp >2 satte
-          // gridets bpm till ett fel heltal, klampen +-4 runt det nadde inte ens ratt
-          // tempo, och P-steget stod i jamvikt mot driften pa -75 ms ("takten kanns
-          // efter"). Sma hopp behaller darfor PLL:ens forfinade bpm; bara ett riktigt
-          // tempobyte (>= beatBpmKeep) eller re-acquisition tar analysatorns varde.
-          if (!reacq && Math.abs(bpm - this._beat.bpm) < bpm * (this.cal.beatBpmKeep ?? 0.25)) bpmNew = this._beat.bpm;
-          // Bevara nuvarande fas vid tempoändring så pulsen inte hoppar.
-          const oldMs = 60000 / this._beat.bpm, newMs = 60000 / bpmNew;
-          // Bevara slagindex + fas (k = (now - anchor)/period), inte bara fasen - annars nollstalls beatIndex och gridpulsen fyrar (17:15)
-          const kk = (nowMs - this._beat.anchorMs) / oldMs;
-          anchor = nowMs - kk * newMs;
-        }
-        this._beat = { anchorMs: anchor, bpm: bpmNew, confidence: conf };
-      } else {
-        this._beat.confidence = conf;
-      }
-    }
-
-    // ── COAST: håll låset genom breakdowns ──
-    // Inom SAMMA låt (ingen track-change-hint) och när låset en gång varit
-    // bekräftat: en confidence-dipp får inte tappa taktlåset — då flappar
-    // grid-pulserna av/på i varje tyst parti. Vi behåller tempo+fas och låter
-    // PLL:en re-synka mjukt när slagen kommer tillbaka. Låset släpps bara vid
-    // faktiskt låtbyte eller >8 s helt utan pålitlig takt.
-    if (this._beat) {
-      if ((this._beat.confidence ?? 0) >= MIN_BEAT_CONFIDENCE) {
-        this._beatConfidentAt = nowMs;
-        this._beatWasLocked = true;
-      } else if (this._beatWasLocked && !reacq && nowMs - this._beatConfidentAt < 8000) {
-        this._beat.confidence = MIN_BEAT_CONFIDENCE;    // coasta på rutnätet
-      } else if (this._beatWasLocked && nowMs - this._beatConfidentAt >= 8000) {
-        this._beatWasLocked = false;                    // långvarig taktlöshet → släpp
-      }
-    }
-
-    // Ge analysatorn vårt grid: den grindar kick-kandidater mot takten och kan
-    // räkna taktfas (barShift). Utan grid faller den tillbaka på ogrindad flux.
-    // B4: scratch-objekt i stället för nyallokering var frame (~75 Hz) — enda
-    // kvarvarande per-frame-heap-allokeringen i den heta loopen (matade GC-pausen).
-    if (this._beat) {
-      this._gridScratch.bpm = this._beat.bpm;
-      this._gridScratch.anchorMs = this._beat.anchorMs;
-      setAnalyserBeatGrid(this._gridScratch);
-    } else {
-      setAnalyserBeatGrid(null);
-    }
-
-    if (!this._beat) return;
-
-    // RINGEN, INTE TICKEN (09-18): frame.kickAtMs ar nollskild pa EN hop per slag,
-    // sa ticken (1 av 7-9 hoppar) sag den nastan aldrig och foll tillbaka pa sin
-    // egen Date.now() = onset-detektorn pa bandtakt + tickkvantisering. Uppmatt
-    // (histogram ring-kick mot grid, 143 kickar, P=9): gridet 52 ms SENT, IQR 42 ms,
-    // och det fick beatLeadMs (132 = 87 stigtid + 45 utlatens) aldrig kompensera.
-    // Ringen bar analysatorns sub-hop-tid (+-1,3 ms) for VARJE slag; hogst ett nytt
-    // per tick (slag >=100 ms isar). LOTUS_PLL_RING=0 ger gamla vagen for A/B.
-    if (PHASE_FOLLOW_ON) {
-      const pm = frame?.beatPhaseMs ?? 0;
-      if (pm <= 0 || pm === this._phaseLastMs) return;            // ingen ny fasmatning (4 Hz) - kickar styr inte
-      this._phaseLastMs = pm;
-      // SAMMA TEMPO (15:10, live-spar): vid latbyten ligger gridet kvar pa forra tempot (150 mot analysatorns 101) i
-      // sekunder - fasfelet ar da meningslost och flyttade ankaret slumpmassigt (flip var 0,75 s). Folj bara nar
-      // analysatorns tempo = gridets (+-4 %); annars hall.
-      const anB = frame?.bpm ?? 0;
-      if (anB <= 0 || Math.abs(anB / this._beat.bpm - 1) >= 0.04) { this._phaseFlipVotes = 0; return; }
-      const beatMsNow = 60000 / this._beat.bpm;
-      const ph = ((((pm - PHASE_BIAS_MS - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
-      const err = ph < 0.5 ? ph : ph - 1;                          // -0,5..0,5 slag: + = analysatorns slag ligger EFTER gridet
-      const pconf = frame?.beatPhaseConf ?? 1;
-      this._beatErr = this._beatErr * 0.85 + err * 0.15;
-      if (PHASE_TRACE && this._phaseTraceN < 400) { this._phaseTraceN++; console.log(`[fasspar] now ${nowMs} pm ${Math.round(pm)} anchor ${Math.round(this._beat.anchorMs)} bpm ${this._beat.bpm.toFixed(2)} anBpm ${frame?.bpm} err ${err.toFixed(3)} conf ${pconf.toFixed(2)} kick ${Math.round(frame?.beatAnchorMs ?? 0)}`); }
-      if (Math.abs(err) > 0.35) {
-        if (pconf >= PHASE_FLIP_CONF && ++this._phaseFlipVotes >= PHASE_FLIP_VOTES) {
-          // KICKARNA SOM DOMARE (09-21, "dubbelblink"): analysatorns fas flyttade gridet 0,4 slag fram och tillbaka inom en
-          // minut (kvot 3,2/6,0) pa 16-delsbas -> pulsen mellan kickarna medan energin foljer kickarna = tva bumpar per slag.
-          // Flytta bara om de senaste ~8 slagens riktiga kickar ligger tydligt narmare den nya fasen an den gamla.
-          const ks = this._scr.ks, kn = getRecentKicksInto(ks); const since = nowMs - 8 * beatMsNow; let n = 0, sCur = 0, sNew = 0;   // (allokeringsfritt, 10-18)
-          const newAnchor = this._beat.anchorMs + err * beatMsNow;
-          for (let i = kn - 1; i >= 0 && ks[i] >= since; i--) {
-            const k = ks[i]; n++;
-            const pc = ((((k - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
-            const pn = ((((k - newAnchor) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
-            sCur += Math.cos(2 * Math.PI * pc); sNew += Math.cos(2 * Math.PI * pn);
-          }
-          const ok = n < 6 || (sNew / n) > (sCur / n) + 0.15;
-          this._phaseFlipVotes = 0;
-          if (ok) {
-            this._beat.anchorMs = newAnchor; this._phaseFlips++;
-            console.log(`[takt] gridfas: fasen flyttad ${Math.round(err * beatMsNow)} ms (kvot ${pconf.toFixed(2)}, byte ${this._phaseFlips}, kickar ${n}: ny ${n ? (sNew / n).toFixed(2) : '-'} mot ${n ? (sCur / n).toFixed(2) : '-'})`);
-          } else {
-            this._phaseFlipDenied++;
-            if (this._phaseFlipDenied <= 3 || this._phaseFlipDenied % 20 === 0) console.log(`[takt] gridfas: flytt ${Math.round(err * beatMsNow)} ms NEKAD av kickarna (${n} st: ny ${(sNew / n).toFixed(2)} mot nu ${(sCur / n).toFixed(2)}, kvot ${pconf.toFixed(2)}, nekade ${this._phaseFlipDenied})`);
-          }
-        }
-        return;
-      }
-      this._phaseFlipVotes = 0;
-      const kf = pconf >= 1.3 ? PHASE_KP_HI : PHASE_KP_LO;
-      this._beat.anchorMs += err * beatMsNow * kf;
-      this._clock.trimToBeat(-err * beatMsNow * kf, beatMsNow);
-      // INTEGRAL: ihallande fel at samma hall = tempofel. err > 0 = analysatorns slag ligger EFTER gridet = gridet gar for fort -> bpm ner.
-      if (PHASE_KI_BPM > 0) {
-        const lo = anB * 0.96, hi = anB * 1.04; let nb = this._beat.bpm - err * PHASE_KI_BPM;
-        if (nb < lo) nb = lo; else if (nb > hi) nb = hi;
-        // SPOKPULSER (17:15): 'nowMs - fas*period' nollstallde slagINDEXET (beatIndex) vid varje tempobyte (4 Hz) -> gridpulsen
-        // fyrade pa index-hoppet: 2,47 pulser/s pa 95 BPM (1,59 slag/s). Bevara hela k = index + fas.
-        if (nb !== this._beat.bpm) { const kk = (nowMs - this._beat.anchorMs) / beatMsNow; this._beat.bpm = nb; this._beat.anchorMs = nowMs - kk * (60000 / nb); }
-      }
-      return;
-    }
-    let nowRef: number;
-    if (PLL_RING_ON) {
-      const rk = getLatestKickAt();
-      if (rk <= 0 || rk === this._pllLastKick) return;      // inget nytt slag sedan sist
-      this._pllLastKick = rk;
-      if (nowMs - rk > 200) return;                          // gammalt (paus/omstart) - hoppa
-      nowRef = rk;
-    } else {
-      if (!kick) return;
-      // Fasen mäts helst mot analysatorns FÄRDIGMÄTTA slagtid (sub-hop, ±1.3 ms).
-      // Date.now() här bär ALSA-leveransens jitter. Bara färska värden duger.
-      const kickAt = frame?.kickAtMs ?? 0;
-      nowRef = kickAt > 0 && nowMs - kickAt < 60 ? kickAt : nowMs;
-    }
-
-    const k0 = this.cal.beatSyncStrength;
-    const beatMsNow = 60000 / this._beat.bpm;
-    const ph = ((((nowRef - this._beat.anchorMs) % beatMsNow) + beatMsNow) % beatMsNow) / beatMsNow;
-
-    const err = ph < 0.5 ? ph : ph - 1;    // -0.5..0.5 av ett taktslag
-    if (Math.abs(err) >= 0.25) return;     // off-beat/synkoperade slag räknas ej
-    this._beatErr = this._beatErr * 0.85 + err * 0.15;   // ihållande lag för UI
-    if (k0 <= 0) return;
-
-    let k = k0 * (0.3 + 1.4 * conf);       // tydlig takt → snabbare inlåsning
-    if (k > 0.4) k = 0.4; else if (k < 0.03) k = 0.03;
-    this._beat.anchorMs += err * beatMsNow * k;
-    // SISTA TRIMNINGEN. PLL:ens fasfel ar redan uppmatt har — mata in det i
-    // latklockan sa den far millisekundsupplosning ur micen. Klockan begransar
-    // sjalv till ett halvt slag, sa en granne-beat kan aldrig dra den en hel takt.
-    this._clock.trimToBeat(-err * beatMsNow, beatMsNow);
-    if (conf > 0.4) {
-      // TECKNET (09-18): err<0 = kicken kom FORE gridlinjen = gridet gar for langsamt
-      // -> bpm ska UPP. Med '+=' sjonk bpm i stallet monotont till -4-klampen (uppmatt
-      // 105,7 -> 104,1 pa 23 s mot analysatorns 108) och P-steget fick halla ett
-      // konstant slap pa 50-80 ms - "takten kanns efter". Gain som kal-falt for live-A/B.
-      this._beat.bpm -= err * (this.cal.beatBpmGain ?? 0.35) * conf;
-      // Klampen ar ett OKTAVSKYDD (2x laser ocksa perfekt pa attondelskickar), inte en tempokalla:
-      // +-25 % av analysatorns varde. +-4/+-8/+-20 BPM nadde inte sant tempo (analysatorn 105-114 mot 123, 130 mot ~156).
-      const _kf = this.cal.beatBpmKeep ?? 0.25;
-      const lo = this._beatDetBpm * (1 - _kf), hi = this._beatDetBpm * (1 + _kf);
-      if (this._beat.bpm < lo) this._beat.bpm = lo;
-      else if (this._beat.bpm > hi) this._beat.bpm = hi;
-    }
+    // Rutnatet tillbaka till analysatorn: barShift (ettan) uttrycks i motorns slagindex (publishPhase ref).
+    this._gridScratch.bpm = this._beat.bpm; this._gridScratch.anchorMs = this._beat.anchorMs;
+    setAnalyserBeatGrid(this._gridScratch);
   }
 
   /** Taktklockans tillstånd — för /api/status och UI. */
@@ -2058,7 +1823,7 @@ export class PiLightEngine {
       leadMs: lead,
       chainMs: this.cal.chainLatencyMs ?? 30,
       dropSrc: this._dropSourceActive,
-      coasting: this._beatWasLocked && (getLatestFrame()?.bpmConfidence ?? 0) < MIN_BEAT_CONFIDENCE,
+      coasting: false,   // klockan rullar sjalv (analysatorn); motorn har ingen egen utrullning langre
       reacquiring: now < this._reacqUntil,
     };
   }
@@ -2502,7 +2267,6 @@ export class PiLightEngine {
         // bevis, ingen hord-takt-vikt. Forr vaxlade lampan mellan anslag och raster (dubbelpuls, hopp) och beviset nollades i kallaren
         // varje gang konfidensen dok till 0,2 (~10 s at gangen), sa rastret fick aldrig styra.
         const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat);
-        let kickFired = false;
         if (passesEnergyGate) {
           // Lågpass-onset: bassFlux är analysatorns per-band-onsets under
           // cal.beatCutoffHz (setBeatCutoffHz) — kick skild från basgång redan
@@ -2510,10 +2274,10 @@ export class PiLightEngine {
           const beatFlux = bands ? bands.bassFlux : flux;
 
           // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) men sätter aldrig pulsen.
-          kickFired = this.processOnset(beatFlux);
+          this.processOnset(beatFlux);   // (ingen mottagare langre - stadas i dodkodspasset)
         }
         // Taktklocka: tempo från analysatorn, fas låst mot verkliga kicks (PLL).
-        this.updateBeatClock(kickFired);
+        this.updateBeatClock();
         // Grid-pulsen med leadMs försprång → toppen landar PÅ slaget trots BLE-latensen.
         if (gridDrives && passesEnergyGate) {
           const nowMs = Date.now() + this.cal.beatLeadMs;
@@ -2773,7 +2537,6 @@ export class PiLightEngine {
   private _loopActive = false;
   private _nextTickDeadline = 0;
   /** Called by ALSA FFT callback — runs in the audio data handler context */
-  private _phaseFlipDenied = 0;
   private _syncTimer: NodeJS.Timeout | null = null;
   private _syncTarget = 0.5;   // decimalform från start
   private readonly _syncTickFn = (): void => this.syncTick(this._syncTarget);
