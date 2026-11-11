@@ -1,3 +1,13 @@
+## Från kvällen 2026-11-11 (ägaren 23:4x via huvudsessionen: "Skippa även morgonen") - SKIPPA MORGONEN 2026-11-12, går före ALLT (även hälsan)
+MORGONAGENTEN: gör INGENTING i morgon 2026-11-12. Inga PUT mot Pi:n (ingen kalibrering), ingen ssh-åtgärd, ingen bänk, inget nattjobb,
+inga ändringar i något repo, ingen deploy, ingen commit. Skriv bara en rad i morgonrapporten ("Morgonen 2026-11-12 skippad på ägarens
+begäran, se morning-todo.md"), arkivera dig själv som vanligt och avsluta.
+Skäl: huvudsessionen bygger om analysatorns snitt i kväll och natt (tilliten, klockan och basenergin flyttade in i analysatorn; lotus
+läser nu analysatorns klocka rakt av - motorns tempomedian, fasföljare, kick-PLL och tillit är BORTTAGNA) och en arena (uppbyggnad +
+sektion) äger bänken. Kalibreringsfälten beatTempoSmoothS, beatSyncStrength, beatBpmGain, beatBpmKeep, useMetaTempo, beatTrust* är
+nu döda rattar - din rutin (steg 3) är inaktuell på de punkterna tills huvudsessionen skrivit om den.
+Den här rutan gäller BARA morgonen 2026-11-12; huvudsessionen tar bort den efteråt.
+
 ## Från kvällen 2026-10-27 (ägaren via DMX-sessionen: 'nya test för natten') - KICKFÄLTET (går före allt utom hälsan och kalibreringen)
 DMX-nattagenten hittade i natt att gallop-felet i ladan är taktgridets fas: onset.kick är klampad 0/1 och står på 1 under hela bas-svallet,
 så DMX:s vikning lägger slaget +130 ms efter kicken (fynd 10-27 i dmx-control/pi-dmx/engine/tools/natt/analysator-fynd.md - du har
