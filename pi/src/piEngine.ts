@@ -327,6 +327,9 @@ export interface LightCalibration {
   barAccent: number;
   /** Onset-envelopens stigtid i ms. 0 = instant attack, >0 = EMA (default 40). */
   onsetRiseMs: number;
+  /** FADE IN UR TEMPOT (agaren 11-12): effektens stigtid = onsetRiseK x slagintervallet, aldrig under onsetRiseMs, i 4 ms-steg;
+   *  leaden foljer med (beatLeadMs + 2 x okningen = par-regeln lead = 2 x rise), sa toppen ligger kvar pa slaget. 0 = av. */
+  onsetRiseK: number;
   /** RISE_HOLD: håll onsetTarget stilla i onsetRiseMs × denna faktor medan boosten
    *  klättrar. Utan hållet jagar boosten ett fallande mål och når bara ~22 % av
    *  full puls — vilket i den multiplikativa kedjan strypte energikopplingen. */
@@ -484,6 +487,7 @@ const DEFAULT_CAL: LightCalibration = {
   beatSyncStrength: 0.2,     // 09-18: 0,1 (k 0,17) holl inte emot tempodriften; 0,2 (k 0,34) med I-gain 8 (var 0.10)
   dropSource: 'analyser',
   barAccent: 1,              // ettans accent AV (agaren 11-11 "kanns mycket battre"): andningen klipper pulsen vid full hojd, sa 1,6 gjorde ettan bredare (slag 1+2 smalte ihop), inte hogre. Forr 1,6.
+  onsetRiseK: 0,             // fade in som andel av slaget (0,10 = 48 ms vid 125 BPM = det godkanda laget 11-05); 0 = av
   onsetRiseMs: 40,           // 0 gav uppsteg median 26 enheter = strobe; 40 → median 2
   onsetRiseHoldK: 2.0,       // håll målet stilla medan boosten klättrar (bunden hålltid)
   beatTrustLoConf: 0.30,
@@ -895,7 +899,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0; private _fallMs = 0; private _riseMs = 0;
+  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0; private _fallMs = 0; private _riseMs = 0; private _riseDyn = 0; private _leadDyn = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -1137,7 +1141,7 @@ export class PiLightEngine {
     // RISE_HOLD: med en rise jagade boosten ett FALLANDE mål (decay kördes i samma
     // ram som uppgången) → boost p50 0.10 av 0.45. Håll målet stilla medan boosten
     // klättrar. Hålltiden MÅSTE vara bunden — en EMA når aldrig riktigt fram.
-    const _riseMs = this.cal.onsetRiseMs ?? 0;
+    const _riseMs = this._riseDyn;
     if (_riseMs > 0) {
       if (this.onsetTarget > (this._prevTarget ?? 0) + 1e-6)
         this._riseHold = Math.ceil((_riseMs * (this.cal.onsetRiseHoldK ?? 2.0)) / FRAME_MS);   // band-ramar (8 ms vid BAND_EVERY_HOPS 3)
@@ -1153,7 +1157,7 @@ export class PiLightEngine {
       // INSTANT ATTACK: pulsen ska landa PÅ slaget, inte krypa dit. Samma princip som
       // attackAlpha=1.0 på ljus-vägen. Stigtiden var uppmätt ~79 ms = hela beat-latensen.
       // onsetRiseMs > 0 ger EMA-beteende igen (bakåtkompatibelt), 0 = instant.
-      const riseMs = this.cal.onsetRiseMs ?? 0;
+      const riseMs = this._riseDyn;
       if (riseMs <= 0) {
         this.onsetBoost = this.onsetTarget;
       } else {
@@ -1468,7 +1472,7 @@ export class PiLightEngine {
   private _ppPar: PulseShapeParams = { riseMs: 0, riseHoldK: 0, fadeMode: 0, pulseIntervalMs: 0, shapeRel: 0, fadeEnergyCalm: 0, fadeEnergyIntense: 0, fadeTauMin: 0, fadeTauMax: 0, fadeIntervalK: 0 };
   private pulseParams(): PulseShapeParams {
     const q = this._ppPar;
-    q.riseMs = this.cal.onsetRiseMs ?? 0; q.riseHoldK = this.cal.onsetRiseHoldK ?? 2.0; q.fadeMode = this.cal.fadeMode ?? 0; q.pulseIntervalMs = this._pulseIntervalMs;
+    q.riseMs = this._riseDyn; q.riseHoldK = this.cal.onsetRiseHoldK ?? 2.0; q.fadeMode = this.cal.fadeMode ?? 0; q.pulseIntervalMs = this._pulseIntervalMs;
     q.shapeRel = this._shapeRel ?? 1; q.fadeEnergyCalm = this.cal.fadeEnergyCalm ?? 1.0; q.fadeEnergyIntense = this.cal.fadeEnergyIntense ?? 1.0;
     q.fadeTauMin = this.cal.fadeTauMin ?? 0.12; q.fadeTauMax = this.cal.fadeTauMax ?? 1.2; q.fadeIntervalK = this.cal.fadeIntervalK ?? 0.35;
     return q;
@@ -1502,7 +1506,7 @@ export class PiLightEngine {
     const tDisp = Date.now() + (nextRasterEventAt(perfNow, this._guardMs) - perfNow) + PULSE_LAMP_MS;
     // TAPPAT TEMPO (11-10): inga nya slag, men den sista pulsen klingar ut med sin egen fade i stallet for att nollas pa en tick.
     if (hasBeat(this._beat)) {
-      const lead = this.cal.beatLeadMs; const per = 60000 / this._beat.bpm; const nowMs = tDisp + lead;
+      const lead = this._leadDyn; const per = 60000 / this._beat.bpm; const nowMs = tDisp + lead;
       const idx = beatIndex(this._beat, nowMs);
       if (idx > this._ppLastIdxTick) {
         // Look-ahead: slaget faller inom detta paket men ramen har (kanske) inte sett det – syntetisera med nuvarande beslut.
@@ -1815,7 +1819,7 @@ export class PiLightEngine {
     subdivLevel: number; octave: { on: boolean; hint: number; ringMs: number; perBeat: number; reg: number }; energySm: number; trust: number; shapeSm?: number; shapeSlow?: number; shapeRel: number;
     dropSrc: 'analyser' | 'bass'; coasting: boolean; reacquiring: boolean; effekt: LotusEffekt; effektW: number; effektR: number;} {
     const now = Date.now();
-    const lead = this.cal.beatLeadMs;
+    const lead = this._leadDyn;
     return {
       locked: hasBeat(this._beat),
       bpm: this._beat?.bpm ?? 0,
@@ -2197,9 +2201,16 @@ export class PiLightEngine {
 
   /** Bas-kalibrering + ev. TV-overlay + ev. raw-override -> this.cal + tc.
    *  Enda vagen som satter this.cal, sa alla lagen komponeras pa samma satt. */
+  /** DIRIGENTENS VAL AV FADE IN + LEAD ur tempot (se cal.onsetRiseK). Utan takt eller med K = 0: kalibreringens varden rakt av. */
+  private tempoFade(): void {
+    const b = this.cal.onsetRiseMs ?? 0, K = +this.cal.onsetRiseK || 0;
+    this._riseDyn = K > 0 && hasBeat(this._beat) ? Math.max(b, Math.round(K * 60000 / this._beat!.bpm / 4) * 4) : b;
+    this._leadDyn = (this.cal.beatLeadMs ?? 0) + 2 * (this._riseDyn - b);
+  }
   private applyCal(): void {
     const base = loadCalibration();
     this.cal = this._tvMode ? ({ ...base, ...loadTvCalibration() } as LightCalibration) : base;
+    this.tempoFade();
     setBeatCutoffHz(this.cal.beatCutoffHz);
     if (this._rawMode) this.cal.transientGain = 0;
     this.tc = computeTickConstants(this.tickMs, this.cal);
@@ -2292,7 +2303,7 @@ export class PiLightEngine {
         this.updateBeatClock();
         // Grid-pulsen med leadMs försprång → toppen landar PÅ slaget trots BLE-latensen.
         if (gridDrives && passesEnergyGate) {
-          const nowMs = Date.now() + this.cal.beatLeadMs;
+          const nowMs = Date.now() + this._leadDyn;
           const idx = beatIndex(this._beat, nowMs);
           const bpmNow = this._beat?.bpm ?? 0;
           const baseIntervalMs = bpmNow > 0 ? 60000 / bpmNow : 0;
@@ -2383,7 +2394,7 @@ export class PiLightEngine {
             const onOne = fireBase && accent > 1 && shift >= 0 && ((((idx + shift) % 4) + 4) % 4) === 0;
             if (fireBase) {
               const ampG = onOne ? Math.min(1, 0.45 * accent) : 0.45;
-              const tG = this._beat!.anchorMs + idx * baseIntervalMs - this.cal.beatLeadMs;   // pulsstart = slaget − lead, exakt
+              const tG = this._beat!.anchorMs + idx * baseIntervalMs - this._leadDyn;   // pulsstart = slaget − lead, exakt
               if (PULSE_PREDICT) this.ppPush(idx, tG, ampG); else this.onsetTarget = ampG;
               this._gridPulseCount++; this.notePulse(PULSE_PREDICT ? tG : Date.now());
             }
@@ -2403,7 +2414,7 @@ export class PiLightEngine {
             const idxH = beatIndex(this._beat, nowMs + halfMs);
             if (idxH !== this._lastGridIdxH) {
               this._lastGridIdxH = idxH;
-              const tH = this._beat!.anchorMs + idxH * (60000 / bpmNow) - halfMs - this.cal.beatLeadMs;
+              const tH = this._beat!.anchorMs + idxH * (60000 / bpmNow) - halfMs - this._leadDyn;
               if (PULSE_PREDICT) this.ppPush(idxH + 0.5, tH, 0.45); else this.onsetTarget = 0.45;
               this._gridPulseCount++; this.notePulse(PULSE_PREDICT ? tH : Date.now());
             }
@@ -2986,7 +2997,7 @@ export class PiLightEngine {
     // DIRIGENTEN (11-11) valjer effekt ur analysatorns taktlage: tempo finns -> ANDNING I TAKT, annars NIVA. Kriteriet ar hasBeat (det
     // API:t kallar locked), inte konfidensen - den dippade till 0,2 i kallaren och vaxlade effekten 4 ggr / 3 min (11-10).
     // Vikten glider in/ut over cal.dirigentInMs/UtMs (0,3 s / 1,5 s); ppTick later sista pulsen klinga ut nar tempot tappas. toNormalized = golv..1 (output-lagret).
-    this._effekt = dirigent(hasBeat(this._beat), _f?.section ?? '');
+    this._effekt = dirigent(hasBeat(this._beat), _f?.section ?? ''); this.tempoFade();
     const _mot = this._effekt === 'niva' ? 0 : 1;
     this._effW += (_mot - this._effW) * glid(this.tickMs || 18, _mot ? cal.dirigentInMs : cal.dirigentUtMs);
     const w = this._effW < 0.001 ? 0 : this._effW;
@@ -3455,7 +3466,7 @@ export class PiLightEngine {
           if (this._recTarget !== _rf) { this._recTarget = _rf; this._recBuf = []; this._recT0 = performance.now(); }
           if (this._recBuf.length < _rf) {
             const _hb = hasBeat(this._beat);
-            const _ph = _hb ? beatPhase(this._beat, Date.now() + (this.cal.beatLeadMs ?? 0)) : -1;
+            const _ph = _hb ? beatPhase(this._beat, Date.now() + this._leadDyn) : -1;
             this._recBuf.push([Math.round(performance.now() - this._recT0), pct, _ph,
                                this._beat?.bpm ?? 0, getLatestFrame()?.beatTrust ?? 0, this._shapeSm ?? 0,
                                this.onsetBoost ?? 0].join(','));
