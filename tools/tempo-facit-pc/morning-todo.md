@@ -7,7 +7,10 @@ rapportera bara beat.locked/bpm/trust/effekt ur /api/live när musik spelas och 
 besked överst. Huvudsessionen skriver här när ägaren sett det.
 MÄTT 11-12 12:20 (huvudsessionen, 420 s med musik): låst 95 %, 129 -> 149-151 BPM över ett låtbyte, refrängen släppte inom ~3 s, inga
 omstarter. Avvikelse: 20 s 'low' efter låtbytet fast nivån låg på referensen. Ägarens öga saknas - PUT-förbudet står kvar.
-PROV PÅ sedan 12:45/13:00: kalibreringen har fallMinMs 4000 + fallTopBpm 200 + riseMinMs 150 (ägarens prov, huvudsessionen satte dem;
+LIVE SEDAN 13:25 (ägarens intrimning, rör inte): effektFallMs 2500, fallTopBpm 200, onsetRiseK 0,10, fallMinMs 0, riseMinMs 0. Fallet
+ligger i effekten (4aeb7d3d), output-golven är rena strobeskydd. ATT MÄTA I BÄNKEN (lotusbank/korpusen): låtar där klockan växlar
+mellan två tempon i förhållandet 4:3 (källaren 13:30: 94 <-> 126 BPM var 10:e sekund, låsningen av/på) - tempovalen (lead, fall) hoppar då.
+Historik: 12:45/13:00 hade kalibreringen fallMinMs 4000 + fallTopBpm 200 + riseMinMs 150 (ägarens prov, huvudsessionen satte dem;
 44ef5646: stigningen följer samma tempokurva; a2866585: nivå-effekten får kurvans mitt; d7e2f1b9: stigningen är en gräns, inte en utjämning;
 1742078b: onsetRiseK = effektens fade in ur tempot, leaden följer med som par - ägarens idé, rör inte beatLeadMs/onsetRiseMs). Rör inte, ändra inte. Värt att mäta: låtar där takten inte håller (13:00: låst ~35 %,
 tempot hoppade 81-150) - hur ofta växlar effekten nivå/takt där?
