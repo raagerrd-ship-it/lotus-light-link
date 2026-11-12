@@ -434,7 +434,7 @@ export interface LightCalibration {
   /** FALLGOLV I OUTPUT (fade-planen steg 3, 11-12): slutnivan faller aldrig snabbare an denna tidskonstant (ms), upp direkt. Lampans
    *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. Vardet galler utan takt och upp till 80 BPM;
    *  dirigenten kortar det linjart till 0 vid 120 BPM (snabb musik = som output). */
-  fallMinMs: number;
+  fallMinMs: number; fallTopBpm: number;
   /** Långsam automatisk centrering av dB-ankaret. */
   autoAnchor: number;
   autoAnchorSec: number;
@@ -536,6 +536,7 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
+  fallTopBpm: 120,           // tempot dar fallgolvet natt 0 (= som output)
   fallMinMs: 0,              // fallgolvet i output vid hogst 80 BPM / utan takt (glider till 0 vid 120 BPM): av tills det trimmats in
   autoAnchor: 1,
   autoAnchorSec: 60,
@@ -2989,9 +2990,9 @@ export class PiLightEngine {
     this._effW += (_mot - this._effW) * glid(this.tickMs || 18, _mot ? cal.dirigentInMs : cal.dirigentUtMs);
     const w = this._effW < 0.001 ? 0 : this._effW;
     // FALLGOLVETS TID valjs ur tempot (agaren 11-12: "under 80 mjukare, 80-100 lite snabbare, 100-120 annu snabbare, over 120 som output"):
-    // cal.fallMinMs galler fullt utan takt och upp till 80 BPM och glider linjart till 0 (= som output) vid 120 BPM. En glidning i stallet
+    // cal.fallMinMs galler fullt utan takt och upp till 80 BPM och glider linjart till 0 (= som output) vid cal.fallTopBpm (120; agaren 11-12 'kanske fler val hogre upp'). En glidning i stallet
     // for fyra steg: inget hopp nar en lat ligger pa en grans. Vikten ar dirigentens, sa en kort lucka i takten andrar inget.
-    this._fallMs = (+cal.fallMinMs || 0) * (1 - w * Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / 40)));
+    this._fallMs = (+cal.fallMinMs || 0) * (1 - w * Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / Math.max(1, (+cal.fallTopBpm || 120) - 80))));
     // Andra vikten (steg tva): andning <-> refrang inom taktsidan.
     const _motR = this._effekt === 'refrang' ? 1 : 0;
     this._effR += (_motR - this._effR) * glid(this.tickMs || 18, _motR ? cal.refrangInMs : cal.refrangUtMs);
