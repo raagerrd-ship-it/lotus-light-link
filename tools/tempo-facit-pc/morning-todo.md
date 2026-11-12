@@ -7,6 +7,7 @@ rapportera bara beat.locked/bpm/trust/effekt ur /api/live när musik spelas och 
 besked överst. Huvudsessionen skriver här när ägaren sett det.
 MÄTT 11-12 12:20 (huvudsessionen, 420 s med musik): låst 95 %, 129 -> 149-151 BPM över ett låtbyte, refrängen släppte inom ~3 s, inga
 omstarter. Avvikelse: 20 s 'low' efter låtbytet fast nivån låg på referensen. Ägarens öga saknas - PUT-förbudet står kvar.
+PROV PÅ sedan 12:45: kalibreringen har fallMinMs 4000 + fallTopBpm 200 (ägarens prov, huvudsessionen satte dem). Rör inte, ändra inte.
 NYTT 12:35 (9508e598): fallMinMs gäller fullt upp till 80 BPM/utan takt och glider till 0 vid 120 BPM (dirigentens val). 0 = av. Rör inte.
 
 ## Från kvällen 2026-10-27 (ägaren via DMX-sessionen: 'nya test för natten') - KICKFÄLTET (går före allt utom hälsan och kalibreringen)
