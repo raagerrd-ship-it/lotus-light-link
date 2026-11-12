@@ -432,7 +432,8 @@ export interface LightCalibration {
   /** DIRIGENTENS OVERGANGAR i ms (fade-planen 11-12): niva <-> takt (dirigentIn/Ut) och andning <-> refrang (refrangIn/Ut). Live via PUT /api/calibration. */
   dirigentInMs: number; dirigentUtMs: number; refrangInMs: number; refrangUtMs: number;
   /** FALLGOLV I OUTPUT (fade-planen steg 3, 11-12): slutnivan faller aldrig snabbare an denna tidskonstant (ms), upp direkt. Lampans
-   *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. */
+   *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. Vardet galler utan takt och upp till 80 BPM;
+   *  dirigenten kortar det linjart till 0 vid 120 BPM (snabb musik = som output). */
   fallMinMs: number;
   /** Långsam automatisk centrering av dB-ankaret. */
   autoAnchor: number;
@@ -535,7 +536,7 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
-  fallMinMs: 0,              // fallgolvet i output: av tills det trimmats in
+  fallMinMs: 0,              // fallgolvet i output vid hogst 80 BPM / utan takt (glider till 0 vid 120 BPM): av tills det trimmats in
   autoAnchor: 1,
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
@@ -892,7 +893,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0;
+  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0; private _fallMs = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -2987,6 +2988,10 @@ export class PiLightEngine {
     const _mot = this._effekt === 'niva' ? 0 : 1;
     this._effW += (_mot - this._effW) * glid(this.tickMs || 18, _mot ? cal.dirigentInMs : cal.dirigentUtMs);
     const w = this._effW < 0.001 ? 0 : this._effW;
+    // FALLGOLVETS TID valjs ur tempot (agaren 11-12: "under 80 mjukare, 80-100 lite snabbare, 100-120 annu snabbare, over 120 som output"):
+    // cal.fallMinMs galler fullt utan takt och upp till 80 BPM och glider linjart till 0 (= som output) vid 120 BPM. En glidning i stallet
+    // for fyra steg: inget hopp nar en lat ligger pa en grans. Vikten ar dirigentens, sa en kort lucka i takten andrar inget.
+    this._fallMs = (+cal.fallMinMs || 0) * (1 - w * Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / 40)));
     // Andra vikten (steg tva): andning <-> refrang inom taktsidan.
     const _motR = this._effekt === 'refrang' ? 1 : 0;
     this._effR += (_motR - this._effR) * glid(this.tickMs || 18, _motR ? cal.refrangInMs : cal.refrangUtMs);
@@ -3284,7 +3289,8 @@ export class PiLightEngine {
       }
 
       // FALLGOLV (cal.fallMinMs, 0 = av): slutnivan upp direkt, ner hogst med tidskonstanten - efter effekterna, fore avrundningen.
-      { const _ms = +cal.fallMinMs || 0; if (_ms > 0) { const _g = this._fallPct * Math.exp(-(this.tickMs || 18) / _ms); if (pct < _g) pct = _g; } this._fallPct = pct; }
+      // Tiden ar dirigentens val ur tempot (this._fallMs, se energyStep).
+      { const _ms = this._fallMs; if (_ms > 0) { const _g = this._fallPct * Math.exp(-(this.tickMs || 18) / _ms); if (pct < _g) pct = _g; } this._fallPct = pct; }
 
       // Fast round + clamp
       pct = (pct + 0.5) | 0;
