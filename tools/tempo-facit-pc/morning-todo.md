@@ -7,8 +7,8 @@ rapportera bara beat.locked/bpm/trust/effekt ur /api/live när musik spelas och 
 besked överst. Huvudsessionen skriver här när ägaren sett det.
 MÄTT 11-12 12:20 (huvudsessionen, 420 s med musik): låst 95 %, 129 -> 149-151 BPM över ett låtbyte, refrängen släppte inom ~3 s, inga
 omstarter. Avvikelse: 20 s 'low' efter låtbytet fast nivån låg på referensen. Ägarens öga saknas - PUT-förbudet står kvar.
-KÄND DRIFT 11-12: repots analysator (14df0e46, frame.buildProg) är INTE utlagd på Pi:n (Pi:n kör b1d28a33) - huvudsessionen lägger ut
-den när växlingsvakten är klar. Rapportera md5-skillnaden men lägg inte ut själv.
+11-12 16:45: analysatorn på Pi:n = repots (b65b8105: frame.buildProg + död tempokod bort, 463/503 oförändrat). Ingen känd drift.
+Profilen har sex färre flaggor (olästa); SIL_CLEAR_PENDING saknar läsare - rör inte, ägarbeslut.
 (11-12 15:45: huvudsessionen tog själv bort inspelaren och timern; kontrollen nedan ska alltså bara bekräfta.)
 HÄLSOKONTROLL 11-13 (en gång): inspelaren var laddad kvällen 11-12 för växlingsvakten. Kontrollera att
 /etc/systemd/system/lotus-light-engine.service.d/recorder-vaxling.conf är BORTA och att motorn inte har LOTUS_RECORDER i miljön
