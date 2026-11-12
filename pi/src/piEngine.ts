@@ -432,7 +432,7 @@ export interface LightCalibration {
   /** DIRIGENTENS OVERGANGAR i ms (fade-planen 11-12): niva <-> takt (dirigentIn/Ut) och andning <-> refrang (refrangIn/Ut). Live via PUT /api/calibration. */
   dirigentInMs: number; dirigentUtMs: number; refrangInMs: number; refrangUtMs: number;
   /** FALLGOLV I OUTPUT (fade-planen steg 3, 11-12): slutnivan faller aldrig snabbare an denna tidskonstant (ms), upp direkt. Lampans
-   *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. Vardet galler utan takt och upp till 80 BPM;
+   *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. Vardet galler upp till 80 BPM (utan takt: halften);
    *  dirigenten kortar det linjart till 0 vid 120 BPM (snabb musik = som output). */
   fallMinMs: number; fallTopBpm: number; riseMinMs: number;
   /** Långsam automatisk centrering av dB-ankaret. */
@@ -536,9 +536,9 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
-  riseMinMs: 0,              // stigningens tidskonstant vid hogst 80 BPM / utan takt (samma tempokurva som fallMinMs): av tills den trimmats in
+  riseMinMs: 0,              // stigningens tidskonstant vid hogst 80 BPM (samma tempokurva som fallMinMs; niva-effekten far halften): av tills den trimmats in
   fallTopBpm: 120,           // tempot dar fallgolvet natt 0 (= som output)
-  fallMinMs: 0,              // fallgolvet i output vid hogst 80 BPM / utan takt (glider till 0 vid 120 BPM): av tills det trimmats in
+  fallMinMs: 0,              // fallgolvet i output vid hogst 80 BPM (glider till 0 vid fallTopBpm; niva-effekten far halften): av tills det trimmats in
   autoAnchor: 1,
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
@@ -2991,9 +2991,10 @@ export class PiLightEngine {
     this._effW += (_mot - this._effW) * glid(this.tickMs || 18, _mot ? cal.dirigentInMs : cal.dirigentUtMs);
     const w = this._effW < 0.001 ? 0 : this._effW;
     // FALLGOLVETS TID valjs ur tempot (agaren 11-12: "under 80 mjukare, 80-100 lite snabbare, 100-120 annu snabbare, over 120 som output"):
-    // cal.fallMinMs galler fullt utan takt och upp till 80 BPM och glider linjart till 0 (= som output) vid cal.fallTopBpm (120; agaren 11-12 'kanske fler val hogre upp'). En glidning i stallet
+    // cal.fallMinMs galler fullt upp till 80 BPM och glider linjart till 0 (= som output) vid cal.fallTopBpm (120; agaren 11-12 'kanske fler val hogre upp'). En glidning i stallet
     // for fyra steg: inget hopp nar en lat ligger pa en grans. Vikten ar dirigentens, sa en kort lucka i takten andrar inget.
-    { const _k = 1 - w * Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / Math.max(1, (+cal.fallTopBpm || 120) - 80)));
+    // NIVA-effekten har inget tempo: den far kurvans MITT (agaren 11-12 'kanske lagga oss i mitten'), sa ljuset inte byter karaktar nar takten tappas.
+    { const _k = (1 - w) * 0.5 + w * (1 - Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / Math.max(1, (+cal.fallTopBpm || 120) - 80))));
       this._fallMs = (+cal.fallMinMs || 0) * _k; this._riseMs = (+cal.riseMinMs || 0) * _k; }   // stigningen (agaren 11-12: 'far oka lite langsammare, detta ar bara en ljusslinga') foljer samma tempokurva
     // Andra vikten (steg tva): andning <-> refrang inom taktsidan.
     const _motR = this._effekt === 'refrang' ? 1 : 0;
