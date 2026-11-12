@@ -536,7 +536,7 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
-  riseMinMs: 0,              // stigningens tidskonstant vid hogst 80 BPM (samma tempokurva som fallMinMs; niva-effekten far halften): av tills den trimmats in
+  riseMinMs: 0,              // stigningens snabbaste tillatna tidskonstant (grans, mot fullt ljus) vid hogst 80 BPM (samma tempokurva som fallMinMs; niva-effekten far halften): av tills den trimmats in
   fallTopBpm: 120,           // tempot dar fallgolvet natt 0 (= som output)
   fallMinMs: 0,              // fallgolvet i output vid hogst 80 BPM (glider till 0 vid fallTopBpm; niva-effekten far halften): av tills det trimmats in
   autoAnchor: 1,
@@ -3294,10 +3294,12 @@ export class PiLightEngine {
 
       // FALLGOLV (cal.fallMinMs, 0 = av): slutnivan upp direkt, ner hogst med tidskonstanten - efter effekterna, fore avrundningen.
       // Tiden ar dirigentens val ur tempot (this._fallMs, se energyStep).
-      // STIGNINGEN (cal.riseMinMs, 0 = av): uppat narmar sig slutnivan malet med tidskonstanten this._riseMs (samma tempokurva).
+      // STIGNINGEN (cal.riseMinMs, 0 = av) ar en GRANS som fallgolvet, inte en utjamning (agaren 11-12: 'output skall bara lagga pa om
+      // installningen ar under den, som ett golv'): slutnivan far inte stiga snabbare an en exponentiell uppgang mot fullt (100) med
+      // tidskonstanten this._riseMs. En effekt som stiger langsammare an sa gar igenom ororda.
       { const _p = this._fallPct, _t = this.tickMs || 18;
         if (pct < _p) { const _ms = this._fallMs; if (_ms > 0) { const _g = _p * Math.exp(-_t / _ms); if (pct < _g) pct = _g; } }
-        else if (this._riseMs > 0) pct = _p + (pct - _p) * (1 - Math.exp(-_t / this._riseMs));
+        else if (this._riseMs > 0) { const _c = 100 - (100 - _p) * Math.exp(-_t / this._riseMs); if (pct > _c) pct = _c; }
         this._fallPct = pct; }
 
       // Fast round + clamp
