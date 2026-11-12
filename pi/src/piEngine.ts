@@ -434,9 +434,10 @@ export interface LightCalibration {
   fadeTauMax: number;
   /** DIRIGENTENS OVERGANGAR i ms (fade-planen 11-12): niva <-> takt (dirigentIn/Ut) och andning <-> refrang (refrangIn/Ut). Live via PUT /api/calibration. */
   dirigentInMs: number; dirigentUtMs: number; refrangInMs: number; refrangUtMs: number;
-  /** FALLGOLV I OUTPUT (fade-planen steg 3, 11-12): slutnivan faller aldrig snabbare an denna tidskonstant (ms), upp direkt. Lampans
-   *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. Vardet galler upp till 80 BPM (utan takt: halften);
-   *  dirigenten kortar det linjart till 0 vid 120 BPM (snabb musik = som output). */
+  /** EFFEKTENS FALL (hjartslaget, 11-12): effektens niva faller aldrig snabbare an denna tidskonstant (ms) vid hogst 80 BPM; dirigenten
+   *  kortar den linjart till 0 vid fallTopBpm, niva-effekten (utan takt) far halften. 0 = av.
+   *  OUTPUTS SKYDD MOT STROBE: fallMinMs / riseMinMs = snabbaste tillatna fall / stigning pa slutnivan (ms, konstanter, 0 = av). */
+  effektFallMs: number;
   fallMinMs: number; fallTopBpm: number; riseMinMs: number;
   /** Långsam automatisk centrering av dB-ankaret. */
   autoAnchor: number;
@@ -540,9 +541,9 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
-  riseMinMs: 0,              // stigningens snabbaste tillatna tidskonstant (grans, mot fullt ljus) vid hogst 80 BPM (samma tempokurva som fallMinMs; niva-effekten far halften): av tills den trimmats in
-  fallTopBpm: 120,           // tempot dar fallgolvet natt 0 (= som output)
-  fallMinMs: 0,              // fallgolvet i output vid hogst 80 BPM (glider till 0 vid fallTopBpm; niva-effekten far halften): av tills det trimmats in
+  effektFallMs: 0,           // effektens fall vid hogst 80 BPM (hjartslaget); av tills det trimmats in
+  fallTopBpm: 120,           // tempot dar effektens fall natt 0 (= effekternas egna fall)
+  fallMinMs: 0, riseMinMs: 0,   // outputs skydd mot strobe (konstanter); av
   autoAnchor: 1,
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
@@ -899,7 +900,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0; private _fallMs = 0; private _riseMs = 0; private _riseDyn = 0; private _leadDyn = 0;
+  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0; private _fallMs = 0; private _effFall = 0; private _riseDyn = 0; private _leadDyn = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -3001,12 +3002,11 @@ export class PiLightEngine {
     const _mot = this._effekt === 'niva' ? 0 : 1;
     this._effW += (_mot - this._effW) * glid(this.tickMs || 18, _mot ? cal.dirigentInMs : cal.dirigentUtMs);
     const w = this._effW < 0.001 ? 0 : this._effW;
-    // FALLGOLVETS TID valjs ur tempot (agaren 11-12: "under 80 mjukare, 80-100 lite snabbare, 100-120 annu snabbare, over 120 som output"):
-    // cal.fallMinMs galler fullt upp till 80 BPM och glider linjart till 0 (= som output) vid cal.fallTopBpm (120; agaren 11-12 'kanske fler val hogre upp'). En glidning i stallet
-    // for fyra steg: inget hopp nar en lat ligger pa en grans. Vikten ar dirigentens, sa en kort lucka i takten andrar inget.
-    // NIVA-effekten har inget tempo: den far kurvans MITT (agaren 11-12 'kanske lagga oss i mitten'), sa ljuset inte byter karaktar nar takten tappas.
-    { const _k = (1 - w) * 0.5 + w * (1 - Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / Math.max(1, (+cal.fallTopBpm || 120) - 80))));
-      this._fallMs = (+cal.fallMinMs || 0) * _k; this._riseMs = (+cal.riseMinMs || 0) * _k; }   // stigningen (agaren 11-12: 'far oka lite langsammare, detta ar bara en ljusslinga') foljer samma tempokurva
+    // EFFEKTENS FALL valjs ur tempot (agaren 11-12: 'under 80 mjukare, 80-100 lite snabbare, 100-120 annu snabbare' + 'fler val hogre upp'
+    // + 'flytta fallet till effekten ocksa'): cal.effektFallMs galler fullt upp till 80 BPM och glider linjart till 0 (= effekternas egna
+    // fall) vid cal.fallTopBpm. En glidning i stallet for steg: inget hopp nar en lat ligger pa en grans. Vikten ar dirigentens, sa en
+    // kort lucka i takten andrar inget. NIVA-effekten har inget tempo: den far kurvans MITT ('kanske lagga oss i mitten').
+    this._fallMs = (+cal.effektFallMs || 0) * ((1 - w) * 0.5 + w * (1 - Math.max(0, Math.min(1, ((this._beat?.bpm || 0) - 80) / Math.max(1, (+cal.fallTopBpm || 120) - 80)))));
     // Andra vikten (steg tva): andning <-> refrang inom taktsidan.
     const _motR = this._effekt === 'refrang' ? 1 : 0;
     this._effR += (_motR - this._effR) * glid(this.tickMs || 18, _motR ? cal.refrangInMs : cal.refrangUtMs);
@@ -3014,8 +3014,10 @@ export class PiLightEngine {
     // Pulsen las ur bada vagarna (utan LOTUS_PULSE_PREDICT gar rastret via onsetBoost).
     const pnEff = Math.min(1, Math.max(this._ppOut, this.onsetBoost) / PULSE_NOMINAL);
     { const _c = ceil * this._secScale; this._effCeil = this._effCeil <= 0 ? _c : this._effCeil + (_c - this._effCeil) * Math.min(1, (this.tickMs || 18) / (_c > this._effCeil ? ANDNING.uppMs : ANDNING.slowMs)); }
-    const energyForm = w * ((1 - r) * effektAndning(this._effCeil, tc.beatDepth * this._secPulse, pnEff) + r * effektRefrang(this._effCeil, pnEff))
+    let energyForm = w * ((1 - r) * effektAndning(this._effCeil, tc.beatDepth * this._secPulse, pnEff) + r * effektRefrang(this._effCeil, pnEff))
       + (1 - w) * effektNiva(ceil, this._secScale, _build, this._dropBoost);
+    // EFFEKTENS FALL (hjartslaget): effektens niva upp direkt, ner hogst med dirigentens tidskonstant - i effekten, fore output-lagret.
+    { const _ms = this._fallMs; if (_ms > 0) { const _g = this._effFall * Math.exp(-(this.tickMs || 18) / _ms); if (energyForm < _g) energyForm = _g; } this._effFall = energyForm; }
     const outN = toNormalized(energyForm, floorN);
     es.energyForm = energyForm; es.outN = outN;
   }
@@ -3303,14 +3305,12 @@ export class PiLightEngine {
         pct = this._tvPctSm;
       }
 
-      // FALLGOLV (cal.fallMinMs, 0 = av): slutnivan upp direkt, ner hogst med tidskonstanten - efter effekterna, fore avrundningen.
-      // Tiden ar dirigentens val ur tempot (this._fallMs, se energyStep).
-      // STIGNINGEN (cal.riseMinMs, 0 = av) ar en GRANS som fallgolvet, inte en utjamning (agaren 11-12: 'output skall bara lagga pa om
-      // installningen ar under den, som ett golv'): slutnivan far inte stiga snabbare an en exponentiell uppgang mot fullt (100) med
-      // tidskonstanten this._riseMs. En effekt som stiger langsammare an sa gar igenom ororda.
-      { const _p = this._fallPct, _t = this.tickMs || 18;
-        if (pct < _p) { const _ms = this._fallMs; if (_ms > 0) { const _g = _p * Math.exp(-_t / _ms); if (pct < _g) pct = _g; } }
-        else if (this._riseMs > 0) { const _c = 100 - (100 - _p) * Math.exp(-_t / this._riseMs); if (pct > _c) pct = _c; }
+      // OUTPUTS SKYDD MOT STROBE (agaren 11-12: 'output golvet ar ju bara sa det inte blir strobe om effekten inte kor mjukt'): slutnivan
+      // faller aldrig snabbare an cal.fallMinMs och stiger aldrig snabbare an cal.riseMinMs (exponentiellt mot 0 resp. fullt). Rena
+      // granser, inga filter: en effekt som ror sig langsammare gar igenom ororda. 0 = av. Mjukheten sjalv ligger i effekten.
+      { const _p = this._fallPct, _t = this.tickMs || 18, _f = +cal.fallMinMs || 0, _r = +cal.riseMinMs || 0;
+        if (pct < _p) { if (_f > 0) { const _g = _p * Math.exp(-_t / _f); if (pct < _g) pct = _g; } }
+        else if (_r > 0) { const _c = 100 - (100 - _p) * Math.exp(-_t / _r); if (pct > _c) pct = _c; }
         this._fallPct = pct; }
 
       // Fast round + clamp
