@@ -5,6 +5,9 @@ beatSyncErrFrac, beatBpmGain, beatBpmKeep, useMetaTempo, beatTrust*. Nya fält (
 refrangInMs/UtMs (300/1500, 300/2500), fallMinMs (0 = av). KLOCKBYTET ÄR INTE SETT MED MUSIK ÄN: gör inga PUT mot kalibreringen,
 rapportera bara beat.locked/bpm/trust/effekt ur /api/live när musik spelas och jämför mot bänken (lotusbank). Rutinens steg 3 har samma
 besked överst. Huvudsessionen skriver här när ägaren sett det.
+MÄTT 11-12 12:20 (huvudsessionen, 420 s med musik): låst 95 %, 129 -> 149-151 BPM över ett låtbyte, refrängen släppte inom ~3 s, inga
+omstarter. Avvikelse: 20 s 'low' efter låtbytet fast nivån låg på referensen. Ägarens öga saknas - PUT-förbudet står kvar.
+NYTT 12:35 (9508e598): fallMinMs gäller fullt upp till 80 BPM/utan takt och glider till 0 vid 120 BPM (dirigentens val). 0 = av. Rör inte.
 
 ## Från kvällen 2026-10-27 (ägaren via DMX-sessionen: 'nya test för natten') - KICKFÄLTET (går före allt utom hälsan och kalibreringen)
 DMX-nattagenten hittade i natt att gallop-felet i ladan är taktgridets fas: onset.kick är klampad 0/1 och står på 1 under hela bas-svallet,
