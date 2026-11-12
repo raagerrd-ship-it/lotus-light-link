@@ -58,9 +58,11 @@ export const TICK_PERIOD_MS = TICK_SYNC ? NOMINAL_PERIOD_MS : FRAME_MS;
 export const PULSE_PREDICT = TICK_SYNC && process.env.LOTUS_PULSE_PREDICT === '1';
 /** LOTUS DIRIGENT + TVA EFFEKTER (agaren 11-11: 'varfor inte kora dirigent pa lotus ocksa? och tva effekter bara?', 'ja bygg steg ett').
  *  Analysatorn ger taktlaget, dirigenten valjer effekt, effekten styr ljuset. Effekterna vet inget om valet: NIVA vet inget om takt,
- *  ANDNING vet inget om las. Bytet glider (inMs till andningen, utMs tillbaka) sa sista pulsen klingar ut i stallet for att klippas. */
+ *  ANDNING vet inget om las. Bytet glider (cal.dirigentInMs till andningen, cal.dirigentUtMs tillbaka) sa sista pulsen klingar ut i
+ *  stallet for att klippas. Tiderna ar kalibreringsfalt (fade-planen 11-12, agaren: 'justerbara, sa vi kan trimma in dom'). */
 type LotusEffekt = 'niva' | 'andning' | 'refrang';
-const DIRIGENT = { inMs: 300, utMs: 1500 };
+/** Dirigentens glidning per tick mot malet over ms (ms <= ticket eller ogiltigt = direkt). */
+const glid = (tickMs: number, ms: number): number => Math.min(1, tickMs / Math.max(tickMs, +ms || 0));
 /** STEG TVA (11-11, agaren: 'bygg steg tva'): dirigenten laser aven analysatorns SEKTION (frame.section, samma falt som DMX-dirigenten).
  *  Takt + 'high' (refrang/drop) -> REFRANG, takt annars -> ANDNING, ingen takt -> NIVA. */
 const dirigent = (takt: boolean, sektion: string): LotusEffekt => !takt ? 'niva' : sektion === 'high' ? 'refrang' : 'andning';
@@ -75,8 +77,8 @@ const effektAndning = (tak: number, djup: number, pn: number): number => tak * (
 /** Effekt REFRANG: samma klockpuls, men slaget gar fullt ut - fullt djup (inget golv under pulsen) och toppen lyft till frasens tak
  *  (lyft: klockpulsen toppar matt pa ~0,87 av nominell). Taket ar FRASENS (samma som andningen), inte 1: analysatorn haller kvar
  *  'high' genom tysta partier (matt 11-11: 12 s med fonstret pa 0 och ljuset pa 31-34 %), dar ska refrangen inte pulsa pa 100 %.
- *  In over inMs (forsta refrangslaget tar), ut over utMs (aldrig snabbare an andningens tak faller). */
-const REFRANG = { lyft: 1.15, inMs: 300, utMs: 2500 };
+ *  In over cal.refrangInMs (forsta refrangslaget tar), ut over cal.refrangUtMs (standard = andningens tak faller, 2500). */
+const REFRANG = { lyft: 1.15 };
 const effektRefrang = (tak: number, pn: number): number => tak * Math.min(1, pn * REFRANG.lyft);
 /** Sektionsminnets konsumenter (2026-09-21, se steg 6 i tick): forvarning fore refrang och dynamik mot latens egen refrang. */
 const EXPECT_LIFT_MS = Math.max(0, Number(process.env.LOTUS_EXPECT_LIFT_MS ?? 3000) || 0);
@@ -427,6 +429,8 @@ export interface LightCalibration {
   fadeIntervalK: number;
   fadeTauMin: number;
   fadeTauMax: number;
+  /** DIRIGENTENS OVERGANGAR i ms (fade-planen 11-12): niva <-> takt (dirigentIn/Ut) och andning <-> refrang (refrangIn/Ut). Live via PUT /api/calibration. */
+  dirigentInMs: number; dirigentUtMs: number; refrangInMs: number; refrangUtMs: number;
   /** Långsam automatisk centrering av dB-ankaret. */
   autoAnchor: number;
   autoAnchorSec: number;
@@ -527,6 +531,7 @@ const DEFAULT_CAL: LightCalibration = {
   fadeIntervalK: 0.35,
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
+  dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
   autoAnchor: 1,
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
@@ -2973,14 +2978,14 @@ export class PiLightEngine {
 
     // DIRIGENTEN (11-11) valjer effekt ur analysatorns taktlage: tempo finns -> ANDNING I TAKT, annars NIVA. Kriteriet ar hasBeat (det
     // API:t kallar locked), inte konfidensen - den dippade till 0,2 i kallaren och vaxlade effekten 4 ggr / 3 min (11-10).
-    // Vikten glider in 0,3 s / ut 1,5 s; ppTick later sista pulsen klinga ut nar tempot tappas. toNormalized = golv..1 (output-lagret).
+    // Vikten glider in/ut over cal.dirigentInMs/UtMs (0,3 s / 1,5 s); ppTick later sista pulsen klinga ut nar tempot tappas. toNormalized = golv..1 (output-lagret).
     this._effekt = dirigent(hasBeat(this._beat), _f?.section ?? '');
     const _mot = this._effekt === 'niva' ? 0 : 1;
-    this._effW += (_mot - this._effW) * Math.min(1, (this.tickMs || 18) / (_mot ? DIRIGENT.inMs : DIRIGENT.utMs));
+    this._effW += (_mot - this._effW) * glid(this.tickMs || 18, _mot ? cal.dirigentInMs : cal.dirigentUtMs);
     const w = this._effW < 0.001 ? 0 : this._effW;
     // Andra vikten (steg tva): andning <-> refrang inom taktsidan.
     const _motR = this._effekt === 'refrang' ? 1 : 0;
-    this._effR += (_motR - this._effR) * Math.min(1, (this.tickMs || 18) / (_motR ? REFRANG.inMs : REFRANG.utMs));
+    this._effR += (_motR - this._effR) * glid(this.tickMs || 18, _motR ? cal.refrangInMs : cal.refrangUtMs);
     const r = this._effR < 0.001 ? 0 : this._effR;
     // Pulsen las ur bada vagarna (utan LOTUS_PULSE_PREDICT gar rastret via onsetBoost).
     const pnEff = Math.min(1, Math.max(this._ppOut, this.onsetBoost) / PULSE_NOMINAL);
