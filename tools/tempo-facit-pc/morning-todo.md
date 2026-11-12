@@ -7,6 +7,9 @@ rapportera bara beat.locked/bpm/trust/effekt ur /api/live när musik spelas och 
 besked överst. Huvudsessionen skriver här när ägaren sett det.
 MÄTT 11-12 12:20 (huvudsessionen, 420 s med musik): låst 95 %, 129 -> 149-151 BPM över ett låtbyte, refrängen släppte inom ~3 s, inga
 omstarter. Avvikelse: 20 s 'low' efter låtbytet fast nivån låg på referensen. Ägarens öga saknas - PUT-förbudet står kvar.
+NATTEN 11-12 -> 11-13 kör DMX-nattagenten en ARENA om klockan (ENGINE/.arena/klocka2, kan pågå till morgonen): finns låsfilen
+ENGINE/.arena/.banklas eller en färsk mätning där, kör inga tunga bänkar samtidigt (tidsmåtten störs) - läs i stället
+ENGINE/tools/natt/arena-2026-11-12-klocka2/RAPPORT.md om den finns och ta med utfallet i morgonrapporten. Porta inget till lotus.
 LIVE SEDAN 13:25 (ägarens intrimning, rör inte): effektFallMs 2500, fallTopBpm 200, onsetRiseK 0,10, fallMinMs 0, riseMinMs 0. Fallet
 ligger i effekten (4aeb7d3d), output-golven är rena strobeskydd. ATT MÄTA I BÄNKEN (lotusbank/korpusen): låtar där klockan växlar
 mellan två tempon i förhållandet 4:3 (källaren 13:30: 94 <-> 126 BPM var 10:e sekund, låsningen av/på) - tempovalen (lead, fall) hoppar då.
