@@ -472,7 +472,7 @@ export function startConfigServer(port = 3050): void {
     if (!mic?.startRawCapture) { res.status(503).json({ error: 'mic ej attachad' }); return; }
     // `label` = latnamn + facit-BPM, t.ex. "Ricky Rose - Utan Dig 90". Foljer med
     // ut i filnamnet sa klippet inte blir facit-lost nar det hamnar i testbanken.
-    const sec = mic.startRawCapture(Number(req.body?.seconds) || 30, String(req.body?.label ?? ''));
+    const sec = mic.startRawCapture(Number(req.body?.seconds) || 30, String(req.body?.label ?? ''), req.body?.fullRate === true);   // fullRate (11-12): 48 kHz, hogst 150 s - underlag till klockarenan
     // LATPOSITIONEN VID FORSTA SAMPLET, fran latklockan.
     //
     // Insamlaren laste den sjalv INNAN den bad om start, och plockade dessutom
