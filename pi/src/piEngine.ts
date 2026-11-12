@@ -431,6 +431,9 @@ export interface LightCalibration {
   fadeTauMax: number;
   /** DIRIGENTENS OVERGANGAR i ms (fade-planen 11-12): niva <-> takt (dirigentIn/Ut) och andning <-> refrang (refrangIn/Ut). Live via PUT /api/calibration. */
   dirigentInMs: number; dirigentUtMs: number; refrangInMs: number; refrangUtMs: number;
+  /** FALLGOLV I OUTPUT (fade-planen steg 3, 11-12): slutnivan faller aldrig snabbare an denna tidskonstant (ms), upp direkt. Lampans
+   *  kontrakt - ingen effekt kan bryta det. 0 = av (standard); trimmas in live med musik. */
+  fallMinMs: number;
   /** Långsam automatisk centrering av dB-ankaret. */
   autoAnchor: number;
   autoAnchorSec: number;
@@ -532,6 +535,7 @@ const DEFAULT_CAL: LightCalibration = {
   fadeTauMin: 0.12,
   fadeTauMax: 1.2,
   dirigentInMs: 300, dirigentUtMs: 1500, refrangInMs: 300, refrangUtMs: 2500,   // dirigentens overgangar (forr konstanterna DIRIGENT/REFRANG)
+  fallMinMs: 0,              // fallgolvet i output: av tills det trimmats in
   autoAnchor: 1,
   autoAnchorSec: 60,
   anchorOffsetDb: 4.5,       // (p95−p50) + 0.08×windowDb, korrigerat mot uppmätt p50
@@ -888,7 +892,7 @@ export class PiLightEngine {
       try { this.onQuietGc?.(); } catch { /* sparningen far aldrig falla motorn */ }
     });
   }
-  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0;
+  private _effekt: LotusEffekt = 'niva'; private _effW = 0; private _effR = 0; private _effCeil = 0; private _fallPct = 0;
   // FRAME_RECORDER — mätverktyget: en rad per faktiskt skickad BLE-ram.
   private _recBuf: string[] = [];
   private _recTarget = 0;
@@ -3278,6 +3282,9 @@ export class PiLightEngine {
         }
         pct = this._tvPctSm;
       }
+
+      // FALLGOLV (cal.fallMinMs, 0 = av): slutnivan upp direkt, ner hogst med tidskonstanten - efter effekterna, fore avrundningen.
+      { const _ms = +cal.fallMinMs || 0; if (_ms > 0) { const _g = this._fallPct * Math.exp(-(this.tickMs || 18) / _ms); if (pct < _g) pct = _g; } this._fallPct = pct; }
 
       // Fast round + clamp
       pct = (pct + 0.5) | 0;
