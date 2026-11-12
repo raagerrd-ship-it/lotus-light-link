@@ -419,11 +419,7 @@ export interface LightCalibration {
   /** Energin väljer ½× / 1× / 2× pulsning på gridet. */
   energySubdiv: number;
   subdivHiOn: number; subdivHiOff: number;
-  subdivLoOn: number; subdivLoOff: number;
   subdivMinHoldMs: number;
-  /** Takt-baserad halvering: pulsa halva takten över detta BPM (0 = av). */
-  subdivHalveAboveBpm: number;
-  subdivHalveHystBpm: number;
   /** Energiberoende fade-skalning (1.0 = neutral/av). */
   fadeEnergyCalm: number;
   fadeEnergyIntense: number;
@@ -525,15 +521,11 @@ const DEFAULT_CAL: LightCalibration = {
   energySubdiv: 1,           // grinden är RELATIV (shapeRel) → ingen fladder
   subdivHiOn: 2,             // utom räckhåll: dubblering AV (2×-grenen fladdrade)
   subdivHiOff: 1.9,
-  subdivLoOn: 0.42,
-  subdivLoOff: 0.60,
   subdivMinHoldMs: 12000,
   // AV som default (2026-08-31). En hard BPM-grans ger ett KLIPP: 144 BPM pulsade
   // pa 144, 146 pa 73 -- samma latmaterial, halva takten, for en skillnad pa 2 BPM.
   // Anvandaren: "varfor halveras alla med bpm over en viss grans?" Reglaget finns
   // kvar for den som vill ha lugnare puls i snabb musik, men ska inte vara pafors.
-  subdivHalveAboveBpm: 0,    // dirigenten väljer presentationstakt, analysen ger tempot
-  subdivHalveHystBpm: 15,
   fadeEnergyCalm: 1.0,       // 1.0/1.0 = neutral; aggressivare värden backades av användaren
   fadeEnergyIntense: 1.0,
   fadeMode: 2,
@@ -2329,18 +2321,9 @@ export class PiLightEngine {
 
           if (idx !== this._lastGridIdx) {
             let next = current;
-            // Takt-baserad halvering FÖRST: den energistyrda grinden fyrar bara i
-            // genuint lugna partier, så en 157-BPM-låt pulsade i 2.6 Hz utan detta.
-            // FÖRETRÄDE: takt-regeln är auktoritativ. Två separata if-block utan
-            // else lät energiblocket skriva över takt-beslutet → fyrkantsvåg
-            // (2.30 ↔ 1.15 Hz var 12:e sekund).
-            const _halveAbove = this.cal.subdivHalveAboveBpm ?? 0;
-            let _bpmWants: number | null = null;
-            if (_halveAbove > 0 && bpmNow > 0) {
-              const _back = _halveAbove - (this.cal.subdivHalveHystBpm ?? 15);
-              if (bpmNow > _halveAbove) _bpmWants = -1;
-              else if (bpmNow < _back) _bpmWants = 0;
-            }
+            // HALVERINGSREGELN ÄR BORTTAGEN (ägaren 11-12, efter ladan: 'av, kan nog köra samma i lotus sen'): pulsen halveras inte
+            // längre i lugna partier eller vid högt tempo (reglerna slog i praktiken aldrig till). Kvar: den lärda oktavledtråden
+            // per låt (_octHint) och dubblingen (oktavregeln, långsamt tempo).
             // OKTAVREGEL UR RINGEN (09-19, forsta regeln ur facit-lardatan): analysatorns fonster
             // [80,160) viker oktaver, och pa "Ego" (Assergard) gav den 86/87 medan kick-ringen hade
             // 174 ms-transienter x3,96 per gridslag med regelbundenhet 0,84 - och orat sa "for
@@ -2368,17 +2351,12 @@ export class PiLightEngine {
             // oktav under (2) eller over (0.5) pa just den har laten. Analysatorn ger fortfarande fas
             // och tempo - bara presentationens oktav rattas, den kan analysatorn inte avgora sjalv.
             if (this._octHint === 2) _octWants = 1; else if (this._octHint === 0.5) _octWants = -1;
-            if (_bpmWants !== null) next = _bpmWants;
-            else if (_octWants !== null) next = _octWants;
+            if (_octWants !== null) next = _octWants;
             else if (energySubdiv) {
               if (current <= 0 && energy > (this.cal.subdivHiOn ?? 2)) next = 1;
               else if (current === 1 && energy < (this.cal.subdivHiOff ?? 1.9)) next = 0;
-              else if (current >= 0 && energy < (this.cal.subdivLoOn ?? 0.42)) next = -1;
-              else if (current === -1 && energy > (this.cal.subdivLoOff ?? 0.60)) next = 0;
             }
-            // Villkoret är NÖDVÄNDIGT: ett obetingat "else next = 0" slog ut
-            // takthalveringen så fort energySubdiv var 0.
-            else if (_halveAbove <= 0) next = 0;
+            else next = 0;
             if (next !== current) {
               const holdMs = this.cal.subdivMinHoldMs ?? 10000;
               if (this._subdivChangedAt > 0 && Date.now() - this._subdivChangedAt < holdMs) next = current;
