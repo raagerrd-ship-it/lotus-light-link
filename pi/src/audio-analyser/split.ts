@@ -188,7 +188,7 @@ export const SPEC_SLOTS = 16, SPEC_MAX = 1024;   // 16 spektra = 48 hop: en sen 
 
 // ── TAKTVÄGEN (2026-11-08, ägaren: 'en analysator, två vägar - den snabba och den som ger dirigenten information') ─────────────
 // Systemets TAKTMATNING (DMX: src/beatFeed.ts, ~20 % av motorns CPU) körs i den långsamma tråden i stället för i hop-loopen.
-// Bara när systemets profil har BEAT_FEED 'slow' OCH en slowHopFeed-fabrik (DMX); lotus profil saknar båda = inget av detta finns.
+// I båda systemen när analysatorn är delad och BEAT_FEED inte är 'inline': DMX-motorn matar (hopLane.feed), lotus analysator matar själv (hopSelf).
 // Den snabba sidan skriver ett RECORD PER HOP (ramens ~10 fält taktmatningen läser + hoppets klocka) i en egen ring; workern kör
 // taktmatningen på recordet och publicerar resultatet (rutnätet, tilliten, analysatorns eget rutnät, kommandona resetTempo/resetBar)
 // i ett eget tillståndsblock med egen seqlock. Den snabba sidan lägger resultatet i motorns cfg/ram och utför kommandona på SIN

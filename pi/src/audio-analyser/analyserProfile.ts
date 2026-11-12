@@ -24,14 +24,10 @@ export const PROFILE: AnalyserProfile = {
   sys: {
     KICK_COOLDOWN: '0',
     KICK_EFLOOR: '0.006',
-    TEMPO_LAGMAX: 'full',
     SECTION_AGG: 'hop',
     SECTION_SCORE_F32: '1',
-    SIL_CLEAR_PENDING: '1',
+    SIL_CLEAR_PENDING: '1',   // SAKNAR LÄSARE (städningen 11-12): flaggans enda läsare låg i en onåbar gren och är borttagen
     ANALYSER_SPLIT: 'worker',
-    GHOST_WAIT: '1',
-    SUBH_GUARD: '1',
-    SECTION_HINT_LOWCONF: '0',
     SECTION_RUN: '5',
     SECTION_RUN_IN: '3',
     SECTION_CARRY: '40',
@@ -48,7 +44,5 @@ export const PROFILE: AnalyserProfile = {
     DROP_RISE_LOW_DB: '20',
     MINI_SPACING_MS: '1',
     DROP_UNDERPEAK_MIN: '1.5',
-    OCT_UP: '12',
-    SUBH_MULT: '8',
   },
 };
