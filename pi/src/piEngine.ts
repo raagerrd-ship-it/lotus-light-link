@@ -700,6 +700,8 @@ export interface DiagSnapshot {
   wdb?: number;
   /** Långsam EMA av wdb — ankarets underlag (mät wdb/wdbSlow/anchorDb i 2 Hz) */
   wdbSlow?: number;
+  /** Analysatorns basenergi (frame.bassEnergy / bassEnergyShort / bassLevel) - bara matning, for jamforelse mot shape (11-12). */
+  anBass?: number; anBassShort?: number; anBassPart?: number;
   /** wdbSlow + anchorOffsetDb — fönstrets ÖVERKANT */
   anchorDb?: number;
 }
@@ -3140,6 +3142,7 @@ export class PiLightEngine {
 
 
       _diag.bassNorm = normalizeFixed(bands.bassRms);
+      { const _fb = getLatestFrame() as any; _diag.anBass = _fb?.bassEnergy ?? 0; _diag.anBassShort = _fb?.bassEnergyShort ?? 0; _diag.anBassPart = _fb?.bassLevel ?? 0; }
       _diag.midHiNorm = normalizeFixed(bands.midHiRms);
 
       // ── 2. Tystnads-gate ──
