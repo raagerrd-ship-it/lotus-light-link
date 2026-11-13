@@ -1,4 +1,7 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-13 14:12 BREAK-HÅLLET LIVE (huvudsessionen, ägaren "KÖR"): lotus e0d14b74 = dmx-control c08e1cb. Klockan väljer inget nytt tempo medan basen
+ligger >= 24 dB under sitt tak och 5 s efteråt (högst 30 s). Gjort för ladans drops; lotus snabbkorpus oförändrad (117/126, fas 0,89). PORTA INTE IGEN.
+Utlagd med Sonos tyst = inte sedd med musik. Rapportera bara: omstarter, och om tempot står still genom break i låtar med tydligt break/drop.
 11-13 09:45 LÅTENS MINNE LIVE (huvudsessionen, ägaren: "lös källarväxlingen med Sonos låtgräns"): lotus 4cbb2e3b = dmx-control c56ade9. När Sonos
 spelar ett spår med namn och längd <= 10 min (inte tv) sätts analysatorns boundSure (/api/live sonos.songSure) och klockan väljer tempo ur ett
 60 s-minne sedan låtgränsen i stället för 5-10 s. Mixar > 10 min, radio och tv som förr. PORTA INTE IGEN, RÖR INTE.
