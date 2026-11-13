@@ -1,4 +1,10 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-13 03:34 KLOCKAN dmx-1b LIVE PÅ PI:N (huvudsessionen, ägarens ja): analyserClock = dmx-control 4770389 (hållen tolkning efter säker
+låsning + taktens självlikhet som vittne), lotus e3f9d6b4, bara analyserClock.js utlagd, md5 lika, motorn uppe på 4 s. PORTA INTE IGEN.
+Bänken sa (lotusbank): rätt 463 -> 469 av 503, syskonfel 26 -> 21, låtar som växlar 82 -> 80, källarklippen 3,97 -> 3,83 byten/min, fas
+0,89 -> 0,88. INTE SEDD MED MUSIK ÄN: när musik spelas, rapportera beat.locked/bpm/trust ur /api/live över några låtbyten (hur ofta
+tempot byts inom en låt, lås efter låtbyte) och jämför mot 11-12 12:20. Källarens växling 94 <-> 126 väntas INTE vara löst av detta.
+Tillbaka: tagg backup/fore-dmx-1b-20261113 eller Pi:ns analyserClock.js.bak-20261113-0334. Arenan är klar, bänken fri.
 Analysatorns snitt byggdes om 11-11: tilliten, klockan och basenergin ligger i analysatorn; lotus läser analysatorns klocka rakt av
 (motorns tempomedian, fasföljare, kick-PLL och tillit är borttagna). Döda kalibreringsfält: beatTempoSmoothS, beatSyncStrength,
 beatSyncErrFrac, beatBpmGain, beatBpmKeep, useMetaTempo, beatTrust*. Nya fält (ägarens intrimning, rör aldrig): dirigentInMs/UtMs,
