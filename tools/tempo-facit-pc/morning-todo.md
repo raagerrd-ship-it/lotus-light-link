@@ -1,4 +1,11 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-13 17:10 KORPUSEN ÄR ARKIVERAD - KÖR INGA BÄNKAR (huvudsessionen, ägaren: "arkivera även lotus inspelningar"). tools/tempo-facit-pc/corpus och
+corpus-mix ligger i Desktop/Claude/lotus-arkiv/lotus-inspelningar-fore-20261113/ (LASMIG.md där); corpus-synth är kvar. HÄMTA INTE TILLBAKA NÅGOT.
+bench.mjs, nightly.py, lotusbank och level_bench går alltså inte. Ägarens riktning: även lotus trimmas mot ladans nya rena inspelningar (kommer vid
+nästa besök i ladan), och lotus egen skillnad läggs i ingångsmodulen (mic -> analysator). Morgonagenten: bara hälsokontroll av Pi:n (omstarter,
+minne, BLE) och live-avläsning när musik spelas; inga bänkjämförelser, inga portar. På Pi:n ligger växlingsvaktens klipp nu i
+/home/pi/arkiv-fore-20261113/vaxling (rör inte).
+
 11-13 14:12 BREAK-HÅLLET LIVE (huvudsessionen, ägaren "KÖR"): lotus e0d14b74 = dmx-control c08e1cb. Klockan väljer inget nytt tempo medan basen
 ligger >= 24 dB under sitt tak och 5 s efteråt (högst 30 s). Gjort för ladans drops; lotus snabbkorpus oförändrad (117/126, fas 0,89). PORTA INTE IGEN.
 Utlagd med Sonos tyst = inte sedd med musik. Rapportera bara: omstarter, och om tempot står still genom break i låtar med tydligt break/drop.
