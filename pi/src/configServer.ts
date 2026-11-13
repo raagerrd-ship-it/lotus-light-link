@@ -692,7 +692,7 @@ export function startConfigServer(port = 3050): void {
       ok: true,
       ble: { connected: c.connected ? 1 : 0, lastSent: sent },
       live: { inputLevel: Math.max(0, Math.min(1, micTotal)) },
-      sonos: { playbackState: sonos?.playbackState ?? null, volume: sonos?.volume ?? null },
+      sonos: { playbackState: sonos?.playbackState ?? null, volume: sonos?.volume ?? null, songSure: (getMic() as any)?.getAnalyserBoundSure?.() ?? false /* LÅTENS MINNE: spåret räknas som EN låt */ },
       engine: engine
         ? { running: true, tickMs: engine.getTickMs(), hz: Math.round(1000 / FRAME_MS), palette: engine.getPalette(), tvMode: engine.isTvMode() }
         : { running: false, tickMs: null, hz: null, palette: [] },

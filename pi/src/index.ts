@@ -106,6 +106,8 @@ const TICK_MS = 18;   // BLE-slot-lease strax UNDER ramtiden (18.67 ms) — varj
 
 // --- Lazy module references (filled by starters) ---
 type AlsaMicModule = typeof import('./alsaMic.js');
+/** LÅTENS MINNE: längsta Sonos-spår som räknas som EN låt. Längre = mix (flera låtar i ett spår), där är låtgränsen inte säker. */
+const SONG_MAX_MS = 10 * 60_000;
 type SonosModule = typeof import('./sonosPoller.js');
 type EngineModule = typeof import('./piEngine.js');
 
@@ -566,6 +568,10 @@ async function startSonosSubsystem(): Promise<void> {
 
       await sonos.onSonosChange((state) => {
         applySonosStateToEngine(state, lastArtUrl, wasTvMode, lastPaletteSig, lastChosen);
+        // LÅTENS MINNE (11-13, källarväxlingen): ett Sonos-spår med namn och vanlig låtlängd är EN låt - då är låtgränsen säker och ett
+        // nytt tempo utan låtgräns är samma låt. Mix (längre än SONG_MAX_MS), radio (ingen längd) och tv är det inte: där går klockan som förr.
+        // Sätts före låtbyteshinten nedan så nya låtens minne börjar i rätt läge.
+        alsaMic?.setAnalyserBoundSure?.(!state.isTvMode && !!state.trackName && (state.durationMs ?? 0) > 0 && (state.durationMs ?? 0) <= SONG_MAX_MS);
         noteTrackName(state.trackName ?? null, state.artistName ?? null);
         // Latklockan: mata varje uppdatering. Den plockar sjalv ut flankarna.
         engineInstance?.onSonosPosition(state.positionMs ?? null);

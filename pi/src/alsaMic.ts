@@ -517,6 +517,10 @@ export function getAnalyserBeatErr(): number { return analyser.clockOut.beatErr 
 export function hintAnalyserTrackChange(windowMs = 5000): void {
   analyser.hintTrackChange(windowMs);
 }
+/** LÅTENS MINNE (11-13): Sonos-spåret är EN låt (inte mix/radio/tv) - då är Sonos låtgräns säker och klockan samlar bevis över hela
+ *  låten i stället för de senaste sekunderna (analysatorns boundSure, se analyserClock). */
+export function setAnalyserBoundSure(on: boolean): void { analyser.boundSure = on; }
+export function getAnalyserBoundSure(): boolean { return analyser.boundSure; }
 
 
 // ── Analyser cost budget (ms per 128-hop @ 375 Hz) ──────────────────────────

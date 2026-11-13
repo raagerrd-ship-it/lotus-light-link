@@ -1547,6 +1547,9 @@ export class Analyser {
   /** LÅTGRÄNSEN (a4 entempo): antal låtgränser (boundaryDetector -> hintTrackChange). Klockan läser den per hop (hop-recordet H_BOUND) -
    *  det är klockans ENDA signal om låtbyte. */
   trackBoundaries = 0;
+  /** LÅTGRÄNSEN ÄR SÄKER (LÅTENS MINNE i klockan): värden sätter den när låtgränsen kommer utifrån och spåret är EN låt (lotus: Sonos-spår,
+   *  inte mix/radio/tv). Då är allt mellan två låtgränser samma låt. Osatt (DMX: gränsdetektorn missar byten) = av. Hop-recordet H_SURE. */
+  boundSure = false;
   /** Tystnad i ms (klockans tystnadssignal, hop-recordet H_QUIET; > 10 s släpper klockan som förr F_SIL10 släppte tempot). */
   get quietMs(): number { return this.silentMs; }
   /** EN KÄLLA (r0 entempo): analysatorns ENDA tempo och tillit = klockans (taktvägen i analysatorns långsamma väg, efter varje hop).
