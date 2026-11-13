@@ -1,4 +1,12 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-13 09:45 LÅTENS MINNE LIVE (huvudsessionen, ägaren: "lös källarväxlingen med Sonos låtgräns"): lotus 4cbb2e3b = dmx-control c56ade9. När Sonos
+spelar ett spår med namn och längd <= 10 min (inte tv) sätts analysatorns boundSure (/api/live sonos.songSure) och klockan väljer tempo ur ett
+60 s-minne sedan låtgränsen i stället för 5-10 s. Mixar > 10 min, radio och tv som förr. PORTA INTE IGEN, RÖR INTE.
+Live 09:11-10:54 (samma kväll... förmiddag, ägarens spellista): FÖRE 12 låtar, 17 % utan stort tempobyte (> 12 %), 2,75 stora byten/min;
+EFTER 22 låtar, 68 % utan, 0,62 /min. Bänk: källarklippen 3,34 -> 0,85 byten/min, lotus 503 rätt 469 -> 466, växlande låtar 80 -> 46.
+KVAR ATT MÄTA (rapportera bara): låtar med två nästan lika starka besläktade tempon (The Gael 103 <-> 155, He's a Pirate 100 <-> 133,
+Husavik) blinkar 0,5-2,5 s till syskonet; fyra hysteresformer prövade i bänken kostade alla rätt tempo (466 -> 449-464) och är förkastade.
+Mätmetod: /tmp/taktlogg2.py på Pi:n (0,5 s-prov ur /api/live + spårnamn), räkna byten per låt efter låtens första 12 s.
 11-13 03:34 KLOCKAN dmx-1b LIVE PÅ PI:N (huvudsessionen, ägarens ja): analyserClock = dmx-control 4770389 (hållen tolkning efter säker
 låsning + taktens självlikhet som vittne), lotus e3f9d6b4, bara analyserClock.js utlagd, md5 lika, motorn uppe på 4 s. PORTA INTE IGEN.
 Bänken sa (lotusbank): rätt 463 -> 469 av 503, syskonfel 26 -> 21, låtar som växlar 82 -> 80, källarklippen 3,97 -> 3,83 byten/min, fas
