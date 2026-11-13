@@ -133,8 +133,30 @@ const TG_GRID_EXTRA_MS = 5;   // oktavkanten +-3 %; övre oktaven bara om analys
  *  minne med TG_HOLD (kronan) för ALLA tempon. En ny låt utan låtgräns klarar det: förra låtens poäng dör ur det snabba fönstret på ~3 s.
  *  Mätt (tools/natt/tempohopp-2026-11-10.md): utflykter (tempot lämnar och kommer tillbaka inom 15 s) 1,45 -> 1,00/min, tid i utflykt 4,6 -> 2,9 %. */
 const TG_WIN_MS = 5000, TG_FULL_N = 900, TG_FWIN_MS = 3500, TG_FFULL_N = 630, TG_FA = 0.4, TG_SW_STEPS = 6, TG_SW_N = 2;
+/** HÅLLEN TOLKNING EFTER SÄKER LÅSNING (arena klocka2 k4, 2026-11-12; bygger på prov/flerhypotes-fh1-20261110.patch). Klockan har två
+ *  lägen. START (tgR < 0: kallstart, efter låtgräns, tystnad eller ett bevisat byte): dagens snabba väg oförändrad (två minnen, kronan).
+ *  När tempogrammets val stått på samma hypotes (+-2 steg) OCH över brustaket i TG_LOCK_N varv i följd (~3 s = 1-2 takter) är låsningen
+ *  SÄKER och hypotesen blir REGENT (tgR). HÅLLET: alla TG_K hypoteser följs med var sin bevissumma (tgD); varvets bevis = log av poängen i
+ *  det korta fönstret (bästa av grannarna +-TG_NB) minus BRUSTAKET (varvets median + TG_NOISE). Utmanarna summerar sitt bevis från ett
+ *  golv = TG_SW_P + TG_SW_G x regentens HÄLSA (EMA av dess överskott); regenten byts först när en utmanares summa gått om = bevis över
+ *  flera varv (takter), inte en enstaka topp i ett fill. Ett bevisat byte är en NY tolkning/låt: tempogrammet sås ur varvets poäng och
+ *  klockan går tillbaka till START tills nästa säkra låsning. Mätning av bevis över tid, ingen utjämning av det publicerade tempot. */
+const TG_NOISE = 0.6, TG_NB = 2, TG_SW_P = 1, TG_SW_G = 2, TG_HL_A = 0.5, TG_LOCK_N = 8, TG_LA = 0.04, TG_KNOWN = 0.5, SCAN_HOLD = 1.06;
 /** a3 TOPPRÖSTEN (se peakVote): syskonen, faktor, varv i följd; oktaven under kanten (se tgStep). */
 const HV_R = [4 / 3, 3 / 4, 3 / 2, 2 / 3, 5 / 4, 4 / 5], HV_K = 1.25, HV_N = 5, HV_AGE = 30, TG_OCT_LO = 79.6, TG_OCT_LO_N = 8;
+/** TAKTENS SJÄLVLIKHET - ett andra vittne (arena klocka2dmx J1, 2026-11-13). Tempogrammet frågar 'ligger energin PÅ slaget?'. Vittnet
+ *  frågar 'upprepar sig MÖNSTRET när det flyttas 2 och 4 slag?': korrelationen mellan ansatsserien och sig själv förskjuten 2 resp. 4 slag
+ *  av kandidatens tempo, över PW_WIN_MS, basens stigning och diskanten var för sig (fyra tal, summan -4..4). Rätt tempo upprepar sig på
+ *  båda (virveln på 2 och 4, basgången per takt); 4/3-fantomens '2 slag' är 1,5 riktiga slag, 3/2-fantomens '4 slag' är 2,67.
+ *  Vittnet dömer bara mellan klockans tempo och dess SYSKON (4/3, 3/4, 3/2, 2/3), och bara när domen är TYDLIG: den enes mönster finns
+ *  (>= PW_MIN) och är TG_HOLD gånger tydligare än den andres. Sond (joker-sond/analys.py A4, övningsmixen 2230 fönster): tydligt för rätt
+ *  tempo 68,0 %, tydligt för ett syskon 0,04 % (1 fönster), otydligt 32 %; i de 51 fönster där vikningen har fel: 24 tydligt rätt, 0 fel.
+ *  (1) VETO: vill varvets val byta till ett syskon och vittnet är tydligt för regenten står regenten kvar - men bara om regentens mönster
+ *      också finns i fönstrets senare halva (en ny låt i syskonförhållande, övningsmixen 152 -> 102: då är det borta och bytet går som förr).
+ *  (2) RÄTTNING: är vittnet tydligt för ett syskon mot klockans tempo HV_N varv i följd, och tempogrammet inte är säkert på regenten
+ *      (syskonet inom kronans marginal TG_HOLD i det långsamma minnet), byter klockan dit.
+ *  Efter ett tempobyte som INTE är ett syskonbyte (ny låt, låtgräns, kallstart) tiger vittnet i PW_WIN_MS - fönstret rymmer förra takten. */
+const PW_RING = 4096, PW_WIN_MS = 10000, PW_MIN = 0.5, PW_Q = [4 / 3, 3 / 4, 3 / 2, 2 / 3];
 const TG_K = 139, TG_STEP = Math.pow(2, 1 / TG_K), TG_PER_HOP = 1, TG_A = 0.21, TG_MIN_N = 300, TG_FINE = 0.0025, TG_HALF = ONSET_BINS >> 1;
 
 /**
@@ -189,11 +211,18 @@ export class BeatFeed {
   private readonly fullS = new Float64Array(ONSET_BINS); private readonly fullN = new Float64Array(ONSET_BINS);
   private readonly tgAcc = new Float64Array(TG_K).fill(-1); private readonly tgH = new Float64Array(ONSET_BINS); private tgK = 0; private tgN = 0;
   private readonly tgAccF = new Float64Array(TG_K).fill(-1); private tgSw = 0; tgSwitches = 0;   // TVÅ MINNEN (a2f)
+  // HÅLLEN TOLKNING (k4): varvets poäng (tgF), dess log med grannar (tgW), sorteringsyta (tgQ), bevissumman (tgD), regenten (tgR, -1 = START), hälsan, låsräknaren
+  private readonly tgF = new Float64Array(TG_K); private readonly tgW = new Float64Array(TG_K); private readonly tgQ = new Float64Array(TG_K);
+  private readonly tgD = new Float64Array(TG_K); private tgR = -1; private tgHl = 0; private tgLk = 0; private tgLkK = -1;
+  private readonly tgAccL = new Float64Array(TG_K).fill(-1); private tgLN = 0;   // k4b (lånat av k2b): långt minne (~10 s) - har låten hört tempot?
   /** EN TEMPOSÖKNING: tempogrammets vinnare (0 = ingen topp än) - klockans skanningscentrum. */
   tempoBpm = 0;
   /** TEMPOTS TYDLIGHET 0..1 (t1f): 1 - näst bästa tempohypotesens poäng / vinnarens, x 3, tak 1 (se tgStep). */
   tgClear = 1;
   private hvRun = 0; hvSwitches = 0; private hvAge = 0; private hvVoted = false; private hvKeep = 0; private hvEver = false; private octLoN = 0; private hvT0 = 0; private hvBest = 0;   // a3 TOPPRÖSTEN (hvEver: D1, rösten har bytt sedan låset)
+  // TAKTENS SJÄLVLIKHET (J1): egen ring (bas, diskant, tid), fönstret (antal, ms per värde), rättningens kandidat och varv i följd, tystnad till
+  private readonly pwE = new Float32Array(PW_RING); private readonly pwH = new Float32Array(PW_RING); private readonly pwT = new Float64Array(PW_RING); private pwPos = 0; private pwN = 0;
+  private pwWn = 0; private pwDt = 0; private pwCand = 0; private pwRun = 0; private pwQuietAt = 0; pwVetos = 0; pwFixes = 0;
   private tgHalfR = 0; octR = 0; private octN = 0; private octHi = false;   // OKTAVKANTEN (r0): halvslagskvotens EMA och läget
   private goodOn = 0; private goodRep = 0; private goodAt = 0;   // TAKTEN GENOM BREAKET
   // ETTAN (a5): fyra platsers särdrag (inre slagindex & 3), pågående slagets max, linjära ringar för stigningen, publicerat ankare
@@ -213,7 +242,7 @@ export class BeatFeed {
 
   // Sökningen sprids över hoppen: ETT tempo per hop (Pi Zero: hela sökningen i ett anrop = 2 ms på PC:n, ~20 ms på Pi:n = stopp i slingan).
   private scanStep = 0.005; private scanC = 99; private scanEnd = 0; private scanRef = 0; private scanNow = 0; private scanC0 = 0;
-  private bestScore = 0; private bestBpm = 0; private bestPh = 0;
+  private bestScore = 0; private bestBpm = 0; private bestPh = 0; private scanFar = 0;
 
   /** LÖPANDE TAKT: ett hop av sökningen - vik ringen (fönstret före sökningens start) på nästa tempo; sist läggs rutnätet på toppen. */
   private onsetStep(cfg: EngineConfig, now: number): void {
@@ -222,8 +251,11 @@ export class BeatFeed {
       if (now < this.onNext) return;
       this.onNext = now + ONSET_EVERY_MS;
       this.scanRef = beat.anchorMs; this.scanNow = now;
-      if (this.tempoBpm > 0 && Math.abs(beat.bpm / this.tempoBpm - 1) > TG_SNAP) { this.scanC0 = this.tempoBpm; this.scanStep = TG_FINE; this.scanEnd = 5; }   // EN TEMPOSÖKNING: klockan utanför tempogrammets topp -> dit
-      else if (this.tempoBpm > 0) { this.scanC0 = beat.bpm; this.scanStep = 0.005; this.scanEnd = 5; }   // inom: klockans egen skanning som förr (fas, fintempo; a2r M2: kring tempogrammets topp gav ettan 100 -> 93, gridfel 15 -> 26 ms)
+      // k4b BLIPPEN ÖVERHOPPAD: förra sökningens eget tempo låg utanför TG_SNAP från tempogrammets och togs inte (scanFar, se nedan). Den här
+      // sökningen görs precis som den hade gjorts om det tagits - samma tidpunkt, samma centrum - så rutnätet efteråt är detsamma som förr.
+      const cb = this.scanFar > 0 ? this.scanFar : beat.bpm; this.scanFar = 0;
+      if (this.tempoBpm > 0 && Math.abs(cb / this.tempoBpm - 1) > TG_SNAP) { this.scanC0 = this.tempoBpm; this.scanStep = TG_FINE; this.scanEnd = 5; }   // EN TEMPOSÖKNING: klockan utanför tempogrammets topp -> dit
+      else if (this.tempoBpm > 0) { this.scanC0 = cb; this.scanStep = 0.005; this.scanEnd = 5; }   // inom: klockans egen skanning som förr (fas, fintempo; a2r M2: kring tempogrammets topp gav ettan 100 -> 93, gridfel 15 -> 26 ms)
       else { this.scanC0 = beat.bpm; this.scanStep = 0.005; this.scanEnd = 5; }   // tempogrammet nollat (låtgräns): kring klockans tempo (inget andra sökcentrum - EN KÄLLA)
 
       this.scanC = -5; this.bestScore = 0;
@@ -242,7 +274,9 @@ export class BeatFeed {
     if (n >= 100 && tot > 0) {
       const mean = tot / n; let mx = 0, mb = 0;
       for (let b = 0; b < ONSET_BINS; b++) { const v = this.foldN[b] ? this.foldS[b] / this.foldN[b] : 0; if (v > mx) { mx = v; mb = b; } }
-      const score = mx / mean;
+      // k4b FINTEMPOTS KRONA: i klockans egen sökning (0,5 %-steg kring sitt tempo) måste ett granntempo passa ansatserna SCAN_HOLD bättre än det
+      // tempo klockan har - annars växlar två lika bra grannar varannan sökning (114,0 <-> 114,6) utan att musiken ändrats. Samma princip som KRONAN.
+      const score = (mx / mean) * (c === 0 && this.scanStep === 0.005 ? SCAN_HOLD : 1);
       if (score > this.bestScore) {
         const a = this.foldMean(mb - 1), cc = this.foldMean(mb), d = this.foldMean(mb + 1), den = a - 2 * cc + d;   // parabel genom toppen
         const off = den < 0 ? 0.5 * (a - d) / den : 0;
@@ -252,6 +286,11 @@ export class BeatFeed {
     if (c < this.scanEnd || this.bestScore < ONSET_MIN_PEAK) return;
     // nytt tempo med bevarat slagindex + fas, sedan fasen direkt på toppen (toppen låg på bestPh räknat från sökningens ankare)
     if (this.tempoBpm > 0) this.bestBpm = Math.min(159.9, Math.max(80, this.bestBpm));   // samma oktavfönster som tempogrammet
+    // k4b BLIPPEN ÖVERHOPPAD (k4:s skanningsspärr i ny form; jokern mätte 45 av 59 utflykter som sådana): klockans egen sökning (+-2,5 % kring
+    // sitt tempo, som självt får ligga 3 % från tempogrammets) kunde ta ett tempo 3-5 % från tempogrammets topp; nästa sökning 250 ms senare
+    // hämtade det tillbaka = en 'blipp' på 0,2-0,4 s. Ett sådant tempo tas inte: rutnätet rullar orört till nästa ordinarie sökning, som görs
+    // som om det tagits. (Stryka kandidaterna: hämtningen uteblev, lotus fasmedian 0,91 -> 0,90. Hämta genast: sökningarnas tidpunkter flyttas.)
+    if (this.tempoBpm > 0 && Math.abs(this.bestBpm / this.tempoBpm - 1) > TG_SNAP) { this.scanFar = this.bestBpm; return; }
     const oldMs = 60000 / beat.bpm, idx = Math.floor((now - beat.anchorMs) / oldMs), fr = (now - beat.anchorMs) / oldMs - idx;
     const nb = 60000 / this.bestBpm;
     beat.bpm = this.bestBpm; beat.anchorMs = now - (idx + fr) * nb;
@@ -297,12 +336,51 @@ export class BeatFeed {
     for (let r = 0; r < TG_PER_HOP; r++) {
       const k = this.tgK, bk0 = 80 * Math.pow(TG_STEP, k), accF = this.tgAccF;
       const sf = this.tgScore(bk0, now, TG_FWIN_MS);   // snabba minnet först (tgN/tgHalfR ska vara det långsammas efteråt)
+      this.tgF[k] = sf;
       if (sf > 0) accF[k] = accF[k] < 0 || this.tgN < TG_FFULL_N ? sf : accF[k] + TG_FA * (sf - accF[k]);
       const s = this.tgScore(bk0, now);
       if (s > 0) acc[k] = acc[k] < 0 || this.tgN < TG_FULL_N ? s : acc[k] + TG_A * (s - acc[k]);   // minne först när fönstret är fullt (kort fönster = brusig, långsam-gynnad poäng)
+      if (s > 0) { const L = this.tgAccL; L[k] = L[k] < 0 ? s : L[k] + (this.tgLN * TG_LA < 1 ? 1 / (this.tgLN + 1) : TG_LA) * (s - L[k]); if (k === TG_K - 1) this.tgLN++; }
       if (++this.tgK < TG_K) continue;
       this.tgK = 0;
-      if (this.tgN < TG_FULL_N) acc.set(accF);   // TVÅ MINNEN: tills det långsamma fönstret är fullt (kallstart, efter relock) styr det snabba
+      // HÅLLEN TOLKNING (k4): varvets bevis mot brustaket; med en regent avgör bevissumman bytet
+      const F = this.tgF, W = this.tgW, Q = this.tgQ, D = this.tgD;
+      let any = false, nc = 0;
+      for (let i = 0; i < TG_K; i++) { Q[i] = F[i] > 0 ? Math.log(F[i]) : 0; if (F[i] > 0) any = true; }
+      if (any) {
+        for (let i = 0; i < TG_K; i++) { let v = Q[i]; for (let d = 1; d <= TG_NB; d++) { const a = Q[(i + d) % TG_K], b = Q[(i + TG_K - d) % TG_K]; if (a > v) v = a; if (b > v) v = b; } W[i] = v; }
+        Q.sort(); nc = Q[TG_K >> 1] + TG_NOISE;
+      }
+      if (this.tgR >= 0 && any) {
+        const r0 = this.tgR, e = Math.max(0, W[r0] - nc); let nk = r0, mx = 0;
+        this.tgHl += TG_HL_A * (e - this.tgHl); D[r0] += e; mx = D[r0];
+        const fl = -(TG_SW_P + TG_SW_G * this.tgHl);
+        for (let i = 0; i < TG_K; i++) { if (i === r0) continue; const d = Math.max(D[i], fl) + W[i] - nc; D[i] = d; if (d > mx) { mx = d; nk = i; } }
+        for (let i = 0; i < TG_K; i++) D[i] -= mx;
+        const d0 = Math.abs(nk - r0);
+        if (Math.min(d0, TG_K - d0) > 2) {   // bevisat byte: ny tolkning -> tempogrammet sås ur varvets poäng, START-läget tar vid
+          for (let i = 0; i < TG_K; i++) if (F[i] > 0) { acc[i] = F[i]; accF[i] = F[i]; }
+          this.tgR = -1; this.tgLk = 0; this.tgLkK = -1; this.tgSw = 0; this.tgSwitches++;
+        } else this.tgR = nk;
+      }
+      if (this.tgR >= 0) {
+        // k4b (lånat av k2b) NY LÅT ELLER SAMMA? Snabba minnets byte prövas som förr (TG_HOLD i TG_SW_N varv), men tas bara om utmanarens tempo är
+        // OKÄNT för det långa minnet (< TG_KNOWN x regentens poäng där) = nytt material, inte en annan läsning av samma låt. Då går allt som
+        // förr och START-läget tar vid. En KÄND utmanare (hörd i låten) måste vinna på bevissumman ovan.
+        const r = this.tgR, L = this.tgAccL; let fk = -1, fv = 0; for (let i = 0; i < TG_K; i++) if (accF[i] > fv) { fv = accF[i]; fk = i; }
+        const d0 = fk < 0 ? 0 : Math.abs(fk - r), dd = Math.min(d0, TG_K - d0);
+        const fc = Math.max(accF[r], accF[(r + 1) % TG_K], accF[(r + TG_K - 1) % TG_K]);
+        if (fk >= 0 && dd > TG_SW_STEPS && fv >= fc * TG_HOLD) {
+          if (++this.tgSw >= TG_SW_N) {
+            let lf = 0, lr = 0; for (let d = -2; d <= 2; d++) { const a = L[(fk + d + TG_K) % TG_K], b = L[(r + d + TG_K) % TG_K]; if (a > lf) lf = a; if (b > lr) lr = b; }
+            if (lf < TG_KNOWN * lr) { acc.set(accF); this.tgSwitches++; this.tgR = -1; this.tgLk = 0; this.tgLkK = -1; }
+            this.tgSw = 0;
+          }
+        } else this.tgSw = 0;
+      }
+      const held = this.tgR >= 0;
+      if (held) { /* regenten håller */ }
+      else if (this.tgN < TG_FULL_N) acc.set(accF);   // TVÅ MINNEN: tills det långsamma fönstret är fullt (kallstart, efter relock) styr det snabba
       else if (this.tempoBpm > 0) {   // TVÅ MINNEN: det snabba pekar på ett annat tempo -> det ersätter det långsamma
         let fk = -1, fv = 0; for (let i = 0; i < TG_K; i++) if (accF[i] > fv) { fv = accF[i]; fk = i; }
         const kc0 = ((Math.round(Math.log(this.tempoBpm / 80) / Math.log(TG_STEP)) % TG_K) + TG_K) % TG_K;
@@ -311,7 +389,9 @@ export class BeatFeed {
         // TEMPOHOPPEN (11-10): kronans marginal mot ALLA tempon, inte bara syskonen
         if (fk >= 0 && dd > TG_SW_STEPS && fv >= fc * TG_HOLD) { if (++this.tgSw >= TG_SW_N) { acc.set(accF); this.tgSw = 0; this.tgSwitches++; } } else this.tgSw = 0;
       }
-      let bk = -1, bv = 0; for (let i = 0; i < TG_K; i++) if (acc[i] > bv) { bv = acc[i]; bk = i; }
+      let bk = -1, bv = 0;
+      if (held) { bk = this.tgR; bv = acc[bk]; for (let d = -2, c0 = bk; d <= 2; d++) { const j = (c0 + d + TG_K) % TG_K; if (acc[j] > bv) { bv = acc[j]; bk = j; } } if (!(bv > 0)) bk = -1; }   // fintempot: det långsamma minnets topp kring regenten
+      else for (let i = 0; i < TG_K; i++) if (acc[i] > bv) { bv = acc[i]; bk = i; }
       if (bk < 0) { this.tempoBpm = 0; return; }
       // TEMPOTS TYDLIGHET (t1f): marginalen till NÄST BÄSTA tempohypotes = högsta andra lokala toppen i varvets tempogram (mer än
       // 2 steg från vinnaren, så toppens egen flank räknas inte). Ett enda tydligt tempo -> 1; två lika starka (96 <-> 128,
@@ -320,14 +400,20 @@ export class BeatFeed {
       { let sv = 0;
         for (let i = 0; i < TG_K; i++) { const v = acc[i], dd = Math.abs(i - bk), d = dd < TG_K - dd ? dd : TG_K - dd;
           if (d > 2 && v > sv && v >= acc[(i + 1) % TG_K] && v >= acc[(i + TG_K - 1) % TG_K]) sv = v; }
-        this.tgClear = Math.min(1, 3 * (1 - sv / bv)); }
+        this.tgClear = Math.max(0, Math.min(1, 3 * (1 - sv / bv))); }
       // KRONAN (r0): det regerande tempot behåller toppen tills en annan hypotes slår det med TG_HOLD (lang1011 490-570 s: 96 <-> 128 = 4:3
       // varannat varv, kickspärren och grinden bytte med -> sektionerna). Bara om det regerande tempots egen poäng finns (> 0).
-      if (this.tempoBpm > 0) {
+      if (!held && this.tempoBpm > 0) {
         const kc = ((Math.round(Math.log(this.tempoBpm / 80) / Math.log(TG_STEP)) % TG_K) + TG_K) % TG_K, cv = Math.max(acc[kc], acc[(kc + 1) % TG_K], acc[(kc + TG_K - 1) % TG_K]);
         // bara mot ett HARMONISKT syskon (4:3, 3:2 åt båda hållen, i det cirkulära oktavrutnätet): ett annat tempo (ny låt utan låtgräns) tas som förr
         const d = ((bk - kc) % TG_K + TG_K) % TG_K, sib = TG_SIB.some((q) => Math.abs(d - q) <= 2 || Math.abs(d - (TG_K - q)) <= 2);
-        if (sib && cv > 0 && bv < cv * TG_HOLD) return;
+        if (sib && cv > 0 && bv < cv * TG_HOLD) { this.tgLk = 0; this.tempoBpm = this.pwJudge(this.tempoBpm, now); return; }
+      }
+      if (!held) {   // SÄKER LÅSNING: samma hypotes (+-2 steg), över brustaket, fullt fönster, TG_LOCK_N varv i följd -> regent
+        const dl = Math.abs(bk - this.tgLkK), same = this.tgLkK >= 0 && Math.min(dl, TG_K - dl) <= 2;
+        const e = any ? W[bk] - nc : 0;
+        this.tgLk = same && e > 0 && this.tgN >= TG_FULL_N ? this.tgLk + 1 : 0; this.tgLkK = bk;
+        if (this.tgLk >= TG_LOCK_N) { this.tgR = bk; this.tgLk = 0; D.fill(0); this.tgHl = e; }
       }
       const a = acc[(bk + TG_K - 1) % TG_K], c = acc[(bk + 1) % TG_K], den = a - 2 * bv + c;   // parabel i log-rutnätet (cirkulärt)
       const off = a >= 0 && c >= 0 && den < 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a - c) / den)) : 0;
@@ -345,7 +431,9 @@ export class BeatFeed {
         // a3 OKTAVEN UNDER KANTEN: båda bänkarnas facit (och lotus BPM_MIN/MAX) bor i [80, 160) - ett slag under 80 finns inte, så ligger
         // halvslaget tydligt under kanten (< TG_OCT_LO) är pulsen dubbla (lotus 503: 20 'dubbla' 155-159 -> klockan 80,0 = klämd 78,x).
         t = this.octHi || this.octLoN >= TG_OCT_LO_N ? 2 * lo : lo; }
-      this.tempoBpm = Math.min(159.9, Math.max(80, this.peakVote(t, now)));
+      { const r0 = this.tempoBpm, pc = Math.min(159.9, Math.max(80, this.peakVote(t, now))), pj = this.pwJudge(pc, now); this.tempoBpm = pj;
+        // dmx-1b: vittnets RÄTTNING flyttar också k4b:s regent (annars drar regenten tillbaka klockan nästa varv)
+        if (pj !== pc && pj !== r0 && this.tgR >= 0) { this.tgR = ((Math.round(Math.log(pj / 80) / Math.log(TG_STEP)) % TG_K) + TG_K) % TG_K; this.tgD.fill(0); } }
       return;
     }
   }
@@ -402,7 +490,57 @@ export class BeatFeed {
     for (let b = 0; b < ONSET_BINS; b++) { if (!N[b]) continue; const v = S[b] / N[b], h = Hs[b] / N[b]; if (v > mx) mx = v; if (h > hx) hx = h; }
     return (mx / (tot / n)) * (hx / (totH / n));
   }
-  private tgReset(): void { this.tgAcc.fill(-1); this.tgAccF.fill(-1); this.tgSw = 0; this.tgK = 0; this.tempoBpm = 0; this.octN = 0; this.hvRun = 0; this.hvAge = 0; this.hvVoted = false; this.hvKeep = 0; this.hvEver = false; }
+  /** Är a ett syskon till b (4/3, 3/4, 3/2, 2/3, oktaven bortvikt, +-TG_SNAP)? */
+  private pwSib(a: number, b: number): boolean {
+    for (let i = 0; i < PW_Q.length; i++) { let c = b * PW_Q[i]; while (c >= 160) c /= 2; while (c < 80) c *= 2; if (Math.abs(a / c - 1) <= TG_SNAP) return true; }
+    return false;
+  }
+  /** Seriens likhet med sig själv `lag` värden bort, över fönstret pwWn (Pearson). */
+  private pwCorr(x: Float32Array, lag: number): number {
+    const n = this.pwWn, m = n - lag; if (m < 200) return 0;
+    const M = PW_RING - 1, j0 = this.pwPos - n + 2 * PW_RING; let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+    for (let i = 0; i < m; i++) { const a = x[(j0 + i) & M], b = x[(j0 + i + lag) & M]; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; }
+    const va = saa - sa * sa / m, vb = sbb - sb * sb / m;
+    return va > 0 && vb > 0 ? (sab - sa * sb / m) / Math.sqrt(va * vb) : 0;
+  }
+  /** Långsamma minnets poäng kring bpm (+-2 steg, cirkulärt). */
+  private pwAt(bpm: number): number { const acc = this.tgAcc, k = ((Math.round(Math.log(bpm / 80) / Math.log(TG_STEP)) % TG_K) + TG_K) % TG_K; let v = 0; for (let i = -2; i <= 2; i++) { const x = acc[(k + i + TG_K) % TG_K]; if (x > v) v = x; } return v; }
+  /** Mönstrets självlikhet 2 och 4 slag bort på tempot bpm, bas + diskant. */
+  private pwSim(bpm: number): number {
+    const l2 = Math.round(120000 / bpm / this.pwDt), l4 = Math.round(240000 / bpm / this.pwDt);
+    return this.pwCorr(this.pwE, l2) + this.pwCorr(this.pwE, l4) + this.pwCorr(this.pwH, l2) + this.pwCorr(this.pwH, l4);
+  }
+  /** TAKTENS SJÄLVLIKHET (se PW_RING): varvets val `cand` mot regenten -> klockans tempo. */
+  private pwJudge(cand: number, now: number): number {
+    const reg = this.tempoBpm;
+    if (!(reg > 0)) { this.pwQuietAt = now + PW_WIN_MS; this.pwRun = 0; return cand; }
+    const moved = Math.abs(cand / reg - 1) > TG_SNAP, sib = moved && this.pwSib(cand, reg);
+    if (moved && !sib) { this.pwQuietAt = now + PW_WIN_MS; this.pwRun = 0; return cand; }   // ny takt som inte är en annan läsning: som förr, vittnet tiger
+    if (now < this.pwQuietAt) return cand;
+    // fönstret: de senaste PW_WIN_MS i ringen
+    const M = PW_RING - 1; let lo = 0, hi = this.pwN;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (now - this.pwT[(this.pwPos - 1 - m + 2 * PW_RING) & M] > PW_WIN_MS) hi = m; else lo = m + 1; }
+    if (lo < 1000) return cand;
+    this.pwWn = lo; this.pwDt = (this.pwT[(this.pwPos - 1 + PW_RING) & M] - this.pwT[(this.pwPos - lo + 2 * PW_RING) & M]) / (lo - 1); if (!(this.pwDt > 0)) return cand;
+    const sR = this.pwSim(reg);
+    if (sib) {   // (1) VETO: tempogrammet vill till ett syskon
+      const sC = this.pwSim(cand);
+      if (sR >= PW_MIN && sR > (sC > 0 ? sC * TG_HOLD : 0)) {
+        this.pwWn = lo >> 1; const sN = this.pwSim(reg);   // ... och mönstret finns kvar i fönstrets SENARE halva (en ny låt i syskonförhållande: borta)
+        if (sN >= PW_MIN) { this.pwVetos++; this.pwRun = 0; return reg; }
+      }
+      this.pwRun = 0; return cand;
+    }
+    // (2) RÄTTNING: klockan står (cand = regenten, fintempot följer); är ett syskons mönster tydligt mot dess eget?
+    let bs = 0, bb = 0;
+    for (let i = 0; i < PW_Q.length; i++) { let c = cand * PW_Q[i]; while (c >= 160) c /= 2; while (c < 80) c *= 2; const v = this.pwSim(c); if (v > bs) { bs = v; bb = c; } }
+    if (bs >= PW_MIN && bs > (sR > 0 ? sR * TG_HOLD : 0) && this.pwAt(bb) * TG_HOLD >= this.pwAt(cand)) {   // tydligt mönster OCH tempogrammet är inte säkert på regenten
+      if (this.pwRun > 0 && Math.abs(bb / this.pwCand - 1) <= TG_SNAP) this.pwRun++; else { this.pwCand = bb; this.pwRun = 1; }
+      if (this.pwRun >= HV_N) { this.pwRun = 0; this.pwFixes++; return bb; }
+    } else this.pwRun = 0;
+    return cand;
+  }
+  private tgReset(): void { this.pwN = 0; this.pwRun = 0; this.tgAcc.fill(-1); this.tgAccF.fill(-1); this.tgSw = 0; this.tgR = -1; this.tgLk = 0; this.tgLkK = -1; this.tgHl = 0; this.tgAccL.fill(-1); this.tgLN = 0; this.tgK = 0; this.tempoBpm = 0; this.octN = 0; this.hvRun = 0; this.hvAge = 0; this.hvVoted = false; this.hvKeep = 0; this.hvEver = false; }
 
   /** Kom en tidigare kick (ringen, före denna) lag ms före t, inom ±tol? (TRUST_REPEAT) */
   private kickRepeats(t: number, lag: number, tol: number): boolean {
@@ -533,7 +671,8 @@ export class BeatFeed {
       const old = this.riseDb[this.risePos]; this.riseDb[this.risePos] = db; this.risePos = (this.risePos + 1) % FEED_RISE_HOPS;
       const ok = old !== 0 && db > old ? db - old : 0;
       const hi = (frame.onset?.highMid ?? 0) + (frame.onset?.treble ?? 0);
-      if (this.onHalf) { this.onT[this.onPos] = now; this.onV[this.onPos] = ok > this.onPrev ? ok : this.onPrev; this.hiV[this.onPos] = hi > this.hiPrev ? hi : this.hiPrev; this.onPos = (this.onPos + 1) % ONSET_RING; if (this.onN < ONSET_RING) this.onN++; }
+      if (this.onHalf) { this.onT[this.onPos] = now; this.onV[this.onPos] = ok > this.onPrev ? ok : this.onPrev; this.hiV[this.onPos] = hi > this.hiPrev ? hi : this.hiPrev; this.pwT[this.pwPos] = now; this.pwE[this.pwPos] = this.onV[this.onPos]; this.pwH[this.pwPos] = this.hiV[this.onPos]; this.pwPos = (this.pwPos + 1) & (PW_RING - 1); if (this.pwN < PW_RING) this.pwN++;
+        this.onPos = (this.onPos + 1) % ONSET_RING; if (this.onN < ONSET_RING) this.onN++; }
       this.onPrev = ok; this.hiPrev = hi; this.onHalf = !this.onHalf;
       this.tgStep(now);
       // KALLSTART (förr analysatorns första lås): klockan föds på tempogrammets första topp, fasen på senaste kicken; onsetStep lägger
