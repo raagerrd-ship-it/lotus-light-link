@@ -301,7 +301,19 @@ const BODY_CEIL_DB_S = 0.15;   // taket haller latens loud-referens lange
 // (bodyFast 60 ms, bodyEnv 350 ms, bodyCeil -0,15 dB/s) - förr en egen kopia i effekterna.
 const FLANK_GONE_DB = 10, FLANK_BREAK_S = 4, FLANK_LAND_DB = 6, FLANK_RISE_DB = 12, FLANK_HOLD_S = 0.6, FLANK_GRACE_S = 1;
 const FLANK_SHORT_S = 2, FLANK_SHORT_RISE_DB = 24, FLANK_SILENT_LV = 0.005;
+// BREAK-TAKET (2026-11-14, ur arenan drop1 a7; ägarens facit i ladan 11-13): har basen varit borta i FLANK_ROOF_BEATS slag eller mer
+// (2 takter, räknat i klockans tempo) är återkomsten en ny sektion som börjar, inte en drop. Mätt på ägarens två markerade inspelningar:
+// hans egna drop har basen borta högst 6 slag, återkomsterna han INTE kallar drop (omarkerade, "inte drop", låtbyte) minst drygt 8.
+// Samma dom för tak 6-9 slag. Slam-kandidaten kan fortfarande göra återkomsten till minidrop.
+const FLANK_ROOF_BEATS = 8;
 const SHOW_DROP_GAP_MS = 12000;   // spärr mellan full drops (ägaren 10-12): flank inom spärren = minidrop (dropSpaced)
+// RISERNS FÖNSTER: bandets nivå räknas 0..1 över så här många dB under bandets egen topp (förr absolut -70..-10 dB, samma spann).
+const RISER_SPAN_DB = 60;
+// RISERN LYSSNAR OVANFÖR BASKROPPEN (band 3-7, >= 250 Hz; kroppen = band 0-2 är drop-detektorns signal). Med alla åtta band blev
+// basens ÅTERKOMST den största "nyheten": mätt (övningen, m1) låg 13 av 16 uppbyggnadsepisoder 0-4 s EFTER ett lyft, alltså efter
+// droppen. Ett svep eller en virvelrulle stiger ovanför basen; basens återkomst är droppen själv. (I det absoluta fönstret var
+// basbanden mättade och bidrog aldrig - så här var novelty-talen 0,15 / 0,45 en gång satta.)
+const RISER_BAND0 = 3;
 // LYFT/NÄSTAN-DROP/STOPP (flyttade ur effects.ts stepLifts 11-09): kroppen 120 ms (nearB), normalnivån 8 s, historik i 25 ms-rutor.
 const NEAR_RISE_DB = 10, NEAR_DIP_DB = 8, LIFT_DB = 10, STOP_MINI_S = 0.6;
 
@@ -873,9 +885,12 @@ export class Analyser {
    *   DET är förklaringen till den uppmätta `buildUp` p50 = p90 = 0.00. Signalen
    *   var inte feljusterad, den var BORTKALIBRERAD av sin egen normalisering.
    * `bandLvl` lämnas orörd — hela effektlagret är kalibrerat mot den. Riser och
-   * novelty läser i stället den här, i dB, där en ramp är en ramp oavsett nivå.
+   * novelty läser i stället rå dB (`bandDbRaw`), där en ramp är en ramp oavsett nivå.
+   * RELATIVT FÖNSTER (drop1 a6, 2026-11-13): förr låg dB-talet i ett ABSOLUT fönster (-70..-10 dB -> 0..1). Ladans rena ljud
+   * ligger över -10 dB i sex av åtta band (mätt: mättat i 88-100 % av tiden) -> novelty var noll och risern död. Fönstret hänger
+   * nu under BANDETS EGEN TOPP (`bandTop`, sjunker som bodyCeil): 1 = vid toppen, 0 = RISER_SPAN_DB under den. Se riserStep.
    */
-  private bandDb = new Float32Array(8);
+  private bandTop = new Float32Array(8).fill(-140);
   private bandDbRaw = new Float32Array(8);   // RA dB per band (drop-detektorns kropp) — synk fran DMX-master 2026-09-03
   /** Stor-FFT-rutor med signal i rad. Onsets hålls tysta tills MAD hunnit byggas
    *  upp — se `ONSET_WARM` och kommentaren vid bandOn. */
@@ -1453,6 +1468,7 @@ export class Analyser {
       { const bl = this.bandLvl[1] + this.bandLvl[2]; if (bl > this.blAccum) this.blAccum = bl; if (this.kickHit >= 1) this.blKickSeq = this.envSeq; }
       if (r[o + B_ENVF] === 1) { this.dBpm = r[o + B_ENVBPM]; this.stepBassline(); }
       this.hRms = r[o + B_RMS]; this.lvlSmooth = r[o + B_LVL]; this.centSmooth = r[o + B_CENT]; this.activeMs = r[o + B_ACTIVE]; this.kickHit = r[o + B_KICKHIT];
+      this.zoneStep();
       const wall = r[o + B_WALL];
       { const po = slot * BIG_HOP_MAX; this.bigRingPush(pcm.subarray(po, po + hn)); }
       if (++this.bigCounter >= Analyser.BIG_EVERY) this.bigStep();
@@ -2043,17 +2059,11 @@ export class Analyser {
     // läses som en drop. Resultatet exponeras som en MONOTON räknare → en konsument
     // på lägre takt kan aldrig missa flanken.
     const nowWallA = this.wallNow();
-    this.levelCeil = Math.max(this.lvlSmooth, this.levelCeil - dtHop * 0.015 * this.levelCeil);   // tak, decay ~65s
+    this.zoneStep();
     // `breaking` = nivån ligger i en svacka. Exponeras till effektlagret (lugnt läge).
     // Den GAMLA svack-stämpeln (breakAtMs, 400 ms ihållande) grindade drop-villkoret
     // innan flanken flyttades till baskroppen; den är borttagen med sitt villkor.
     const breaking = this.lvlSmooth < this.levelCeil * 0.65;
-
-    // TRE villkor, inte tva: utover hysteresen (85 % in / 70 % ut) finns ett
-    // ABSOLUT golv pa 0.65 som saknar motsvarighet pa vagen ut. Det kan ensamt
-    // halla inZone falsk genom en hel tyst lat. Odokumenterat tidigare.
-    if (this.lvlSmooth > this.levelCeil * 0.85 && this.lvlSmooth > 0.65) this.inZoneState = true;
-    else if (this.lvlSmooth < this.levelCeil * 0.70) this.inZoneState = false;
     const inZone = this.inZoneState;
     // BASKROPPEN — drop-detektionens egen signal (tak + frånvaro + stigningstakt).
     // `inZone` lämnas orörd: effektlagret använder den som "musiken ligger högt".
@@ -2418,12 +2428,10 @@ export class Analyser {
       // Lotus-adaptern använder rå bandmagnitud som spektral andel för ljuset.
       // Den får inte ersättas av bandLvl, som är per-band AGC-normaliserad.
       this.bandAbs[b] = avg;
-      // Obehandlad nivå i dB, normaliserad till 0..1 över ett 60 dB-spann.
-      // Ingen AGC, inget tak som följer med uppåt → en stigning syns som stigning.
+      // Obehandlad nivå i dB. Ingen AGC → en stigning syns som stigning (riserns fönster: se riserStep).
       const db = 20 * Math.log10(avg + 1e-7);
-      this.bandDbRaw[b] = db;   // RA dB (drop-kropp)
+      this.bandDbRaw[b] = db;   // RA dB (drop-kropp, riser)
       this.secSpecDirty = true;
-      this.bandDb[b] = Math.max(0, Math.min(1, (db + 70) / 60));
       // Per-band AGC: skala mot egen långsamt sjunkande peak → varje band nyttjar
       // full range oavsett mix (bas dominerar annars alltid rå-magnituden).
       // GOLV (~0.15·lvlSmooth): peaken nollställs INTE i tystnad → när ett tidigare
@@ -2479,6 +2487,16 @@ export class Analyser {
     }
     { const t = this.prevMagBig; this.prevMagBig = this.magBig; this.magBig = t;
       const v = this.prevMagBigView; this.prevMagBigView = this.magBigView; this.magBigView = v; }
+  }
+
+  /** NIVÅTAKET OCH TOPP-ZONEN (drop1 a6): låtens eget tak (sjunker 1,5 %/s, ~65 s) och zonen med hysteres (in vid 85 % av taket, ut vid
+   *  70 %). Det ABSOLUTA golvet 0,65 är borta: ren musik i ladan når nivå 0,25 som mest, så zonen var falsk 100 % av tiden. EN formel,
+   *  körd där nivån finns: snabba sidan i process(), långsamma tråden i drainBig på samma lvlSmooth-följd (riserns
+   *  nivågrindar läser taket där). */
+  private zoneStep(): void {
+    this.levelCeil = Math.max(this.lvlSmooth, this.levelCeil - this.dtHop * 0.015 * this.levelCeil);
+    if (this.lvlSmooth > this.levelCeil * 0.85) this.inZoneState = true;
+    else if (this.lvlSmooth < this.levelCeil * 0.70) this.inZoneState = false;
   }
 
   /** Drop-detektionen (baskropp, franvaro, stigning, armering, minidrop, lugn-grind, kick-las, fyrning). Manga kalla grenar: egen funktion sa att en deopt bara kostar den har, inte hetslingan. */
@@ -2610,9 +2628,8 @@ export class Analyser {
     //   p50/p90=0 ar forvantat — en riser SKA vara sallsynt. I ett brusigt rum
     //   fyrar den nastan aldrig (0.6%, max 0.04), sa ett hart riser-krav skulle
     //   sla av drop-detektionen just dar mikrofonen sitter.
-    // Kravet ar fortfarande avstangt tills det matts om mot bodyOnset pa akta
-    // material (se nedan) — men grunden ar nu grindens kalibrering, inte en dod
-    // signal.
+    // Kravet ar fortfarande avstangt: risern lever igen (relativa granser, 2026-11-14)
+    // men ser bara svep, inte breakdowns (drop1: 1 av agarens 6 uppbyggnader).
 
     // FLANKEN TAS PÅ BASKROPPEN, inte på nivån. Nivå-zonen var sann 80 % av tiden
     // i ägarens musik → dess flanker låg godtyckligt, och 8-takters-spärren blev
@@ -2702,6 +2719,7 @@ export class Analyser {
     const span = this.fdGone > 0 ? this.fdGone : now - this.fdEnd < FLANK_GRACE_S * 1000 ? this.fdSpan : 0;
     if (this.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
     if (!edge || f - low < FLANK_RISE_DB || (span < FLANK_BREAK_S && !(span >= FLANK_SHORT_S && ceil - low >= FLANK_SHORT_RISE_DB))) return false;
+    if (span * (this.dBpm > 40 ? this.dBpm : 60000 / Analyser.BE_FALLBACK_MS) >= FLANK_ROOF_BEATS * 60) return false;   // BREAK-TAKET: ny sektion, ingen drop
     if (now - this.fdQuietAt < span * 1000 + 500) { this.fdGone = 0; this.fdSpan = 0; if (DROP_TRACE) console.log(`[flank] ingen drop: helt tyst i breaket (latstart), break ${span.toFixed(1)} s`); return false; }
     this.fdGone = 0; this.fdSpan = 0; this.fdAt = now; this.dropRiseDb = f - low;
     if (DROP_TRACE) console.log(`[flank] full drop pa flanken: break ${span.toFixed(1)} s, stigning ${(f - low).toFixed(1)} dB`);
@@ -2748,24 +2766,28 @@ export class Analyser {
     // skilt från bara-busy (ihållande → baslinjen kommer ikapp). Gammal väg
     // (klang+nivå stiger) ligger kvar som OR. Inte direkt efter en drop.
     let nov = 0; const sr = this.aSpecSlow;
-    // NOVELTY PÅ `bandDb`, INTE `bandLvl` — se fältets dokumentation. Med den
+    // NOVELTY PÅ RÅ dB (`bandDbRaw`), INTE `bandLvl` — se `bandTop`. Med den
     // AGC-normaliserade nivån var det här uttrycket matematiskt tvunget att gå
     // mot noll under exakt de förlopp det skulle upptäcka.
-    for (let b = 0; b < 8; b++) { this.specSlow[b] += (this.bandDb[b] - this.specSlow[b]) * sr; nov += Math.max(0, this.bandDb[b] - this.specSlow[b]); }
+    // Fönstret är RELATIVT bandets egen topp (0..1 över RISER_SPAN_DB under den), inte absoluta dB: oberoende av ingångsnivån.
+    // BARA BANDEN OVANFÖR BASKROPPEN (RISER_BAND0..7): se RISER_BAND0.
+    for (let b = RISER_BAND0; b < 8; b++) {
+      const raw = this.bandDbRaw[b], top = this.bandTop[b] = Math.max(raw, this.bandTop[b] - dtHop * BODY_CEIL_DB_S);
+      const x = Math.max(0, 1 + (raw - top) * (1 / RISER_SPAN_DB));
+      this.specSlow[b] += (x - this.specSlow[b]) * sr; nov += Math.max(0, x - this.specSlow[b]);
+    }
     this.novSlow += (nov - this.novSlow) * this.aNovSlow;
     this.novBaseline += (this.novSlow - this.novBaseline) * (dtHop / 8);
     const novRiser = this.novSlow > this.novBaseline + 0.15 && this.novSlow > 0.45;
     this.centSlow += (this.centSmooth - this.centSlow) * (dtHop / 2.5);
     this.lvlSlowR += (this.lvlSmooth - this.lvlSlowR) * (dtHop / 2.5);
-    const inRiser = this.activeMs > 2500 && this.lvlSmooth > 0.3 && nowWallA - this.lastDropMs > 1500 && (
+    // NIVÅGRINDARNA ÄR ANDELAR AV LÅTENS EGET TAK (levelCeil), inte absoluta nivåer: 0,3 / 0,4 / +0,04 trimmades när taket låg vid 1
+    // (sönderklippt ljud); rent ljud i ladan har taket vid 0,1-0,25 och nådde aldrig dit (inRiser 0 % av tiden). Samma tal, nu x taket.
+    const lc = this.levelCeil;
+    const inRiser = this.activeMs > 2500 && this.lvlSmooth > 0.3 * lc && nowWallA - this.lastDropMs > 1500 && (
         novRiser
-        || (this.centSmooth > this.centSlow + 0.06 && this.lvlSmooth > this.lvlSlowR + 0.04 && this.lvlSmooth > 0.4)
+        || (this.centSmooth > this.centSlow + 0.06 && this.lvlSmooth > this.lvlSlowR + 0.04 * lc && this.lvlSmooth > 0.4 * lc)
       );
-    // Stampla uppbyggnaden. OBS: drop-villkoret ovan kraver INTE en riser — det
-    // kravet ar avstangt (se dar). Stampeln halls uppdaterad for att kravet ska
-    // kunna aterinforas nu nar riser-signalen faktiskt lever (se `bandDb`).
-    // Nagot "4000 ms-fonster" finns inte i filen; den formuleringen var kvar
-    // fran en tidigare version av villkoret.
     const bTarget = inRiser ? 1 : 0;
     const bRate = bTarget > this.buildUp ? dtHop / 3.5 : dtHop / 1.0;   // bygg ~3.5s, klinga ~1s
     this.buildUp += Math.max(-bRate, Math.min(bRate, bTarget - this.buildUp));
