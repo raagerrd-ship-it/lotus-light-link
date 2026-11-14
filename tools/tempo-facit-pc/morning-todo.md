@@ -1,4 +1,6 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-14 em ANALYSATORN PORTAD MEN EJ UTLAGD (huvudsessionen): lotus 1c1bdd2c = dmx-control 27b34a9 + 1f3d5bb (relativa nivågränser för uppbyggnaden/topp-zonen + break-taket: basen borta >= 8 slag = ny sektion, ingen drop). Pi:n kör alltså ÄLDRE analysator än repot - det är avsikten tills ägaren
+sagt till (buildUp/taklyftet och antalet drop ändras, inga lotus-bänkar går). PORTA INTE, LÄGG INTE UT. Morgonagenten: som förut, bara hälsan.
 11-13 17:10 KORPUSEN ÄR ARKIVERAD - KÖR INGA BÄNKAR (huvudsessionen, ägaren: "arkivera även lotus inspelningar"). tools/tempo-facit-pc/corpus och
 corpus-mix ligger i Desktop/Claude/lotus-arkiv/lotus-inspelningar-fore-20261113/ (LASMIG.md där); corpus-synth är kvar. HÄMTA INTE TILLBAKA NÅGOT.
 bench.mjs, nightly.py, lotusbank och level_bench går alltså inte. Ägarens riktning: även lotus trimmas mot ladans nya rena inspelningar (kommer vid
