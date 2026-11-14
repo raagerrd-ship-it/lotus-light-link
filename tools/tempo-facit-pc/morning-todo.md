@@ -1,4 +1,6 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-14 kväll ANALYSATORN UPPDELAD (huvudsessionen, ägaren: "bryt ut del för del, flytta ut alla kommentarer"): analyser.ts är nu 13 gemensamma filer (analyserDrop/Section/Spectrum/Level/Kick/Riser/Bass/Character.ts + de gamla), kommentarerna ligger i dmx-control pi-dmx/engine/docs/analysator/.
+Samma beteende (lotus-bygget före/efter: 537 981 hopp, varje fält lika). FORTFARANDE EJ UTLAGD på Pi:n. Rör inte filerna här - DMX är källan.
 11-14 em ANALYSATORN PORTAD MEN EJ UTLAGD (huvudsessionen): lotus 1c1bdd2c = dmx-control 27b34a9 + 1f3d5bb (relativa nivågränser för uppbyggnaden/topp-zonen + break-taket: basen borta >= 8 slag = ny sektion, ingen drop). Pi:n kör alltså ÄLDRE analysator än repot - det är avsikten tills ägaren
 sagt till (buildUp/taklyftet och antalet drop ändras, inga lotus-bänkar går). PORTA INTE, LÄGG INTE UT. Morgonagenten: som förut, bara hälsan.
 11-13 17:10 KORPUSEN ÄR ARKIVERAD - KÖR INGA BÄNKAR (huvudsessionen, ägaren: "arkivera även lotus inspelningar"). tools/tempo-facit-pc/corpus och
