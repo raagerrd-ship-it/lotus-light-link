@@ -1,4 +1,6 @@
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
+11-14 15:27 NYA ANALYSATORN LIVE PÅ PI:N (huvudsessionen, ägaren: "du får gärna köra igång på lotus direkt"): lotus 22a2055c (uppdelad i 13 filer + relativa nivågränser + break-taket), md5 Pi = bygget, Pi-backup *.bak-20261114-1527. Latens före/efter med musik: huvudtråd 39,0-39,8 -> 37,6-38,1 %, arbetstråd 16,3-16,5 -> 16,1-16,2 %,
+0 hopp över budget, eftersläp 1 ms, BLE 0 fel. Raderna nedan om "ej utlagd" är alltså inaktuella. Rapportera: omstarter, hopp över budget, och om ljuset ser annorlunda ut.
 11-14 kväll ANALYSATORN UPPDELAD (huvudsessionen, ägaren: "bryt ut del för del, flytta ut alla kommentarer"): analyser.ts är nu 13 gemensamma filer (analyserDrop/Section/Spectrum/Level/Kick/Riser/Bass/Character.ts + de gamla), kommentarerna ligger i dmx-control pi-dmx/engine/docs/analysator/.
 Samma beteende (lotus-bygget före/efter: 537 981 hopp, varje fält lika). FORTFARANDE EJ UTLAGD på Pi:n. Rör inte filerna här - DMX är källan.
 11-14 em ANALYSATORN PORTAD MEN EJ UTLAGD (huvudsessionen): lotus 1c1bdd2c = dmx-control 27b34a9 + 1f3d5bb (relativa nivågränser för uppbyggnaden/topp-zonen + break-taket: basen borta >= 8 slag = ny sektion, ingen drop). Pi:n kör alltså ÄLDRE analysator än repot - det är avsikten tills ägaren
