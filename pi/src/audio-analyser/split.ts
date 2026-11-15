@@ -133,8 +133,8 @@ export const C_BIG_WRITE = 8, C_BIG_READ = 9, C_BIG_SEQ = 10 , C_WAITING_B = 11 
 export const BS_SEQ = 0, BS_BODY = 1, BS_DROPS = 2, BS_MINI = 3, BS_BUILD = 4, BS_RISER = 5, BS_PUNCH = 6, BS_BASS = 7, BS_BRIGHT = 8, BS_BEAT = 9,
   BS_BASSLINE = 10, BS_SPEC_N = 11 , BS_SKIPPED = 12,
   BS_CAND = 13, BS_DEMOTED = 14, BS_SPACED = 15, BS_DROPRISE = 16, BS_NEAR = 17, BS_NEARDIP = 18, BS_LIFT = 19, BS_STOPS = 20, BS_STOPSEC = 21,
-  BS_UNDER = 22 ;
-export const BIG_STATE_LEN = 23;
+  BS_UNDER = 22, BS_BUILDSTART = 23 ;
+export const BIG_STATE_LEN = 24;
 export const SPEC_SLOTS = 16, SPEC_MAX = 1024;   // 16 spektra
 
 export const HOP_REC_LEN = 18;   // TAKTVÄGEN

@@ -1,6 +1,6 @@
 # md5 (CRLF->LF) av de gemensamma filerna - samma i lotus-light-link och dmx-control. Skrivs av analyser_shared.py --write
-28fc97e76fe696e3c2716ee86eb03585 analyser.ts
-cf8f3882c2944dfb24c14fc1b3f4f400 analyserDrop.ts
+1e5942108e88af6bfe857ef56a7429b8 analyser.ts
+b5485714f88c45ec0f55f21b9d5ab20e analyserDrop.ts
 692befa55e7fd906cdc3652af3f27baa analyserSection.ts
 879ba2122d2a1d3e0eea4082adfd2355 analyserSpectrum.ts
 e92d0d6b4f8dc36abfb8135004260806 analyserLevel.ts
@@ -8,7 +8,7 @@ e92d0d6b4f8dc36abfb8135004260806 analyserLevel.ts
 5df88304c8c1a18eb7d0ba60f20b0dba analyserRiser.ts
 9fce7e5efedd8fa4c773e2487da1c3e1 analyserBass.ts
 dbb860c7483c4e7e938d610712337b96 analyserCharacter.ts
-a8846ca6595ddef8409a6ab432acf375 split.ts
+f7e808d88b853ca179a5d633e28fdebf split.ts
 c7a59a6760df39770f3aca2332dac5c2 slowWorker.ts
 898e03ea9f95e127db09e1f58913d0c4 analyserClock.ts
 d94c850c565827c9075e63127132213f recorder.ts
