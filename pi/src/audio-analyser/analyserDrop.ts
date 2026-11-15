@@ -14,6 +14,7 @@ const DROP_CALM_LAND_MS = 0;
 const MINI_RISE_DB = 10;
 const MINI_PEAK_DB = 10;
 const MINI_TOPGONE_MS = 250;   // en minidrop per kick-lucka: flankens topp >= FLANK_GONE_DB under taket så länge
+const HI_VETO_DB = 0;   // diskanten (band 6, 2 s) minst så här mot sitt 30 s-medel när flanken landar, annars minidrop
 const DROP_SHORT_MS = 4000;   // minsta drop-avstand nar dropen ESKALERAR
 const DROP_LONG_MS = 20000;   // annars maste sa har lang tid ga
 const DROP_ESCALATE_DB = 3;   // tatare drops maste vara TYDLIGT starkare for att fyra
@@ -21,7 +22,7 @@ const FLANK_GONE_DB = 10, FLANK_BREAK_S = 4, FLANK_LAND_DB = 6, FLANK_RISE_DB = 
 const FLANK_SHORT_S = 2, FLANK_SHORT_RISE_DB = 24, FLANK_SILENT_LV = 0.005;
 const SHOW_DROP_GAP_MS = 12000;   // spärr mellan full drops
 const NEAR_RISE_DB = 10, NEAR_DIP_DB = 8, LIFT_DB = 10, STOP_MINI_S = 0.6;   // LYFT/NÄSTAN-DROP/STOPP
-const DOUBLE_FROM_START = ['bodyEnv', 'bodyFast', 'bodyCeil', 'bodyPeak', 'lastGoneSpanMs', 'lastDropMs', 'lastMiniGoneMs', 'lastMiniMs', 'miniGoneMs', 'bodyGoneMs', 'lastBodyGoneMs', 'dropArmUntil', 'dropArmAt', 'fdGone', 'fdSpan', 'fdEnd', 'fdAt', 'fdQuietAt', 'lastShowDropMs', 'dropRiseDb', 'nearB', 'nearNorm', 'nearFloor', 'liftCalm', 'liftLift', 'liftHistAt', 'stopRunS', 'nearDropDb', 'nearDipDb', 'liftDb', 'stopS'] as const;   // Talfält som ska vara flyttal från start
+const DOUBLE_FROM_START = ['bodyEnv', 'bodyFast', 'bodyCeil', 'bodyPeak', 'lastGoneSpanMs', 'lastDropMs', 'lastMiniGoneMs', 'lastMiniMs', 'miniGoneMs', 'bodyGoneMs', 'lastBodyGoneMs', 'dropArmUntil', 'dropArmAt', 'fdGone', 'fdSpan', 'fdEnd', 'fdAt', 'fdQuietAt', 'lastShowDropMs', 'dropRiseDb', 'nearB', 'nearNorm', 'nearFloor', 'liftCalm', 'liftLift', 'liftHistAt', 'stopRunS', 'nearDropDb', 'nearDipDb', 'liftDb', 'stopS', 'hiFast', 'hiNorm'] as const;   // Talfält som ska vara flyttal från start
 
 export class DropDetector {
   a: Analyser;   // analysatorn som äger den här delen
@@ -55,7 +56,7 @@ export class DropDetector {
   private nearOn = false; private nearB = -0; private nearNorm = -0; private nearFloor = 1e9; private liftCalm = -0; private liftLift = -0;
   private liftHist = new Float64Array(240); private liftW = 0; private liftN = 0; private liftHistAt = -1e12; private stopRunS = -0;
   nearDropDb = -0; nearDipDb = -0; liftDb = -0; stopCount = 0; stopS = -0;
-  private fdTop = -0; private miniEp = -1.5; private miniEpUsed = -2.5;
+  private fdTop = -0; private miniEp = -1.5; private miniEpUsed = -2.5; private hiFast = -120.5; private hiNorm = -120.5;
   lastDropMs = -1.5e9;   // utanfor Smi-intervallet
 
   /** Drop-detektionen. */
@@ -68,6 +69,7 @@ export class DropDetector {
     this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * BODY_CEIL_DB_S);
     this.bodyPeak = Math.max(this.bodyEnv, this.bodyPeak - dtHop * 0.04);
     this.a.bodyUnderDb = this.bodyCeil - this.bodyEnv;
+    { const x = this.a.bandDbRaw[6]; if (this.hiNorm < -120) { this.hiFast = x; this.hiNorm = x; } this.hiFast += (x - this.hiFast) * Math.min(1, dtHop / 2); this.hiNorm += (this.hiFast - this.hiNorm) * Math.min(1, dtHop / 30); }
     const flank = this.flankStep(nowWallA, dtHop);
     this.liftStep(nowWallA, dtHop, bodyNow);
 
@@ -151,7 +153,8 @@ export class DropDetector {
   /** EN DROPDETEKTOR. */
   private dropClassify(flank: boolean, cand: boolean, nowWallA: number): void {
     if (flank) {
-      if (nowWallA - this.lastShowDropMs < SHOW_DROP_GAP_MS) { this.dropSpaced++; this.miniDropCount++; }
+      if (this.hiFast - this.hiNorm < HI_VETO_DB) { this.dropDemoted++; this.miniDropCount++; }
+      else if (nowWallA - this.lastShowDropMs < SHOW_DROP_GAP_MS) { this.dropSpaced++; this.miniDropCount++; }
       else { this.lastShowDropMs = nowWallA; this.dropCount++; }
     } else if (cand && nowWallA - this.fdAt > 2000) { this.dropDemoted++; this.miniDropCount++; }
   }
