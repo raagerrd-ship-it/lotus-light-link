@@ -13,7 +13,7 @@ Uppdatera manifestet EFTER att filerna kopierats till bada repona:
 Syskonets kallkatalog: env ANALYSER_SIBLING, annars standardplatsen bredvid detta repo."""
 import hashlib, os, sys
 
-SHARED = ['analyser.ts', 'analyserDrop.ts', 'analyserSection.ts', 'analyserSpectrum.ts', 'analyserLevel.ts', 'analyserKick.ts', 'analyserRiser.ts',
+SHARED = ['analyser.ts', 'analyserFack.ts', 'analyserDrop.ts', 'analyserSection.ts', 'analyserSpectrum.ts', 'analyserLevel.ts', 'analyserKick.ts', 'analyserRiser.ts',
           'analyserBass.ts', 'analyserCharacter.ts', 'split.ts', 'slowWorker.ts', 'analyserClock.ts', 'recorder.ts']   # analyserClock.ts: EN KLOCKA i analysatorn (entempo 11-09)
 MANIFEST = 'ANALYSER_SHARED.md5'
 

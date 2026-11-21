@@ -52,8 +52,8 @@ export class LevelTracker {
 
   /** AGC (bara mic). */
   agcStep(): void {
-    const rms = this.a.hRms, now = this.a.hNow, dt = this.a.hDt;
-    const d = this.a.cfg.detection;
+    const rms = this.a.f.hop.rms, now = this.a.f.hop.now, dt = this.a.f.hop.dt;
+    const d = this.a.f.hop.cfg.detection;
       const env = this.agcEnvelope(rms, now);
       if (env > 0) {
         this.a.envelope = env;
@@ -68,12 +68,12 @@ export class LevelTracker {
 
   /** Tystnadsflanken. */
   silenceStep(): void {
-    const hopMs = this.a.hHopMs;
-    if (!this.a.hGated) {
+    const hopMs = this.a.f.hop.hopMs;
+    if (!this.a.f.hop.gated) {
       this.silentMs += hopMs;
       if (this.silentMs > 350 && !this.silenceArmed) {
         this.silenceArmed = true;
-        if (this.a.role === 'fast') this.a.flagSlow(F_SIL350);
+        if (this.a.f.hop.role === 'fast') this.a.flagSlow(F_SIL350);
       } else if (this.silenceArmed && this.silentMs > 10000 && this.a.localBpm !== 0) {
         this.a.localBpm = 0;
         this.a.flagSlow(F_SIL10);
@@ -86,12 +86,12 @@ export class LevelTracker {
 
   /** Sektionsenergi 0..1. */
   intensityStep(): void {
-    const dtHop = this.a.dtHop;
-    if (this.a.hGated) this.a.activeMs += dtHop * 1000;
+    const dtHop = this.a.f.hop.dtHop;
+    if (this.a.f.hop.gated) this.a.activeMs += dtHop * 1000;
     else this.a.activeMs = 0;
     const iUp = this.aIUp;
     const iDown = this.aIDown;
-    this.intensityEma += (this.a.lvlSmooth - this.intensityEma) * (this.a.lvlSmooth > this.intensityEma ? iUp : iDown);
+    this.intensityEma += (this.a.f.hop.lvlSmooth - this.intensityEma) * (this.a.f.hop.lvlSmooth > this.intensityEma ? iUp : iDown);
     const iWarm = this.a.activeMs < 8000;
     const floorRate = iWarm ? dtHop / 3 : dtHop / 150;
     if (iWarm) this.intensityFloor += (this.intensityEma - this.intensityFloor) * floorRate;
@@ -105,8 +105,8 @@ export class LevelTracker {
 
   /** NIVÅTAKET OCH TOPP-ZONEN. */
   zoneStep(): void {
-    this.a.levelCeil = Math.max(this.a.lvlSmooth, this.a.levelCeil - this.a.dtHop * 0.015 * this.a.levelCeil);
-    if (this.a.lvlSmooth > this.a.levelCeil * 0.85) this.inZoneState = true;
-    else if (this.a.lvlSmooth < this.a.levelCeil * 0.70) this.inZoneState = false;
+    this.a.levelCeil = Math.max(this.a.f.hop.lvlSmooth, this.a.levelCeil - this.a.f.hop.dtHop * 0.015 * this.a.levelCeil);
+    if (this.a.f.hop.lvlSmooth > this.a.levelCeil * 0.85) this.inZoneState = true;
+    else if (this.a.f.hop.lvlSmooth < this.a.levelCeil * 0.70) this.inZoneState = false;
   }
 }

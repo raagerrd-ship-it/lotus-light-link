@@ -21,7 +21,7 @@ export class KickDetector {
 
   /** Kick-detektorn. */
   kickStep(): boolean {
-    const kickFlux = this.a.hKickFlux, energy = this.a.hEnergy, now = this.a.hNow;
+    const kickFlux = this.a.f.hop.kickFlux, energy = this.a.f.hop.energy, now = this.a.f.hop.now;
     if (this.kickSeed < 400) {
       this.kickSeed++;
       this.kickMed += (kickFlux - this.kickMed) * 0.05;
@@ -66,7 +66,7 @@ export class KickDetector {
 
   /** Forfinar forra kickens fas. */
   kickRefine(): void {
-    const kickFlux = this.a.hKickFlux, hopMs = this.a.hHopMs;
+    const kickFlux = this.a.f.hop.kickFlux, hopMs = this.a.f.hop.hopMs;
     let kickAtMs = 0;
       const ym1 = this.a.kfPrev2, y0 = this.a.kfPrev, yp1 = kickFlux;
       const denom = ym1 - 2 * y0 + yp1;

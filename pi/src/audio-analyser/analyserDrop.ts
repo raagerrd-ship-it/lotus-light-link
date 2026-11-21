@@ -63,8 +63,8 @@ export class DropDetector {
 
   /** Drop-detektionen. */
   dropStep(): void {
-    const nowWallA = this.a.hNowWall, bodyNow = this.a.hBody;
-    const dtHop = this.a.dtHop;
+    const nowWallA = this.a.f.hop.nowWall, bodyNow = this.a.f.hop.body;
+    const dtHop = this.a.f.hop.dtHop;
     this.bodyEnv += (bodyNow - this.bodyEnv) * Math.min(1, dtHop / 0.35);
     this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / BODY_FAST_S);
     const bodyPeek = this.bodyFast;
@@ -130,13 +130,13 @@ export class DropDetector {
     let fireTag = '';
     const underNow = this.bodyPeak - bodyPeek;
     if (fireNow) {
-      const calm = (this.a.dSec === 'low' || this.a.dSec === 'intro') || this.a.dLvh <= -DROP_CALM_DB;
+      const calm = (this.a.f.hop.sec === 'low' || this.a.f.hop.sec === 'intro') || this.a.f.hop.lvh <= -DROP_CALM_DB;
       let strong = this.a.buildUp >= DROP_CALM_BUILD || underNow < DROP_CALM_Q || bodyRise >= BODY_RISE_DB + DROP_CALM_RISE_DB;
-      if (this.a.dSec === 'intro') strong = this.a.buildUp >= DROP_CALM_BUILD;
+      if (this.a.f.hop.sec === 'intro') strong = this.a.buildUp >= DROP_CALM_BUILD;
       if (calm && !strong) {
         fireNow = false;
         if (DROP_CALM_LAND_MS > 0 && this.calmHoldStart === 0) { this.calmHoldStart = nowWallA; this.calmHoldRise = bodyRise; }
-        if (DROP_TRACE && bodyOnsetEdge) console.log(`[dropcalm] wall ${this.a.wallNow()} ${DROP_CALM_LAND_MS > 0 ? 'HALLS' : 'NEKAD'} sect ${this.a.dSec} lvh ${this.a.dLvh.toFixed(1)} build ${this.a.buildUp.toFixed(2)} underPeak ${underNow.toFixed(1)} rise ${bodyRise.toFixed(1)}`);
+        if (DROP_TRACE && bodyOnsetEdge) console.log(`[dropcalm] wall ${this.a.wallNow()} ${DROP_CALM_LAND_MS > 0 ? 'HALLS' : 'NEKAD'} sect ${this.a.f.hop.sec} lvh ${this.a.f.hop.lvh.toFixed(1)} build ${this.a.buildUp.toFixed(2)} underPeak ${underNow.toFixed(1)} rise ${bodyRise.toFixed(1)}`);
       }
     }
     if (this.calmHoldStart > 0) {
@@ -172,7 +172,7 @@ export class DropDetector {
     if (top < ceil - FLANK_GONE_DB) this.fdGone += dt; else { if (this.fdGone > 0) { this.fdSpan = this.fdGone; this.fdEnd = now; } this.fdGone = 0; }
     const above = f > ceil - FLANK_LAND_DB, edge = above && !this.fdAbove; this.fdAbove = above;
     const span = this.fdGone > 0 ? this.fdGone : now - this.fdEnd < FLANK_GRACE_S * 1000 ? this.fdSpan : 0;
-    if (this.a.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
+    if (this.a.f.hop.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
     if (!edge || f - low < FLANK_RISE_DB || (span < FLANK_BREAK_S && !(span >= FLANK_SHORT_S && ceil - low >= FLANK_SHORT_RISE_DB))) return false;
     if (now - this.fdQuietAt < span * 1000 + 500) { this.fdGone = 0; this.fdSpan = 0; if (DROP_TRACE) console.log(`[flank] ingen drop: helt tyst i breaket (latstart), break ${span.toFixed(1)} s`); return false; }
     this.fdGone = 0; this.fdSpan = 0; this.fdAt = now; this.dropRiseDb = f - low;

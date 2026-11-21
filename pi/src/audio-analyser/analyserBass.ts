@@ -12,7 +12,7 @@ export class BassTracker {
   private static readonly BE_TOP_BEATS = 16; private static readonly BE_FAST_BEATS = 2;  private static readonly BE_BEAT_MIN_MS = 300; private static readonly BE_BEAT_MAX_MS = 600;  beHi = NaN; private beHiShort = NaN; beRef = NaN; beShort = 0;   // BASENERGIN MED SLAGET SOM TIDSENHET
   /** Stegar skalorna ett hop. */
   bassEnergyStep(sub: number, kick: number): number {
-    const x = 5 * Math.log10(sub + 1e-7) + 15 * Math.log10(kick + 1e-7), hopMs = this.a.dtHop * 1000;
+    const x = 5 * Math.log10(sub + 1e-7) + 15 * Math.log10(kick + 1e-7), hopMs = this.a.f.hop.dtHop * 1000;
     let per = this.a.localBpm > 40 ? 60000 / this.a.localBpm : Analyser.BE_FALLBACK_MS;
     per = per < BassTracker.BE_BEAT_MIN_MS ? BassTracker.BE_BEAT_MIN_MS : per > BassTracker.BE_BEAT_MAX_MS ? BassTracker.BE_BEAT_MAX_MS : per;
     this.beHi = !(x <= this.beHi) ? x : this.beHi + (x - this.beHi) * (hopMs / (BassTracker.BE_TOP_BEATS * per));
@@ -39,7 +39,7 @@ export class BassTracker {
     } else if (this.blRef > 0.05) this.blRef *= 0.999;
     this.blPrev2 = p1; this.blPrev1 = v;
     let n = 0; for (let i = 0; i < 32; i++) if (seq - this.blOnsets[i] <= 200 && this.blOnsets[i] > 0) n++;
-    const beats2s = (this.a.dBpm > 0 ? this.a.dBpm : 120) / 30;
+    const beats2s = (this.a.f.hop.bpm > 0 ? this.a.f.hop.bpm : 120) / 30;
     const opb = n / beats2s;
     this.a.bassOnsetsPerBeat = opb;
     const raw = Math.max(0, Math.min(1, (opb - 0.4) / 0.8));

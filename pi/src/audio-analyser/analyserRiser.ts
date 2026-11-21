@@ -21,8 +21,8 @@ export class RiserDetector {
 
   /** Uppbyggnad/riser. */
   riserStep(): boolean {
-    const nowWallA = this.a.hNowWall;
-    const dtHop = this.a.dtHop;
+    const nowWallA = this.a.f.hop.nowWall;
+    const dtHop = this.a.f.hop.dtHop;
     let nov = 0; const sr = this.aSpecSlow;
     for (let b = RISER_BAND0; b < 8; b++) {
       const raw = this.a.bandDbRaw[b], top = this.bandTop[b] = Math.max(raw, this.bandTop[b] - dtHop * BODY_CEIL_DB_S);
@@ -32,12 +32,12 @@ export class RiserDetector {
     this.novSlow += (nov - this.novSlow) * this.aNovSlow;
     this.novBaseline += (this.novSlow - this.novBaseline) * (dtHop / 8);
     const novRiser = this.novSlow > this.novBaseline + 0.15 && this.novSlow > 0.45;
-    this.centSlow += (this.a.centSmooth - this.centSlow) * (dtHop / 2.5);
-    this.lvlSlowR += (this.a.lvlSmooth - this.lvlSlowR) * (dtHop / 2.5);
+    this.centSlow += (this.a.f.hop.centSmooth - this.centSlow) * (dtHop / 2.5);
+    this.lvlSlowR += (this.a.f.hop.lvlSmooth - this.lvlSlowR) * (dtHop / 2.5);
     const lc = this.a.levelCeil;
-    const inRiser = this.a.activeMs > 2500 && this.a.lvlSmooth > 0.3 * lc && nowWallA - this.a.drop.lastDropMs > 1500 && (
+    const inRiser = this.a.activeMs > 2500 && this.a.f.hop.lvlSmooth > 0.3 * lc && nowWallA - this.a.drop.lastDropMs > 1500 && (
         novRiser
-        || (this.a.centSmooth > this.centSlow + 0.06 && this.a.lvlSmooth > this.lvlSlowR + 0.04 * lc && this.a.lvlSmooth > 0.4 * lc)
+        || (this.a.f.hop.centSmooth > this.centSlow + 0.06 && this.a.f.hop.lvlSmooth > this.lvlSlowR + 0.04 * lc && this.a.f.hop.lvlSmooth > 0.4 * lc)
       );
     const bTarget = inRiser ? 1 : 0;
     const bRate = bTarget > this.a.buildUp ? dtHop / 3.5 : dtHop / 1.0;

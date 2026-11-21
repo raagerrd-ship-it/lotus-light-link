@@ -51,7 +51,7 @@ specCopy = new Float32Array(0);specN = 0;  aBandLvl = 0;
 
   /** SNABBA BANDEN. */
   fastBandStep(samples: Float32Array): void {
-    const gated = this.a.hGated;
+    const gated = this.a.f.hop.gated;
     if (gated) this.fbWarm++; else this.fbWarm = 0;
     const warm = gated && this.fbWarm >= SpectrumBands.ONSET_WARM * Analyser.BIG_EVERY;
     const C = this.fbCoef, S = this.fbState, n = samples.length;
@@ -81,7 +81,7 @@ specCopy = new Float32Array(0);specN = 0;  aBandLvl = 0;
       }
       this.fbAbs[b] = avg;
       if (b >= 3) this.fbDbRaw[b] = 20 * Math.log10(avg + 1e-7);
-      const minPeak = this.a.lvlSmooth * 0.15;
+      const minPeak = this.a.f.hop.lvlSmooth * 0.15;
       if (gated && avg > this.fbPeak[b]) this.fbPeak[b] = Math.max(avg, minPeak);
       else this.fbPeak[b] = Math.max(this.fbPeak[b] * 0.9993, minPeak);
       const lvlRawB = gated ? Math.min(1, avg / (this.fbPeak[b] + 1e-6)) : 0;
@@ -112,8 +112,8 @@ specCopy = new Float32Array(0);specN = 0;  aBandLvl = 0;
       magBig[i] = Math.sqrt(re * re + im * im);
     }
 
-    if (this.a.bigOn) { const k = ++this.specN, R = this.specRing!, o = (k % SPEC_SLOTS) * SPEC_MAX; R.set(this.magBigView.subarray(0, this.specCopy.length), o); }
-    else this.a.specSink?.(this.magBigView, this.a.cfg.audio.rate / this.bufferBig.length);
+    if (this.a.f.hop.bigOn) { const k = ++this.specN, R = this.specRing!, o = (k % SPEC_SLOTS) * SPEC_MAX; R.set(this.magBigView.subarray(0, this.specCopy.length), o); }
+    else this.a.specSink?.(this.magBigView, this.a.f.hop.cfg.audio.rate / this.bufferBig.length);
     const gated = this.a.activeMs > 0;
 
 
@@ -149,7 +149,7 @@ specCopy = new Float32Array(0);specN = 0;  aBandLvl = 0;
       const db = 20 * Math.log10(avg + 1e-7);
       this.a.bandDbRaw[b] = db;
       this.a.secSpecDirty = true;
-      const minPeak = this.a.lvlSmooth * 0.15;
+      const minPeak = this.a.f.hop.lvlSmooth * 0.15;
       if (gated && avg > this.bandPeak[b]) this.bandPeak[b] = Math.max(avg, minPeak);
       else this.bandPeak[b] = Math.max(this.bandPeak[b] * Analyser.PEAK_DECAY, minPeak);
       const lvlRawB = gated ? Math.min(1, avg / (this.bandPeak[b] + 1e-6)) : 0;

@@ -66,7 +66,7 @@ export class SectionTracker {
 
 
   /** SEKTION. */
-  private secDropsNow(): number { return this.a.role === 'slow' && this.a.bigOn ? this.secVDrops : this.a.drop.dropCand + this.a.drop.secBodyRet; }
+  private secDropsNow(): number { return this.a.f.hop.role === 'slow' && this.a.f.hop.bigOn ? this.secVDrops : this.a.drop.dropCand + this.a.drop.secBodyRet; }
   sectionReset(): void {
     this.a.secBuildAt = 0; this.a.secBuildSeen = 0;
     this.a.section = 'intro'; this.a.sectionStartMs = 0; this.a.sectionIndex = 0; this.a.sectionTier = 1; this.a.repeatSim = 0; this.a.repeatAgoMs = 0; this.a.repeatSection = '';
@@ -335,20 +335,20 @@ export class SectionTracker {
 
   /** Sektionens blocksummor per hop. */
   sectionAggStep(): void {
-    const intensity = this.a.hIntensity, kick = this.a.hKick, breaking = this.a.hBreaking, rms = this.a.hRms, fluxNorm = this.a.hFlux, nowWallA = this.a.hNowWall;
-    const dtHop = this.a.dtHop;
-      if (this.a.bigOn) return;
+    const intensity = this.a.hIntensity, kick = this.a.hKick, breaking = this.a.f.hop.breaking, rms = this.a.f.hop.rms, fluxNorm = this.a.f.hop.flux, nowWallA = this.a.f.hop.nowWall;
+    const dtHop = this.a.f.hop.dtHop;
+      if (this.a.f.hop.bigOn) return;
       if (SECTION_AGG_HOP) {
         const sp = this.a.secSpecHop;
         if (this.a.secSpecDirty) { this.a.secSpecDirty = false; for (let i = 0; i < 8; i++) sp[i] = Math.pow(10, this.a.bandDbRaw[i] / 20); }
-        if (this.a.role === 'fast') {
-          const g = this.a.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += this.a.centSmooth; g.dt += this.a.dtHop * 1000;
+        if (this.a.f.hop.role === 'fast') {
+          const g = this.a.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += this.a.f.hop.centSmooth; g.dt += this.a.f.hop.dtHop * 1000;
           g.breaking = breaking ? 1 : 0; g.wall = this.a.wallNow(); g.drops = this.a.drop.dropCand + this.a.drop.secBodyRet; g.active = this.a.activeMs; g.build = this.a.buildUp;
           for (let i = 0; i < 8; i++) g.spec[i] += sp[i];
-        } else { const I = this.shIn; I.hops = 1; I.intSum = intensity; I.kicks = kick ? 1 : 0; I.breaking = breaking; I.nowMs = this.a.wallNow(); I.dtMs = this.a.dtHop * 1000;
-          I.rms2Sum = rms * rms; I.centSum = this.a.centSmooth; I.specOff = 0; I.bonSum = 0; I.bpk = 0; I.fluxSum = 0; I.rms4Sum = 0; this.sectionHop(sp); }
+        } else { const I = this.shIn; I.hops = 1; I.intSum = intensity; I.kicks = kick ? 1 : 0; I.breaking = breaking; I.nowMs = this.a.wallNow(); I.dtMs = this.a.f.hop.dtHop * 1000;
+          I.rms2Sum = rms * rms; I.centSum = this.a.f.hop.centSmooth; I.specOff = 0; I.bonSum = 0; I.bpk = 0; I.fluxSum = 0; I.rms4Sum = 0; this.sectionHop(sp); }
       } else {
-        const g = this.a.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.a.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
+        const g = this.a.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; if (breaking) g.breaking = 1; g.rms2 += rms * rms; g.cent += this.a.f.hop.centSmooth; g.dt += dtHop * 1000; g.wall = nowWallA;
         for (let i = 0; i < 8; i++) g.spec[i] += this.a.bandAbs[i];
         g.bon += this.a.bassOnRing[(this.a.bassOnN - 1 + Analyser.BASSON_LEN) % Analyser.BASSON_LEN]; if (this.a.bassOnPeak) { g.bpk++; this.a.bassOnPeak = false; } g.flux += fluxNorm; g.rms4 += rms * rms * rms * rms;
       }
