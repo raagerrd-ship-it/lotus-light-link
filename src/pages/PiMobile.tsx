@@ -19,7 +19,6 @@ type Cal = {
   bassWeight: number; attack: number; softness: number;
   brightnessFloor: number; punchWhiteThreshold: number; transientGain: number;
   colorSpectralTilt: number;
-  onsetThreshold: number; onsetRefractoryMs: number;
   onsetEnergyFloor: number; tickEnergyFloor: number; flickerDeadband: number;
   beatCutoffHz: number; dropEnabled: boolean; dropSensitivity: number;
   dropFlashMs: number; beatLeadMs: number;
@@ -33,7 +32,6 @@ const DEFAULT_CAL: Cal = {
   bassWeight: 0.95, attack: 100, softness: 43,
   brightnessFloor: 18, punchWhiteThreshold: 100, transientGain: 0.45,
   colorSpectralTilt: 0.25,
-  onsetThreshold: 2.0, onsetRefractoryMs: 200,
 
   onsetEnergyFloor: 0.025, tickEnergyFloor: 0.025, flickerDeadband: 0,
   beatCutoffHz: 150, dropEnabled: false, dropSensitivity: 0.64,
@@ -779,8 +777,6 @@ export default function PiMobile() {
         punchWhiteThreshold: cal.punchWhiteThreshold,
         transientGain: cal.transientGain,
         colorSpectralTilt: cal.colorSpectralTilt,
-        onsetThreshold: cal.onsetThreshold,
-        onsetRefractoryMs: cal.onsetRefractoryMs,
         onsetEnergyFloor: cal.onsetEnergyFloor,
         tickEnergyFloor: cal.tickEnergyFloor,
         flickerDeadband: cal.flickerDeadband,
@@ -857,8 +853,6 @@ export default function PiMobile() {
         punchWhiteThreshold: c?.punchWhiteThreshold ?? DEFAULT_CAL.punchWhiteThreshold,
         transientGain: c?.transientGain ?? DEFAULT_CAL.transientGain,
         colorSpectralTilt: c?.colorSpectralTilt ?? DEFAULT_CAL.colorSpectralTilt,
-        onsetThreshold: c?.onsetThreshold ?? DEFAULT_CAL.onsetThreshold,
-        onsetRefractoryMs: c?.onsetRefractoryMs ?? DEFAULT_CAL.onsetRefractoryMs,
         onsetEnergyFloor: c?.onsetEnergyFloor ?? DEFAULT_CAL.onsetEnergyFloor,
         tickEnergyFloor: c?.tickEnergyFloor ?? DEFAULT_CAL.tickEnergyFloor,
         flickerDeadband: c?.flickerDeadband ?? DEFAULT_CAL.flickerDeadband,

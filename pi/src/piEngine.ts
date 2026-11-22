@@ -39,7 +39,7 @@ import { PulseTrack, pulseEnvelope, pulseAmpFor, pulseSplit, ceilingFrom, compos
  * paketet lämnar Pi:n utan att ligga och vänta 0–intervall. Band-ramen (BAND_EVERY_HOPS)
  * uppdaterar då bara bands; sätt LOTUS_BAND_EVERY_HOPS lågt (3 = 8 ms) så underlaget är färskt.
  * Tickperioden är då rastret (nominellt intervall × 1,25 ms); tickInners egna filter (nivå-EMA, ankare, shape)
- * räknas på TICK_PERIOD_MS. OBS: processOnset (puls: rise/hold/decay, refraktär) körs per BAND-RAM via onFluxReady
+ * räknas på TICK_PERIOD_MS. OBS: decayPulse (puls: rise/hold/decay) körs per BAND-RAM via onFluxReady
  * och ska räknas på FRAME_MS (8 ms vid BAND_EVERY_HOPS 3) — 09-21-buggen: 17,5 på 8 ms-ramar gav 2,2× för snabb fade.
  */
 export const TICK_SYNC = process.env.LOTUS_TICK_SYNC === '1';
@@ -206,7 +206,6 @@ export function normalizeFixed(value: number): number {
 
 // --- Precomputed tick constants ---
 export interface TickConstants {
-  refractoryFrames: number;
   onsetDecayFft: number;
   gammaIsUnity: boolean;
   brightnessFloor: number;
@@ -219,7 +218,7 @@ export interface TickConstants {
 
 export function computeTickConstants(tickMs: number, cal: LightCalibration): TickConstants {
   // fftMs = FRAME_MS: onset-alforna körs nu på sann 75 Hz-takt (var felaktigt hårdkodad 10 = 100 Hz-antagande).
-  const fftMs = FRAME_MS;   // processOnset kors per BAND-RAM (onFluxReady), inte per tick - 09-21-buggen: 17,5 pa 8 ms-ramar = fade 2,2x for snabb
+  const fftMs = FRAME_MS;   // decayPulse kors per BAND-RAM (onFluxReady), inte per tick - 09-21-buggen: 17,5 pa 8 ms-ramar = fade 2,2x for snabb
 
 
   const fftRatio = fftMs / 125;
@@ -246,7 +245,6 @@ export function computeTickConstants(tickMs: number, cal: LightCalibration): Tic
   }
 
   return {
-    refractoryFrames: Math.max(1, Math.round(cal.onsetRefractoryMs / FRAME_MS)),
     onsetDecayFft: Math.pow(0.04, fftSecRatio),
     gammaIsUnity,
     brightnessFloor: cal.brightnessFloor,
@@ -278,10 +276,6 @@ export interface LightCalibration {
    *  2026-08-28 INTE längre ljuspulsen — dirigenten normaliserar pulsen mot dess
    *  nominella mål (0.45) och styr djupet med beatDepth. */
   transientGain: number;
-  /** Onset-tröskel: flux > median * onsetThreshold + 0.008 (1.3 = känslig, 2.5 = strikt). UI-default 1.8. */
-  onsetThreshold: number;
-  /** Minsta gap mellan onsets i ms — räknas om till frames via FRAME_MS (sann 75 Hz). UI-default 110ms. */
-  onsetRefractoryMs: number;
    /** Anti-fladder: deadband i normaliserad enhet (0–0.08). Output ändras inte om |Δ| under detta. Skalas perceptuellt med nivå. */
    flickerDeadband: number;
    /** Attack-mjukhet vid låg energi (0–1). Lågt brus snäpper inte → inget flimmer; full snap vid hög energi. Default 0.25. */
@@ -459,8 +453,6 @@ const DEFAULT_CAL: LightCalibration = {
   punchWhiteThreshold: 100,
   brightnessFloor: 18,       // verifierat ljusgolv — håller strobe-dalar synliga
   transientGain: 0.45,       // beat-punch (0.2 gav osynlig modulation) — parad med windowDb 18
-  onsetThreshold: 2.0,
-  onsetRefractoryMs: 200,
   flickerDeadband: 0,        // >0 kvantiserar fade:n till procentsteg = hackigt
   lowSoftFloor: 0.3,
   onsetEnergyFloor: 0.01,
@@ -843,12 +835,7 @@ export class PiLightEngine {
   private _shapeRel = 1;            // _shapeSlow normaliserad mot topp → 0..1
 
 
-  // Onset detection state — zero-alloc insertion-sort median
-  private onsetBuffer: Float64Array;
-  private onsetSorted: Float64Array;
-  private onsetPos = 0;
-  private onsetSize = 0;
-  private onsetPrevFlux = 0;
+  // Pulsens nedtoning (decayPulse)
   private onsetBoost = 0;
   private onsetTarget = 0;
   private _prevTarget = 0;
@@ -900,10 +887,6 @@ export class PiLightEngine {
   private _recTarget = 0;
   private _recT0 = 0;
 
-  // Refractory period — minimum gap between onsets, räknat i frames (FRAME_MS ≈ 13.33 ms)
-  private onsetFrameCounter = 0;
-  private onsetLastFrameIdx = -1000;
-  // Refractory räknas dynamiskt från cal.onsetRefractoryMs / FRAME_MS (sann takt 75 Hz)
 
   // ── Drop-detektor (lång tidshorisont, @75Hz på bas-energi) ──
   // Drops är en struktur över sekunder: breakdown/uppbyggnad → plötslig bas-explosion.
@@ -968,8 +951,6 @@ export class PiLightEngine {
     this.tickMs = tickMs;
     this.cal = loadCalibration();
     setBeatCutoffHz(this.cal.beatCutoffHz);
-    this.onsetBuffer = new Float64Array(7);
-    this.onsetSorted = new Float64Array(7);
     this.initOnsetBuffer();
     this.tc = computeTickConstants(tickMs, this.cal);
     setSlotLeaseMs(TICK_SYNC ? Math.round(TICK_PERIOD_MS * 0.6) : this.tickMs); // synk: leasen får aldrig blockera nästa rasterfasade write
@@ -1028,23 +1009,8 @@ export class PiLightEngine {
 
 
   private initOnsetBuffer(): void {
-    // ~175 ms median-fönster på den SANNA frame-takten (75 Hz) ≈ 13 frames.
-    // Tidigare kopplat till tickMs, som inte längre styr frame-takten (gav ~93 ms).
-    this.onsetSize = Math.max(3, Math.round(175 / FRAME_MS));
-
-    if (this.onsetBuffer.length < this.onsetSize) {
-      this.onsetBuffer = new Float64Array(this.onsetSize);
-      this.onsetSorted = new Float64Array(this.onsetSize);
-    } else {
-      this.onsetBuffer.fill(0);
-      this.onsetSorted.fill(0);
-    }
-    this.onsetPos = 0;
-    this.onsetPrevFlux = 0;
     this.onsetBoost = 0;
     this.onsetTarget = 0;
-    this.onsetFrameCounter = 0;
-    this.onsetLastFrameIdx = -1000;
     this._wlevelSm = undefined;
     this._wdbSlow = undefined;
     this._shapeSm = undefined;
@@ -1064,59 +1030,10 @@ export class PiLightEngine {
     this._analyserDropCount = -1;   // ny flankreferens mot analysatorns dropCount
   }
 
-  /** Zero-alloc onset detection using precomputed constants.
-   *  Triggers a strong, short pulse on each detected transient (kick/snare),
-   *  with refractory period to avoid flutter on sustained loud passages. */
-  private processOnset(flux: number): boolean {
+  /** Pulsens nedtoning per band-ram (gridpulsens onsetTarget/onsetBoost: fade, RISE_HOLD). Den gamla anslagsdetektorn (B)
+   *  som stod här är borttagen 11-22 - den styrde inget sedan 11-10; analysatorns kick (kickAtMs) är bäst (onset-mätningen 11-22). */
+  private decayPulse(): void {
     const tc = this.tc;
-    this.onsetBuffer[this.onsetPos] = flux;
-    this.onsetPos = (this.onsetPos + 1) % this.onsetSize;
-
-    // Insertion-sort in-place (N≤7, ~20 comparisons max)
-    const n = this.onsetSize;
-    const s = this.onsetSorted;
-    for (let i = 0; i < n; i++) s[i] = this.onsetBuffer[i];
-    for (let i = 1; i < n; i++) {
-      const v = s[i];
-      let j = i - 1;
-      while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; }
-      s[j + 1] = v;
-    }
-
-    const mid = n >> 1;
-    const med = (n & 1) ? s[mid] : (s[mid - 1] + s[mid]) * 0.5;
-    // Stricter threshold (cal.onsetThreshold × median + floor) → only real beats trigger, not noise
-    // Adaptiv suppression: vid uthålligt hög amplitud (ampEnv > 0.5) höj tröskeln
-    // upp till +75% så flux-jitter på "fulla" mixar inte staplar pulser.
-    const dc = this.ampEnv;
-    const suppression = dc > 0.5 ? 1 + (dc - 0.5) * 1.5 : 1;
-    const threshold = med * this.cal.onsetThreshold * suppression + 0.008;
-
-    // False-positive-skydd (2026-06-02):
-    //  1) ABS_FLUX_FLOOR — i tystnad/brus faller median mot 0 och tröskeln
-    //     kollapsar till +0.008; ett absolut golv hindrar flimmer i tysta partier.
-    //  2) PROMINENCE — kräv att flux sticker ut TYDLIGT över median (×1.6),
-    //     inte bara passerar den adaptiva tröskeln. Sållar bort sustain-jitter.
-    const ABS_FLUX_FLOOR = 0.045;
-    const PROMINENCE = 1.6;
-    const isCandidate =
-      flux > threshold &&
-      flux >= this.onsetPrevFlux &&
-      flux >= ABS_FLUX_FLOOR &&
-      flux >= med * PROMINENCE;
-    this.onsetPrevFlux = flux;
-
-
-    // Refractory gate: minimum gap mellan onsets, i frames på sann takt (hoistad till tc)
-    const refractoryFrames = this.tc.refractoryFrames;
-    this.onsetFrameCounter++;
-    let fired = false;
-    if (isCandidate && (this.onsetFrameCounter - this.onsetLastFrameIdx) >= refractoryFrames) {
-      fired = true;
-      this.onsetLastFrameIdx = this.onsetFrameCounter;
-      // ANDNING I TAKT (11-10): anslagen satter aldrig pulsen - flankerna gar bara till PLL:en/fasen (fired).
-    }
-
     // Targeten släpps exakt en gång per frame. I Mode B skalar tau med grid-intervallet
     // så en halv-/dubbelpuls hinner tona ut lagom långt, utan att attacken fördröjs.
     let decay = tc.onsetDecayFft;
@@ -1165,7 +1082,6 @@ export class PiLightEngine {
 
 
     if (this.onsetBoost < 0.001) { this.onsetBoost = 0; this.onsetTarget = 0; }
-    return fired;
   }
 
   /**
@@ -1488,7 +1404,7 @@ export class PiLightEngine {
   }
   private ppClear(): void { this._pp.clear(); this._ppOut = 0; this._ppLastIdxTick = -1e9; }
   /** Pulsens envelope vid dt ms efter pulsstart: EMA-stigning (onsetRiseMs) mot amp i hold = riseHoldK×rise, sedan exp-avklingning
-   *  med samma tau som processOnset (fadeMode 2: fadeIntervalK × pulsintervall, annars 0,04 per s). */
+   *  med samma tau som decayPulse (fadeMode 2: fadeIntervalK × pulsintervall, annars 0,04 per s). */
   private ppEnv(dt: number, amp: number): number { return pulseEnvelope(dt, amp, this.pulseParams()); }
   /** Amplitud för slag idx enligt samma regler som ramen (fireBase/accent/subdiv) — 0 = inget slag presenteras. */
   private ppAmpFor(idx: number): number {
@@ -2285,15 +2201,7 @@ export class PiLightEngine {
         // bevis, ingen hord-takt-vikt. Forr vaxlade lampan mellan anslag och raster (dubbelpuls, hopp) och beviset nollades i kallaren
         // varje gang konfidensen dok till 0,2 (~10 s at gangen), sa rastret fick aldrig styra.
         const gridDrives = this.cal.beatGridPulse !== false && hasBeat(this._beat);
-        if (passesEnergyGate) {
-          // Lågpass-onset: bassFlux är analysatorns per-band-onsets under
-          // cal.beatCutoffHz (setBeatCutoffHz) — kick skild från basgång redan
-          // vid källan. Faller tillbaka på bredbands-flux om bands saknas.
-          const beatFlux = bands ? bands.bassFlux : flux;
-
-          // Onset-detektionen körs ALLTID (PLL:en behöver flankerna) men sätter aldrig pulsen.
-          this.processOnset(beatFlux);   // (ingen mottagare langre - stadas i dodkodspasset)
-        }
+        if (passesEnergyGate) this.decayPulse();   // nedtoningen bara när energigrinden släpper igenom (som förr)
         // Taktklocka: tempo från analysatorn, fas låst mot verkliga kicks (PLL).
         this.updateBeatClock();
         // Grid-pulsen med leadMs försprång → toppen landar PÅ slaget trots BLE-latensen.
