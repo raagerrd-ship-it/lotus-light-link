@@ -18,7 +18,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 /** De Frame-falt inspelaren laser (analysatorns Frame uppfyller detta). */
 export interface RecorderFrame {
-  dropCount: number; inRiser?: boolean; buildUp?: number; breaking?: boolean; inZone?: boolean;
+  dropCount: number; inRiser?: boolean; buildUp?: number; levelBreaking?: boolean; levelInZone?: boolean;
   section?: string; sectionIndex?: number; repeatSim?: number; repeatAgoMs?: number;
   beatPhaseMs?: number; beatPhaseConf?: number; bpm?: number;
 }
@@ -276,8 +276,8 @@ export class Recorder {
           const now = Date.now(); const f = this.hooks.latestFrame();
           const pct = this.hooks.brightness?.(); if (typeof pct === 'number') bright.push([now, Math.round(pct) / 100]);
           if (f) {
-            const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.breaking ? 1 : 0}|${f.inZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
-            if (fl !== lastFlag) { lastFlag = fl; flags.push([now, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.breaking ? 1 : 0, f.inZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); }
+            const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.levelBreaking ? 1 : 0}|${f.levelInZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
+            if (fl !== lastFlag) { lastFlag = fl; flags.push([now, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.levelBreaking ? 1 : 0, f.levelInZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); }
           }
           if (f && typeof f.beatPhaseMs === 'number' && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhase) { lastPhase = f.beatPhaseMs; phases.push([Math.round(f.beatPhaseMs), Math.round((f.beatPhaseConf ?? 0) * 100) / 100, f.bpm ?? 0]); }
           if (bright.length % 50 === 1) for (const k of (this.hooks.recentKicks?.() ?? [])) kicks.add(k);

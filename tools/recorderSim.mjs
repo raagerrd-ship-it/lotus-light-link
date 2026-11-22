@@ -121,8 +121,8 @@ function makeOld(dir) {
       const kicks = new Set(); const bright = []; const flags = []; let lastFlag = ''; const phases = []; let lastPhase = 0;
       const tick = setInterval(() => {
         const nw = Date.now(); const f = latestFrame; const pct = brightness(); if (typeof pct === 'number') bright.push([nw, Math.round(pct) / 100]);
-        if (f) { const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.breaking ? 1 : 0}|${f.inZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
-          if (fl !== lastFlag) { lastFlag = fl; flags.push([nw, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.breaking ? 1 : 0, f.inZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); } }
+        if (f) { const fl = `${f.dropCount}|${f.inRiser ? 1 : 0}|${Math.round((f.buildUp ?? 0) * 100)}|${f.levelBreaking ? 1 : 0}|${f.levelInZone ? 1 : 0}|${f.section ?? ''}|${f.sectionIndex ?? 0}`;
+          if (fl !== lastFlag) { lastFlag = fl; flags.push([nw, f.dropCount, f.inRiser ? 1 : 0, Math.round((f.buildUp ?? 0) * 100) / 100, f.levelBreaking ? 1 : 0, f.levelInZone ? 1 : 0, f.section ?? '', f.sectionIndex ?? 0, Math.round((f.repeatSim ?? 0) * 100) / 100, f.repeatAgoMs ?? 0]); } }
         if (f && typeof f.beatPhaseMs === 'number' && f.beatPhaseMs > 0 && f.beatPhaseMs !== lastPhase) { lastPhase = f.beatPhaseMs; phases.push([Math.round(f.beatPhaseMs), Math.round((f.beatPhaseConf ?? 0) * 100) / 100, f.bpm ?? 0]); }
         if (bright.length % 50 === 1) for (const k of kickRing) kicks.add(k);
       }, 100);

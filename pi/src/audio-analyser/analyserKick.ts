@@ -26,8 +26,11 @@ export class KickDetector {
   private kickPrimed = false;   // false på första framen
   private static readonly KICK_K = 4.5;   // KICKDETEKTOR-RATTAR
 
+  /** Hoppet: detektorn, sedan ankaret. */
+  hopStep(): void { this.kickStep(); this.anchorStep(); }
+
   /** Kick-detektorn. */
-  kickStep(): void {
+  private kickStep(): void {
     const kickFlux = this.h.kickFlux, energy = this.h.energy, now = this.h.now;
     if (this.kickSeed < 400) {
       this.kickSeed++;
@@ -71,8 +74,8 @@ export class KickDetector {
     this.o.kick = kick;
   }
 
-  /** Ankaret, i hoppet där kärnan förr hade det: förra kickens förfining, den här kickens ankare, fluxhistoriken. */
-  anchorStep(): void {
+  /** Ankaret: förra kickens förfining, den här kickens ankare, fluxhistoriken. */
+  private anchorStep(): void {
     const o = this.o;
     o.kickAt = 0;
     if (o.pendingKickMs > 0) this.kickRefine();

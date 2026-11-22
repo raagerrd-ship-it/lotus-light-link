@@ -52,7 +52,7 @@ function runOne(y, rate) {
     if (!BENCH_WALL) { const _ms = hopCount * HOP / rate * 1000; Date.now = () => BENCH_EPOCH + _ms; }   // BÄNKKLOCKAN (2026-11-10): EN KLOCKA (analyserClock) anropas med Date.now() - följ ljudtiden som lotusbank.py, annars ser klockan väggtid (bänken 396 -> 80/503)
     if (hopCount === 0) an.setVirtualClock?.(0); else an.advanceVirtualClock?.(hopCount * HOP / rate * 1000);   // setVirtualClock EN gang (lagesbyte nollar ankare), sedan bara advance
     const f = an.process(buf); hopCount++;
-    if (process.env.BENCH_GRID === '1' && f && f.bpm > 0 && f.beatAnchorMs > 0) an.setBeatGrid?.({ bpm: f.bpm, anchorMs: f.beatAnchorMs });   // som motorn: analysatorn grindar kickar mot gridet
+    if (process.env.BENCH_GRID === '1' && f && f.bpm > 0 && (f.kickAnchorMs ?? f.beatAnchorMs) > 0) an.setBeatGrid?.({ bpm: f.bpm, anchorMs: f.kickAnchorMs ?? f.beatAnchorMs });   // som motorn: analysatorn grindar kickar mot gridet
     if (f && f.kickAtMs > 0 && f.kickAtMs !== lastKick) { lastKick = f.kickAtMs; kicks.push((f.kickAtMs > 1e11 ? f.kickAtMs - 1700000000000 : f.kickAtMs) / 1000); }   // virtuell epok (1,7e12) bort -> sekunder fran start   // analysatorns kickar (virtuell klocka = sekunder fran start)
     if (hopCount > warm && hopCount % 38 === 0 && f && f.bpm > 0) { bpms.push(f.bpm); confs.push(f.bpmConfidence ?? 0); if (an.rawBpmLast > 0) raws.push(an.rawBpmLast); }   // ~10 Hz
     if (f && f.section && f.section !== lastSec) { lastSec = f.section; sections.push([+(hopCount * HOP / rate).toFixed(1), f.section]); }

@@ -26,7 +26,7 @@ for (const path of process.argv.slice(2)) {
     const t = h * HOP / rate * 1000; an.setAudioClockMs?.(t); if (h === 0) an.setVirtualClock?.(0); else an.advanceVirtualClock?.(HOP / rate * 1000);
     f = an.process(buf); const r = Math.sqrt(s2 / HOP); ema = ema === 0 ? r : ema + (r - ema) * (1 - Math.exp(-(HOP / rate) / 0.13));
     if (t >= nextTick) { nextTick += TICK; const a = f.specAbs; const lo = a.sub + a.kick + a.bass, tot = lo + a.lowMid + a.mid + a.highMid + a.treble + a.air + 1e-9;
-      T.push([t, ema, lo / tot, f.bodyDb ?? -90, 20 * Math.log10(a.treble + a.air + 1e-7), f.section ?? '', (20 * Math.log10(a.sub + 1e-7) + 20 * Math.log10(a.kick + 1e-7)) / 2, 20 * Math.log10(a.lowMid + a.mid + 1e-7), f.levelVsHighDb ?? 0]); }
+      T.push([t, ema, lo / tot, f.bodyDb ?? -90, 20 * Math.log10(a.treble + a.air + 1e-7), f.section ?? '', (20 * Math.log10(a.sub + 1e-7) + 20 * Math.log10(a.kick + 1e-7)) / 2, 20 * Math.log10(a.lowMid + a.mid + 1e-7), (f.sectionLevelVsHighDb ?? f.levelVsHighDb) ?? 0]); }
   }
   const G = 0.15 / Math.max(1e-6, pct(T.map((x) => x[1]), 0.5));
   // DAGENS

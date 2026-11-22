@@ -60,16 +60,16 @@ console.log(frame.level, frame.kick, frame.bpm, frame.spec.bass);
 
 | Field | Range | What it means |
 |---|---|---|
-| `level` / `levelRaw` / `levelVU` | 0..1 | Smoothed / raw / VU-ballistic loudness |
+| `level` / `levelVU` | 0..1 | Smoothed / VU-ballistic loudness |
 | `energy` / `mid` / `treble` | 0..1 | Coarse spectral energy |
 | `centroid` | 0..1 | Dark → bright spectral tilt |
 | `flux` | 0..1 | Bass-band spectral flux (change) |
 | `kick` | bool | True on rising edge of a detected kick |
 | `bpm` / `bpmConfidence` | 80..160 / 0..1 | Locked tempo + how sure |
-| `beatAnchorMs` | ms wall-clock | Sub-hop-refined phase of last kick |
+| `kickAnchorMs` | ms wall-clock | Sub-hop-refined phase of last kick |
 | `intensity` | 0..1 | Section energy vs song's own average |
 | `dropCount` | monotone | +1 per detected drop (edge-safe) |
-| `inZone` / `breaking` | bool | Sustained top zone / breakdown |
+| `levelInZone` / `levelBreaking` | bool | Sustained top zone / breakdown |
 | `buildUp` / `inRiser` | 0..1 / bool | Tension ramp toward a drop |
 | `profile.{punch,bass,bright,beat}` | 0..1 each | ~8s character of the track |
 | `spec.{sub,kick,bass,lowMid,mid,highMid,treble,air}` | 0..1 each | Per-band level (per-band AGC) |

@@ -38,9 +38,9 @@ const DOUBLE_FROM_START = ['bodyEnv', 'bodyFast', 'bodyCeil', 'bodyPeak', 'lastG
 
 /** DET DROP LÄSER (workern). Inget annat går att nå. */
 export interface DropReads {
-  hop:      Ser<'L', 'hop', 'dtHop' | 'nowWall' | 'body' | 'lvlSmooth' | 'sec' | 'lvh' | 'wallNow'>;
+  hop:      Ser<'L', 'hop', 'dtHop' | 'nowWall' | 'body' | 'sec' | 'lvh' | 'wallNow'>;
   spectrum: Ser<'L', 'spectrum', 'bandDbRaw'>;
-  level:    Ser<'L', 'level', 'activeMs'>;
+  level:    Ser<'L', 'level', 'activeMs' | 'lvlSmooth'>;
   riser:    Ser<'L', 'riser', 'buildUp'>;
 }
 
@@ -186,10 +186,10 @@ export class DropDetector {
     if (top < ceil - FLANK_GONE_DB) this.fdGone += dt; else { if (this.fdGone > 0) { this.fdSpan = this.fdGone; this.fdEnd = now; } this.fdGone = 0; }
     const above = f > ceil - FLANK_LAND_DB, edge = above && !this.fdAbove; this.fdAbove = above;
     const span = this.fdGone > 0 ? this.fdGone : now - this.fdEnd < FLANK_GRACE_S * 1000 ? this.fdSpan : 0;
-    if (this.h.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
+    if (this.lv.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
     if (!edge || f - low < FLANK_RISE_DB || (span < FLANK_BREAK_S && !(span >= FLANK_SHORT_S && ceil - low >= FLANK_SHORT_RISE_DB))) return false;
     if (now - this.fdQuietAt < span * 1000 + 500) { this.fdGone = 0; this.fdSpan = 0; if (DROP_TRACE) console.log(`[flank] ingen drop: helt tyst i breaket (latstart), break ${span.toFixed(1)} s`); return false; }
-    this.fdGone = 0; this.fdSpan = 0; this.fdAt = now; this.o.dropRiseDb = f - low;
+    this.fdGone = 0; this.fdSpan = 0; this.fdAt = now;
     if (DROP_TRACE) console.log(`[flank] full drop pa flanken: break ${span.toFixed(1)} s, stigning ${(f - low).toFixed(1)} dB`);
     return true;
   }
@@ -227,12 +227,12 @@ export class DropDetector {
   pack(s: Float64Array): void {
     const o = this.o;
     s[P.dropCount] = o.dropCount; s[P.miniDropCount] = o.miniDropCount; s[P.buildStartCount] = o.buildStartCount; s[P.dropCand] = o.dropCand; s[P.bodyUnderDb] = o.bodyUnderDb;
-    s[P.dropDemoted] = o.dropDemoted; s[P.dropSpaced] = o.dropSpaced; s[P.dropRiseDb] = o.dropRiseDb; s[P.nearDropDb] = o.nearDropDb; s[P.nearDipDb] = o.nearDipDb; s[P.liftDb] = o.liftDb; s[P.stopCount] = o.stopCount; s[P.stopS] = o.stopS;
+    s[P.dropDemoted] = o.dropDemoted; s[P.dropSpaced] = o.dropSpaced; s[P.nearDropDb] = o.nearDropDb; s[P.nearDipDb] = o.nearDipDb; s[P.liftDb] = o.liftDb; s[P.stopCount] = o.stopCount; s[P.stopS] = o.stopS;
   }
   unpack(s: Float64Array): void {
     const o = this.o;
     o.dropCount = s[P.dropCount]; o.miniDropCount = s[P.miniDropCount]; o.buildStartCount = s[P.buildStartCount]; o.dropCand = s[P.dropCand]; o.bodyUnderDb = s[P.bodyUnderDb];
-    o.dropDemoted = s[P.dropDemoted]; o.dropSpaced = s[P.dropSpaced]; o.dropRiseDb = s[P.dropRiseDb]; o.nearDropDb = s[P.nearDropDb]; o.nearDipDb = s[P.nearDipDb]; o.liftDb = s[P.liftDb]; o.stopCount = s[P.stopCount]; o.stopS = s[P.stopS];
+    o.dropDemoted = s[P.dropDemoted]; o.dropSpaced = s[P.dropSpaced]; o.nearDropDb = s[P.nearDropDb]; o.nearDipDb = s[P.nearDipDb]; o.liftDb = s[P.liftDb]; o.stopCount = s[P.stopCount]; o.stopS = s[P.stopS];
   }
   /** Workern startar om: räknarna ur senaste storblocket (fem fält saknas som förut). */
   resume(s: Float64Array): void {

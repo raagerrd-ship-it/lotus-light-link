@@ -39,7 +39,7 @@ function run(path) {
     an.setAudioClockMs?.(h * HOP / rate * 1000);
     if (h === 0) an.setVirtualClock?.(0); else an.advanceVirtualClock?.(h * HOP / rate * 1000);
     const f = an.process(buf); h++;
-    if (f && f.bpm > 0 && f.beatAnchorMs > 0) an.setBeatGrid?.({ bpm: f.bpm, anchorMs: f.beatAnchorMs });
+    if (f && f.bpm > 0 && (f.kickAnchorMs ?? f.beatAnchorMs) > 0) an.setBeatGrid?.({ bpm: f.bpm, anchorMs: f.kickAnchorMs ?? f.beatAnchorMs });
     if (h % 94 === 0) tr.push([h * HOP / rate, f?.bpm || 0, an.rawBpmLast || 0, an.tempoShifts || 0]);   // ~4 Hz
   }
   return tr;

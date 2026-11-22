@@ -2,9 +2,9 @@
 import { type Ser, type LevelOut } from "./analyserFack.js";
 import { F_SIL350, F_SIL10 } from './split.js';
 
-/** DET NIVÅN LÄSER. Inget annat går att nå. zeroBpm = kommando till klockan. L = zoneStep (också i workern). */
+/** DET NIVÅN LÄSER. Inget annat går att nå. zeroBpm = kommando till klockan. Bara huvudtråden. */
 export interface LevelReads {
-  hop:   Ser<'S', 'hop', 'rms' | 'now' | 'dt' | 'hopMs' | 'dtHop' | 'gated' | 'lvlSmooth' | 'role' | 'cfg'> & Ser<'L', 'hop', 'lvlSmooth' | 'dtHop'>;
+  hop:   Ser<'S', 'hop', 'rms' | 'now' | 'dt' | 'hopMs' | 'dtHop' | 'gated' | 'role' | 'cfg'>;
   clock: Ser<'S', 'clock', 'bpm' | 'zeroBpm'>;
 }
 /** Nivåns kommando till kärnan: flagga tystnad till workern. */
@@ -15,7 +15,14 @@ export class LevelTracker {
   constructor(r: LevelReads, private readonly o: LevelOut, private readonly cmd: LevelCmd) {   // läser: r, lämnar ut: o
     this.h = r.hop; this.ck = r.clock;
   }
-  aIUp = 0; aIDown = 0;
+  private aAtt = 0; private aRel = 0; private aIUp = 0; private aIDown = 0;
+  /** Takterna ur hoppets längd (konstruktorn): utjämningen och intensiteten. */
+  rates(dtHop: number): void {
+    this.aAtt = 1 - Math.exp(-dtHop / 0.015);
+    this.aRel = 1 - Math.exp(-dtHop / 0.4);
+    this.aIUp = 1 - Math.exp(-dtHop / 1.5);
+    this.aIDown = 1 - Math.exp(-dtHop / 3.0);
+  }
   private silenceArmed = false;   // true = tystnadssläppningen redan gjord för denna tystnad
   private intensityEma = 0.5;   // sektionsenergi
   private intensityFloor = 0.5;   // dess robusta P50-baslinje
@@ -56,8 +63,20 @@ export class LevelTracker {
     return second;
   }
 
+  /** Hoppet: AGC (bara mic, över brusgolvet), tystnaden, rå nivå, utjämningen, intensiteten, nivåtaket. */
+  hopStep(): void {
+    const o = this.o;
+    if (!o.gainLocked && this.h.rms > this.h.cfg.detection.noiseFloor) this.agcStep();
+    this.silenceStep();
+    const x = Math.min(1, this.h.rms * o.gain), p = o.lvlSmooth;
+    o.level = x;
+    o.lvlSmooth = p + (x - p) * (x > p ? this.aAtt : this.aRel);
+    this.intensityStep();
+    this.zoneStep();
+  }
+
   /** AGC (bara mic). */
-  agcStep(): void {
+  private agcStep(): void {
     const rms = this.h.rms, now = this.h.now, dt = this.h.dt;
     const d = this.h.cfg.detection;
       const env = this.agcEnvelope(rms, now);
@@ -73,7 +92,7 @@ export class LevelTracker {
   }
 
   /** Tystnadsflanken. */
-  silenceStep(): void {
+  private silenceStep(): void {
     const hopMs = this.h.hopMs;
     if (!this.h.gated) {
       this.o.silentMs += hopMs;
@@ -91,13 +110,13 @@ export class LevelTracker {
   }
 
   /** Sektionsenergi 0..1. */
-  intensityStep(): void {
+  private intensityStep(): void {
     const dtHop = this.h.dtHop;
     if (this.h.gated) this.o.activeMs += dtHop * 1000;
     else this.o.activeMs = 0;
     const iUp = this.aIUp;
     const iDown = this.aIDown;
-    this.intensityEma += (this.h.lvlSmooth - this.intensityEma) * (this.h.lvlSmooth > this.intensityEma ? iUp : iDown);
+    this.intensityEma += (this.o.lvlSmooth - this.intensityEma) * (this.o.lvlSmooth > this.intensityEma ? iUp : iDown);
     const iWarm = this.o.activeMs < 8000;
     const floorRate = iWarm ? dtHop / 3 : dtHop / 150;
     if (iWarm) this.intensityFloor += (this.intensityEma - this.intensityFloor) * floorRate;
@@ -110,9 +129,9 @@ export class LevelTracker {
   }
 
   /** NIVÅTAKET OCH TOPP-ZONEN. */
-  zoneStep(): void {
-    this.o.levelCeil = Math.max(this.h.lvlSmooth, this.o.levelCeil - this.h.dtHop * 0.015 * this.o.levelCeil);
-    if (this.h.lvlSmooth > this.o.levelCeil * 0.85) this.o.inZone = true;
-    else if (this.h.lvlSmooth < this.o.levelCeil * 0.70) this.o.inZone = false;
+  private zoneStep(): void {
+    this.o.levelCeil = Math.max(this.o.lvlSmooth, this.o.levelCeil - this.h.dtHop * 0.015 * this.o.levelCeil);
+    if (this.o.lvlSmooth > this.o.levelCeil * 0.85) this.o.inZone = true;
+    else if (this.o.lvlSmooth < this.o.levelCeil * 0.70) this.o.inZone = false;
   }
 }

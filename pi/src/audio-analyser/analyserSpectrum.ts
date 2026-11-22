@@ -7,8 +7,8 @@ const PEAK_DECAY = Math.pow(0.9993, BIG_EVERY);   // bandPeak-decay per stor-FFT
 
 /** DET SPEKTRUMET LÄSER. Inget annat går att nå. */
 export interface SpectrumReads {
-  hop:   Ser<'S', 'hop', 'gated' | 'lvlSmooth'> & Ser<'L', 'hop', 'lvlSmooth' | 'cfg' | 'bigOn'>;   // S = fastBandStep, L = bigStep
-  level: Ser<'L', 'level', 'activeMs'>;
+  hop:   Ser<'S', 'hop', 'gated'> & Ser<'L', 'hop', 'cfg' | 'bigOn'>;   // S = fastBandStep, L = bigStep
+  level: Ser<'S', 'level', 'lvlSmooth'> & Ser<'L', 'level', 'lvlSmooth' | 'activeMs'>;
 }
 
 export class SpectrumBands {
@@ -87,7 +87,7 @@ specCopy = new Float32Array(0);specN = 0;  aBandLvl = 0;
       }
       this.fbAbs[b] = avg;
       if (b >= 3) this.fbDbRaw[b] = 20 * Math.log10(avg + 1e-7);
-      const minPeak = this.h.lvlSmooth * 0.15;
+      const minPeak = this.lv.lvlSmooth * 0.15;
       if (gated && avg > this.fbPeak[b]) this.fbPeak[b] = Math.max(avg, minPeak);
       else this.fbPeak[b] = Math.max(this.fbPeak[b] * 0.9993, minPeak);
       const lvlRawB = gated ? Math.min(1, avg / (this.fbPeak[b] + 1e-6)) : 0;
@@ -147,7 +147,7 @@ specCopy = new Float32Array(0);specN = 0;  aBandLvl = 0;
       this.o.bandAbs[b] = avg;
       const db = 20 * Math.log10(avg + 1e-7);
       this.o.bandDbRaw[b] = db;
-      const minPeak = this.h.lvlSmooth * 0.15;
+      const minPeak = this.lv.lvlSmooth * 0.15;
       if (gated && avg > this.bandPeak[b]) this.bandPeak[b] = Math.max(avg, minPeak);
       else this.bandPeak[b] = Math.max(this.bandPeak[b] * PEAK_DECAY, minPeak);
       const lvlRawB = gated ? Math.min(1, avg / (this.bandPeak[b] + 1e-6)) : 0;

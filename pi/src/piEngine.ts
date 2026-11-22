@@ -2899,7 +2899,7 @@ export class PiLightEngine {
     // TAKET (heartbeat.ts ceilingFrom): nivåform × uppbyggnad, ettan lyfter, sedan SEKTIONSDYNAMIK (2026-09-21): levelVsHighDb =
     // blockets dB mot senaste refrangens medel — LATENS EGEN referens, inte dB-ankaret (som sjunker i lugna partier; agaren i ladan:
     // "lyser mycket aven om laten blir tystare"). Tystare an refrangen -> taket × (1 + dB/SECTION_DYN_DB), golv SECTION_DYN_FLOOR. 0 = av.
-    const _lv = _f ? ((_f as any).levelVsHighDb ?? 0) : 0;
+    const _lv = _f ? ((_f as any).sectionLevelVsHighDb ?? 0) : 0;
     const ceil = ceilingFrom(shapeUse, bu, cal.buildUpGain ?? 0, one, cal.barAccentLift ?? 0.30, _lv, SECTION_DYN_DB, SECTION_DYN_FLOOR);
 
     // (TILLITEN ar analysatorns sedan 11-11: frame.beatTrust, trustStep i analyserClock.ts. Motorns egen kopia - _trustSm/_syncMul -

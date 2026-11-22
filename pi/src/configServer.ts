@@ -403,7 +403,7 @@ export function startConfigServer(port = 3050): void {
     if (!f) return null;
     return {
       section: f.section, prev: f.prevSection, expectHighInMs: f.expectHighInMs,
-      levelVsHighDb: +(f.levelVsHighDb ?? 0).toFixed(1), bars: +(f.sectionBars ?? 0).toFixed(1),
+      levelVsHighDb: +(f.sectionLevelVsHighDb ?? 0).toFixed(1), bars: +(f.sectionBars ?? 0).toFixed(1),
       repeatSim: +(f.repeatSim ?? 0).toFixed(2), index: f.sectionIndex ?? 0, tier: f.sectionTier ?? null,
       ageMs: Math.round(f.sectionAgeMs ?? 0),
     };
@@ -753,7 +753,7 @@ export function startConfigServer(port = 3050): void {
           metaTempo: (getEngine() as any)?.metaTempo ?? null,
           memory: (getEngine() as any)?.memoryStatus ?? null,
           intensity: f.intensity, buildUp: f.buildUp, inRiser: f.inRiser,
-          dropCount: f.dropCount, inZone: f.inZone, breaking: f.breaking,
+          dropCount: f.dropCount, inZone: f.levelInZone, breaking: f.levelBreaking,
           level: f.level, kick: f.kick,
           profile: f.profile,
         };

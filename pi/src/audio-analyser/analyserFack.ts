@@ -48,22 +48,22 @@ type Taggat<O> = { readonly [K in Exclude<keyof O, Fn<O>>]: Tag | { readonly [k:
 /** HOPPET: kärnans fält per hopp. Skrivkartan per tråd: docs/analysator/analyserFack.md. */
 export class HopOut {
   static readonly TRAD = { role: 'K', bigOn: 'K', cfg: 'K', dtHop: 'K', hopMs: 'K', rms: 'IN', now: 'S', dt: 'S', nowWall: 'IN', gated: 'S',
-    kickFlux: 'S', energy: 'S', flux: 'S', level: 'S', lvlSmooth: 'IN', centSmooth: 'IN', body: 'UT', breaking: 'IN', kickHit: 'IN',
+    kickFlux: 'S', energy: 'S', flux: 'S', centSmooth: 'IN', body: 'UT', breaking: 'IN', kickHit: 'IN',
     sec: 'IN', lvh: 'IN', conf: 'IN', bpm: 'IN' } as const satisfies Taggat<HopOut>;
   role: Role = 'all'; bigOn = false; cfg!: Cfg;   // skrivs en gång i Analysers konstruktor
   dtHop = 0; hopMs = 0.5;
   rms = 0.5; now = 0.5; dt = 0.5; nowWall = 0.5; gated = false;
-  kickFlux = 0.5; energy = 0.5; flux = 0.5; level = 0.5; lvlSmooth = 0; centSmooth = 0.5; body = 0.5; breaking = false;
+  kickFlux = 0.5; energy = 0.5; flux = 0.5; centSmooth = 0.5; body = 0.5; breaking = false;
   kickHit = 0;   // trumkittet
   sec = 'intro'; lvh = 0.5; conf = 0.5; bpm = 0.5;   // långsamma värden sedda vid hoppet
-  constructor(readonly wallNow: () => number) { stabilise(this, ['lvlSmooth', 'kickHit']); }   // wallNow = analysatorns väggklocka
+  constructor(readonly wallNow: () => number) { stabilise(this, ['kickHit']); }   // wallNow = analysatorns väggklocka
 }
 
-/** NIVÅN. intensity = förr hIntensity, inZone = förr levels.inZoneState. */
+/** NIVÅN. intensity = förr hIntensity, inZone = förr levels.inZoneState, level/lvlSmooth = förr hop.level/hop.lvlSmooth (steg 22). */
 export class LevelOut {
-  static readonly TRAD = { gain: 'S', envelope: 'S', activeMs: 'IN', silentMs: 'S', intensity: 'IN', levelCeil: 'L', inZone: 'S', gainLocked: 'S' } as const satisfies Taggat<LevelOut>;   // levelCeil/inZone: zoneStep i båda trådarna
-  gain = 1; envelope!: number; activeMs = 0; silentMs = -0; intensity = 0.5; levelCeil = 0.5; inZone = false; gainLocked = false;
-  constructor() { stabilise(this, ['activeMs']); }
+  static readonly TRAD = { gain: 'S', envelope: 'S', level: 'S', lvlSmooth: 'IN', activeMs: 'IN', silentMs: 'S', intensity: 'IN', levelCeil: 'IN', inZone: 'S', gainLocked: 'S' } as const satisfies Taggat<LevelOut>;   // levelCeil: räknas bara i huvudtråden, workern får den i hopprecordet
+  gain = 1; envelope!: number; level = 0.5; lvlSmooth = 0; activeMs = 0; silentMs = -0; intensity = 0.5; levelCeil = 0.5; inZone = false; gainLocked = false;
+  constructor() { stabilise(this, ['activeMs', 'lvlSmooth']); }
 }
 /** SPEKTRUMET. Banden förblir Float32Array. sink = förr specSink. */
 export class SpectrumOut {
@@ -95,10 +95,10 @@ export class ClockOut {
 /** SEKTIONEN: de 17 publicerade fälten (förr på Analyser). */
 export class SectionOut {
   static readonly TRAD = { section: 'UT', sectionStartMs: 'UT', sectionIndex: 'UT', sectionTier: 'UT', prevSection: 'UT', levelVsHighDb: 'UT',
-    repeatSim: 'UT', repeatAgoMs: 'UT', repeatSection: 'UT', repeatTier: 'L', repeatHighAtMs: 'L', repeatHighEndAtMs: 'L',
+    repeatSim: 'UT', repeatAgoMs: 'UT', repeatTier: 'L', repeatHighAtMs: 'L', repeatHighEndAtMs: 'L',
     expectHighMs: 'UT', expectSource: 'UT', secBuildAt: 'UT', secBuildSeen: 'UT', boundaryNov: 'L', finns: 'K' } as const satisfies Taggat<SectionOut>;
   section = 'intro'; sectionStartMs = 0; sectionIndex = 0; sectionTier = 1; prevSection = ''; levelVsHighDb = 0;
-  repeatSim = 0; repeatAgoMs = 0; repeatSection = ''; repeatTier = -1; repeatHighAtMs = 0; repeatHighEndAtMs = 0;
+  repeatSim = 0; repeatAgoMs = 0; repeatTier = -1; repeatHighAtMs = 0; repeatHighEndAtMs = 0;
   expectHighMs = 0; expectSource = 0; secBuildAt = 0; secBuildSeen = 0; boundaryNov = 0; finns = true;
   constructor() { stabilise(this, ['expectHighMs', 'levelVsHighDb', 'sectionStartMs', 'secBuildAt', 'secBuildSeen', 'repeatSim', 'repeatAgoMs']); }
   neutral(): void { this.section = ''; }   // sektionen av: '' = okänd (sectionCode 0); 'intro' skulle ge drops lugn-veto
@@ -118,11 +118,11 @@ export class RiserOut {
 /** DROP. */
 export class DropOut {
   static readonly TRAD = { dropCount: 'UT', miniDropCount: 'UT', buildStartCount: 'UT', dropCand: 'UT', secBodyRet: 'L', dropDemoted: 'UT', dropSpaced: 'UT',
-    dropRiseDb: 'UT', nearDropDb: 'UT', nearDipDb: 'UT', liftDb: 'UT', stopCount: 'UT', stopS: 'UT', lastDropMs: 'L', bodyUnderDb: 'UT', finns: 'K' } as const satisfies Taggat<DropOut>;
+    nearDropDb: 'UT', nearDipDb: 'UT', liftDb: 'UT', stopCount: 'UT', stopS: 'UT', lastDropMs: 'L', bodyUnderDb: 'UT', finns: 'K' } as const satisfies Taggat<DropOut>;
   dropCount = 0; miniDropCount = 0; buildStartCount = 0; dropCand = 0; secBodyRet = 0;
-  dropDemoted = 0; dropSpaced = 0; dropRiseDb = -0; nearDropDb = -0; nearDipDb = -0; liftDb = -0; stopCount = 0; stopS = -0;
+  dropDemoted = 0; dropSpaced = 0; nearDropDb = -0; nearDipDb = -0; liftDb = -0; stopCount = 0; stopS = -0;
   lastDropMs = -1.5e9; bodyUnderDb = 0; finns = true;   // lastDropMs utanför Smi-intervallet
-  constructor() { stabilise(this, ['lastDropMs', 'dropRiseDb', 'nearDropDb', 'nearDipDb', 'liftDb', 'stopS']); }
+  constructor() { stabilise(this, ['lastDropMs', 'nearDropDb', 'nearDipDb', 'liftDb', 'stopS']); }
 }
 /** KARAKTÄREN. profile = förr character.outProfile, ramens profile pekar hit. */
 export class CharacterOut {

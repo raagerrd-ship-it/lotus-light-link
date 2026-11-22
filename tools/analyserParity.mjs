@@ -17,6 +17,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { NAMN, BORT } from './refaktor/namnkarta.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
@@ -71,8 +72,9 @@ function make(mod) {
 function flat(f, out, pre = '') {
   for (const k of Object.keys(f)) {
     const v = f[k];
+    if (!pre && BORT.has(k)) continue;   // borttagna fält (steg 24)
     if (v && typeof v === 'object') flat(v, out, pre + k + '.');
-    else out[pre + k] = v;
+    else out[pre + (pre ? k : NAMN.get(k) ?? k)] = v;   // referensens gamla namn -> nya (steg 23)
   }
   return out;
 }
@@ -99,8 +101,8 @@ for (const w of wavs) {
       if (RESET_EVERY > 0 && hops > 0 && hops % Math.round(RESET_EVERY * rate / HOP) === 0) X.an.resetTempo();
       const f = X.an.process(buf);
       if (GRID && f.bpm > 0) {
-        if (STYLE === 'dmx') X.cfg.beat = { anchorMs: f.beatAnchorMs || ms, bpm: f.bpm, confidence: f.bpmConfidence };
-        else if (f.beatAnchorMs > 0) X.an.setBeatGrid({ bpm: f.bpm, anchorMs: f.beatAnchorMs });
+        if (STYLE === 'dmx') X.cfg.beat = { anchorMs: (f.kickAnchorMs ?? f.beatAnchorMs) || ms, bpm: f.bpm, confidence: f.bpmConfidence };
+        else if ((f.kickAnchorMs ?? f.beatAnchorMs) > 0) X.an.setBeatGrid({ bpm: f.bpm, anchorMs: f.kickAnchorMs ?? f.beatAnchorMs });
       }
       frames.push(flat(f, {}));
       side = null;

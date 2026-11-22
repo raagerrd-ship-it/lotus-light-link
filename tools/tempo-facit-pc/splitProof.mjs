@@ -34,7 +34,7 @@ function run(y, rate, mode) {
     an.setAudioClockMs(h * HOP / rate * 1000);
     if (h === 0) an.setVirtualClock(0); else an.advanceVirtualClock(h * HOP / rate * 1000);
     const f = an.process(buf); h++;
-    out.push([f.bpm, f.bpmConfidence, f.beatPhaseMs, f.beatPhaseConf, f.section, f.sectionTier, f.repeatSim, f.expectHighInMs, f.levelVsHighDb]);
+    out.push([f.bpm, f.bpmConfidence, f.beatPhaseMs, f.beatPhaseConf, f.section, f.sectionTier, f.repeatSim, f.expectHighInMs, f.sectionLevelVsHighDb ?? f.levelVsHighDb]);
   }
   return { out, an };
 }
