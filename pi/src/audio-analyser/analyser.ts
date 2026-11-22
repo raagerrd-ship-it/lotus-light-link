@@ -1,22 +1,21 @@
 /** ENAD ANALYSATOR (2026-09-24) — en fil, samma byte i lotus-light-link (pi/src/audio-analyser/) och dmx-control (pi-dmx/engine/src/). Anteckningar (kommentarerna som stod i koden): docs/analysator/analyser.md */
 
-import { sysEnv, env, numEnv, stabilise, makeFack, type Fack, BODY_CEIL_DB_S, BE_FALLBACK_MS, BE_MEM_BEATS, BASS_SPAN_DB, BASSON_LEN, BIG_EVERY, SECTION_AGG_HOP, BODY_HIGH_MS, BODY_HIGH_DB,
+import { sysEnv, stabilise, makeFack, off, stenarAv, type Fack, BODY_CEIL_DB_S, BE_FALLBACK_MS, BASS_SPAN_DB, BIG_EVERY,
   type BeatGrid, type AnalyserDetection, type Cfg, type Role } from './analyserFack.js';
-export { BASS_SPAN_DB, SECTION_AGG_HOP, BODY_CEIL_DB_S };
+export { BASS_SPAN_DB, BODY_CEIL_DB_S };
 export type { BeatGrid, AnalyserDetection, Cfg, Role };
 import {
-  REC_LEN, RING_N, R_SEQ, R_PERF, R_WALL, R_ENV, R_BASS, R_HIGH, R_FLAGS, R_HINT_MS, R_VCLOCK, R_SEC_N, R_SEC_INT, R_SEC_KICKS, R_SEC_BREAK,
-  R_SEC_RMS2, R_SEC_CENT, R_SEC_DT, R_DROPS, R_ACTIVE, R_BUILD, R_SEC_SPEC0, R_SEC_WALL, R_TS, R_FLAGCNT, RING_MARGIN, FLAG_BITS, R_SEC_BON, R_SEC_BPK, R_SEC_FLUX, R_SEC_RMS4,
+  REC_LEN, RING_N, R_SEQ, R_PERF, R_WALL, R_ENV, R_BASS, R_HIGH, R_FLAGS, R_HINT_MS, R_VCLOCK, R_TS, R_FLAGCNT, RING_MARGIN, FLAG_BITS, B, BS, S, R,
   packFlagCounts, lostFlags, seqLow, seqDelta, C_WAITING, C_STATE_SEQ, S_LOST_FLAGS,
   F_SIL350, F_SIL10, F_RESET_TEMPO, F_HINT, F_RESET_BAR, F_VCLOCK_SET, F_VCLOCK_NULL,
-  C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PHASE_MS, S_PHASE_CONF, S_SECTION, S_SEC_START, S_SEC_INDEX, S_SEC_TIER, S_BUILD_AT, S_BUILD_SEEN,
-  S_REP_SIM, S_REP_AGO, S_REP_SEC, S_EXPECT_MS, S_EXPECT_SRC, S_PREV_SEC, S_LVL_HIGH, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
+  C_WRITE, C_READ, S_REC_SEQ, S_BPM, S_CONF, S_BPMF, S_PROCESSED, S_LAG_MS, S_LAG_MAX, S_BUSY_US, S_BUSY_MAX_US, S_SKIPPED, STATE_LEN,
   SECTIONS, sectionCode, viewsOf, stateWrite, stateRead, createSplitBuffers, type SplitBuffers, type WorkerData,
   C_WAKE, syncWait, HopLaneFast, HopLaneSlow, StateReader, type HopFeed,
-  R_BIGSEQ, R_CLOCK, R_CLOCK_CONF, BIG_REC_LEN, BIG_RING_N, BIG_HOP_MAX, B_SEQ, B_N, B_RMS, B_LVL, B_CENT, B_ACTIVE, B_WALL, B_KICK, B_KICKHIT, B_INT, B_BREAK, B_SEC, B_LVH, B_CONF,
-  B_ENVF, B_ENVBPM, C_WAITING_B, C_BIG_WRITE, C_BIG_READ, C_BIG_SEQ, BS_SEQ, BS_BODY, BS_DROPS, BS_MINI, BS_BUILD, BS_RISER, BS_PUNCH, BS_BASS, BS_BRIGHT, BS_BEAT,
-  BS_BASSLINE, BS_SPEC_N, BS_SKIPPED, BS_CAND, BS_DEMOTED, BS_SPACED, BS_DROPRISE, BS_NEAR, BS_NEARDIP, BS_LIFT, BS_STOPS, BS_STOPSEC, BS_UNDER, BS_BUILDSTART, BIG_STATE_LEN, SPEC_SLOTS, SPEC_MAX,
+  R_BIGSEQ, BIG_REC_LEN, BIG_RING_N, BIG_HOP_MAX, B_SEQ, B_N,
+  B_ENVF, C_WAITING_B, C_BIG_WRITE, C_BIG_READ, C_BIG_SEQ, BS_SEQ,
+  BS_SPEC_N, BS_SKIPPED, BIG_STATE_LEN, SPEC_SLOTS, SPEC_MAX,
 } from './split.js';
+const Bh = B.hop, Bl = B.level, Bk = B.kick, Rc = R.clock, BSh = BS.hop, Sc = S.clock;   // kärnans platser ur taggarna
 import FFT from "fft.js";
 import { BeatFeed, publishPhase, type ClockCfg } from "./analyserClock.js";   // ANALYSATORNS KLOCKA
 import { DropDetector } from "./analyserDrop.js";
@@ -32,8 +31,6 @@ import { SpectrumBands } from "./analyserSpectrum.js";
 function sysOn(name: string): boolean { return !!sysEnv(name); }
 const HIGH_ON = sysOn('HIGH_DIAG') || false;   // Rattar som lases i tatslingan
 const BPM_TRACE = sysOn('BPM_TRACE');
-export const DROP_TRACE = sysOn('DROP_TRACE');
-export const SECTION_SCORE_F32 = sysEnv('SECTION_SCORE_F32') === '1';   // Rangpoangens buffert i 32-bitars flyttal
 
 export interface AnalyserConfig {
   sampleRate?: number;   // Platt form
@@ -124,20 +121,13 @@ export interface Frame {
   midHiDb: number;   // ABSOLUT mid+diskant-niva i dB
   onset: Spectrum;   // per-band ONSET/anslag
   drum: { kick: number; snare: number; hat: number; bass: number };   // TRUM-KIT-envelopes
+  stenarAv: number;   // en bit per avstängd sten (analyserFack.ts stenarAv)
 }
 
-export const BODY_RISE_DB = Number(env('BODY_RISE_DB') ?? 17);   // DROP-DETEKTOR
-export const BODY_GONE_MIN_MS = Number(env('BODY_GONE_MIN_MS') ?? 2000);   // breakdown-langd som kravs
-export const DROP_QUALITY_DB = Number(env('DROP_QUALITY_DB') ?? 3.5);   // HARD KVALITETSGRIND vid fyrningen
-export const DROP_RISE_LOW_DB = Number(env('DROP_RISE_LOW_DB') ?? 0);   // DROP_RISE_MIN
-export const DROP_UNDERPEAK_MIN = Number(env('DROP_UNDERPEAK_MIN') ?? 0);   // LUGN-SEKTIONS-GRIND
-
-export const MINI_SPACING_MS = Number(env('MINI_SPACING_MS') ?? 0);   // KICK-LAS
-
 const DOUBLE_FROM_START = [
-  'expectHighMs', 'levelVsHighDb', 'sumSq', 'lastT', 'dbgRms', 'envAccum', 'envAccumT', 'envBassAccum', 'blAccum',
-  'lvlVU', 'engSmooth', 'activeMs', 'buildUp', 'snareHit', 'hatHit', 'pendingKickMs', 'kfPrev', 'kfPrev2',
-  'beatAnchorMs', 'profBassline', 'bassOnsetsPerBeat', 'rawBpmLast', 'localBpmConfidence', 'sectionStartMs', 'secBuildAt', 'secBuildSeen', 'repeatSim', 'repeatAgoMs',
+  'sumSq', 'lastT', 'envAccum', 'envAccumT', 'envBassAccum',
+  'lvlVU', 'engSmooth', 'snareHit', 'hatHit',
+  'rawBpmLast',
 ] as const;   // Instansfalt som MATT
 /** TYPSTABILA TALFALT. */
 function stabiliseNumbers(o: object): void {
@@ -146,8 +136,11 @@ function stabiliseNumbers(o: object): void {
 }
 
 export class Analyser {
-  readonly f: Fack = makeFack();   // FACKEN
+  readonly f: Fack = makeFack(() => this.wallNow());   // FACKEN
   get role(): Role { return this.f.hop.role; }   get bigOn(): boolean { return this.f.hop.bigOn; }   get cfg(): Cfg { return this.f.hop.cfg; }
+  get bandOn(): Float32Array { return this.f.spectrum.bandOn; }   get beatSrc(): { beat?: BeatGrid | null } { return this.f.clock.src; }   // verktygen
+  get bodyUnderDb(): number { return this.f.drop.bodyUnderDb; }   get bassOnsetsPerBeat(): number { return this.f.bass.onsetsPerBeat; }   // klockan (HopTarget), verktygen
+  get boundaryNov(): number { return this.f.section.boundaryNov; }   // boundaryBench.mjs
   private fft: FFT;
   private window: Float32Array;
   private buffer: Float32Array;   // sliding FFT window
@@ -167,21 +160,12 @@ export class Analyser {
   private hatHit = 0;   // TRUM-KIT peak-hold-envelopes
   private snareHit = 0;
   private static readonly BAND_HZ = [20, 60, 120, 250, 500, 1200, 3500, 10000, 16000];
-  bandAbs = new Float32Array(8);   // absolut per-band magnitud före AGC
-  bandLvl = new Float32Array(8);   // scratch
-  bandOn = new Float32Array(8);   // scratch
-  static readonly BE_SPAN_DB = BASS_SPAN_DB; static readonly BE_MEM_BEATS = BE_MEM_BEATS;
   static readonly BE_FALLBACK_MS = BE_FALLBACK_MS;
 
-  bigCounter = 0;   // decimering av 2048-FFT:n
   static readonly BIG_EVERY = BIG_EVERY;
-  static readonly PEAK_DECAY = Math.pow(0.9993, Analyser.BIG_EVERY);   // bandPeak-decay per stor-FFT
-  private static readonly FAST_BANDS = sysEnv('FAST_BANDS') === '1';   // SNABBA BANDEN FÖR LJUSET
   private static readonly FB_TAU_MS = [12, 6, 3];
-       fbOn = new Float32Array(8);
    private fbMax = 0;   // Valfri avlyssnare på den stora magnituden
-  specSink: ((mag: Float32Array, binHz: number) => void) | null = null;
-  setSpectrumSink(fn: ((mag: Float32Array, binHz: number) => void) | null): void { this.specSink = fn; }
+  setSpectrumSink(fn: ((mag: Float32Array, binHz: number) => void) | null): void { this.f.spectrum.sink = fn; }
   private static readonly ENV_HZ = 100;
   private static readonly ONSET_PEAK_FLOOR = 0.05;
   private static readonly ENV_LEN = 100 * Math.max(3, Math.min(20, Number(sysEnv('TEMPO_ENV_S')) || 5));   // Onset-ringens langd i sekunder x 100 Hz
@@ -191,26 +175,7 @@ export class Analyser {
 
   private static readonly GRID_PHASE_OFFSET_MS = Number(sysEnv('GRID_PHASE_OFFSET_MS')) || 0;   // Fasval
 
-
-  private static readonly SECTION_CARRY = numEnv('SECTION_CARRY', 0);   // SEKTION
-
-  static readonly RANK_WIN = numEnv('SECTION_WIN', 4);   // RANG-RATTAR
-  static readonly BASSON_LEN = BASSON_LEN;     bassOnRing = new Float32Array(Analyser.BASSON_LEN); bassOnN = 0;  bassOnPeak = false;
-     static readonly RANK_RUN = numEnv('SECTION_RUN', 3);
-  static readonly RANK_RUN_IN = numEnv('SECTION_RUN_IN', 0);   // SNABB ATTACK
-  static readonly BODY_HIGH_MS = BODY_HIGH_MS;   // BASEN TILLBAKA
-  static readonly BODY_HIGH_DB = BODY_HIGH_DB;
-  boundaryNov = 0;   // Klangnyhet 0..1 per 1 s-block mot det langsamma referensavtrycket
-  secSpecHop = new Float64Array(8);   // Bandens absoluta magnitud for sektionsblocket
-  secDump: number[][] | null = sysEnv('SECTION_DUMP') === '1' ? [] : null;   // Korbanks-dump
-  secBuildAt = 0; secBuildSeen = 0;   // uppbyggnadens start och senast sedd
-  section = 'intro'; sectionStartMs = 0; sectionIndex = 0; sectionTier = 1; repeatSim = 0; repeatAgoMs = 0; repeatSection = '';
-  expectHighMs = 0; expectSource = 0; prevSection = ''; levelVsHighDb = 0;   // Sektionsminne
-  static readonly REPEAT = Number(sysEnv('SECTION_REPEAT')) || 0;   // UPPREPNINGSMINNE v2
-
-  repeatTier = -1; repeatHighAtMs = 0; repeatHighEndAtMs = 0;    beatPhaseMs = 0; beatPhaseConf = 0;   // Klangmallens likhet for senaste blocket
   dbgPhase = { conf: 0, bassOn: 0, bassAnti: 0, fullOn: 0, fullAnti: 0, bestPh: 0, nPh: 0, pending: 0 };   // Korbanks-telemetri for gridfasen
-  dbgSecBlock: ((b: Record<string, unknown>) => void) | null = null;   // Korbanks-krok
   private envFilled = 0;
   private envAccum = 0;
   private envAccumT = 0;
@@ -227,22 +192,11 @@ export class Analyser {
   hopLane: HopLaneFast | null = null;   // TAKTVÄGEN
   hopSelf = false;   // EN KLOCKA
   private syncWorker = false;   // fast: vänta på workern efter varje record
-  hIntensity = 0.5; hKick = false;   // HOPPETS VÄRDEN
-  private hInZone = false; private hInRiser = false; hKickAt = 0.5;
-  secAgg = { n: 0, int: 0, kicks: 0, breaking: 0, rms2: 0, cent: 0, dt: 0, wall: 0, drops: 0, active: 0, build: 0, spec: new Float64Array(8), bon: 0, bpk: 0, flux: 0, rms4: 0 };
   private inlinePeer: Analyser | null = null;
   private bigRing: Float64Array | null = null; private bigPcm: Float32Array | null = null; private bigState: Float64Array | null = null;   private bigSeq = 0; private bigCopy = new Float64Array(BIG_STATE_LEN); private bigRd = new StateReader();  private specDelivered = 0;  private bigSkipped = 0;
-  private bigEnvFlag = 0; private bigEnvBpm = 0.5;
+  private bigEnvFlag = 0;
   bigYield: (() => void) | null = null;   // PI:NS VERKLIGHET
-  secSpecDirty = true;
   private slowBusyEmaUs = 0; private slowBusyMaxUs = 0; private slowLagMaxMs = 0; private slowSkipped = 0; private slowProcessed = 0;
-  localBpm = 0;
-  private localBpmConfidence = 0;
-  static readonly SECTION_EARLY_DB = Number(sysEnv('SECTION_EARLY_DB')) || 3;
-  static readonly KICK_NOGATE = sysEnv('KICK_NOGATE') === '1';
-  static readonly KICK_COOLDOWN_MS = Number(sysEnv('KICK_COOLDOWN')) || 0;   // 0 = tempoanpassad
-  static readonly KICK_EFLOOR = Number(sysEnv('KICK_EFLOOR')) || 0.06;
-  dbgKick: { flux: number; thresh: number; med: number; mad: number; energy: number; gain: number; rms: number; env: number; locked: boolean } | null = null; dbgRms = 0;   // Korbank
   dbgBestLag = 0; dbgLagMin = 0; dbgLagMax = 0; dbgTgAt = (lag: number): number => this.tempoGram[lag] ?? 0;
   evidRelockVotes = 0;
   tempoShifts = 0;   // Telemetri
@@ -271,36 +225,24 @@ export class Analyser {
   get lagBounds(): [number, number] { return [this.diagLagMin, this.diagLagMax]; }
   get tempoGramSnapshot(): Float32Array { return this.tempoGram; }
   private static readonly REFRAC_ATT = 0;   // env-ringens refraktar
-  blAccum = 0;       profBassline = 0;  blKickSeq = -100;   // TYDLIG BASGANG
-  bassOnsetsPerBeat = 0;
   private envHighRing = new Float32Array(Analyser.ENV_LEN);   // DIAGNOSTIK
   private envHighAccum = 0;
-  beatAnchorMs = 0;
-  kfPrev = 0;   // sparar de två föregående kick-flux-värdena och gör parabolisk interpolation
-  kfPrev2 = 0;
-  pendingKickMs = 0;
-  gain = 1;
-  activeMs = 0;   // hur länge musik spelat
-  levelCeil = 0.5;   // DROP-DETEKTION
-  bandDbRaw = new Float32Array(8);   // RA dB per band
-  buildUp = 0;   // 0..1 uppbyggnads-envelope
   private lvlVU = 0;
   private engSmooth = 0;
 
-  gainLocked = false;
 
 
   /** Called when the input routing changes. */
   resetGain(startGain = 1) {
-    this.gain = Math.max(0.5, Math.min(20, startGain));
-    this.envelope = this.f.hop.cfg.detection.autoGainTarget;
+    this.f.level.gain = Math.max(0.5, Math.min(20, startGain));
+    this.f.level.envelope = this.f.hop.cfg.detection.autoGainTarget;
     this.levels.resetAgcBlocks();
   }
 
   /** Lock the AGC. */
   setGainLock(locked: boolean, fixed = 1) {
-    this.gainLocked = locked;
-    if (locked) { this.gain = fixed; this.envelope = this.f.hop.cfg.detection.autoGainTarget; this.levels.resetAgcBlocks(); }
+    this.f.level.gainLocked = locked;
+    if (locked) { this.f.level.gain = fixed; this.f.level.envelope = this.f.hop.cfg.detection.autoGainTarget; this.levels.resetAgcBlocks(); }
   }
 
   /** DELAD ANALYSATOR. */
@@ -312,27 +254,17 @@ export class Analyser {
   /** Ett record per env-sampel. */
   private pushSlowRecord(e: number, b: number, h: number): void {
     const r = this.splitRing!, ctrl = this.splitCtrl!;
-    const seq = ++this.recSeq; const o = (seq % RING_N) * REC_LEN; const g = this.secAgg;
+    const seq = ++this.recSeq; const o = (seq % RING_N) * REC_LEN;
     r[o + R_PERF] = this.perfNow(); r[o + R_WALL] = this.wallNow(); r[o + R_TS] = Date.now();
     r[o + R_ENV] = e; r[o + R_BASS] = b; r[o + R_HIGH] = h; r[o + R_FLAGS] = this.pendFlags; r[o + R_HINT_MS] = this.pendHintMs; r[o + R_VCLOCK] = this.pendVclock;
-    r[o + R_SEC_N] = g.n; r[o + R_SEC_INT] = g.int; r[o + R_SEC_KICKS] = g.kicks; r[o + R_SEC_BREAK] = g.breaking; r[o + R_SEC_RMS2] = g.rms2;
-    r[o + R_SEC_CENT] = g.cent; r[o + R_SEC_DT] = g.dt; r[o + R_SEC_WALL] = g.wall;
-    for (let i = 0; i < 8; i++) r[o + R_SEC_SPEC0 + i] = g.spec[i];
-    r[o + R_SEC_BON] = g.bon; r[o + R_SEC_BPK] = g.bpk; r[o + R_SEC_FLUX] = g.flux; r[o + R_SEC_RMS4] = g.rms4;
-    if (SECTION_AGG_HOP) { r[o + R_DROPS] = g.drops; r[o + R_ACTIVE] = g.active; r[o + R_BUILD] = g.build; }
-    else { r[o + R_DROPS] = this.drop.dropCand + this.drop.secBodyRet; r[o + R_ACTIVE] = this.activeMs; r[o + R_BUILD] = this.buildUp; }
     r[o + R_FLAGCNT] = packFlagCounts(this.flagCnt);
-    r[o + R_CLOCK] = this.localBpm; r[o + R_CLOCK_CONF] = this.localBpmConfidence;
+    r[o + Rc.bpm] = this.f.clock.bpm; r[o + Rc.conf] = this.f.clock.conf;
     r[o + R_BIGSEQ] = this.bigSeq;
     r[o + R_SEQ] = seq;
-    g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
     this.pendFlags = 0;
     Atomics.store(ctrl, C_WRITE, seqLow(seq));
-    if (this.f.hop.bigOn) {
-      Atomics.add(ctrl, C_WAKE, 1);
-      if ((this.syncWorker || !this.hopLane) && (Atomics.load(ctrl, C_WAITING) || Atomics.load(ctrl, C_WAITING_B))) Atomics.notify(ctrl, C_WAKE);
-    } else if (!this.hopLane) { if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WRITE, 1); }
-    else { Atomics.add(ctrl, C_WAKE, 1); if (Atomics.load(ctrl, C_WAITING)) Atomics.notify(ctrl, C_WAKE, 1); }
+    Atomics.add(ctrl, C_WAKE, 1);
+    if ((this.syncWorker || !this.hopLane) && (Atomics.load(ctrl, C_WAITING) || Atomics.load(ctrl, C_WAITING_B))) Atomics.notify(ctrl, C_WAKE);
     if (this.inlinePeer) { this.inlinePeer.drainRecords(); this.pullSlowState(); }
     else if (this.syncWorker) { syncWait(ctrl, C_STATE_SEQ, () => this.stateRd.read(ctrl, this.splitState!, this.stateCopy) && this.stateCopy[S_REC_SEQ] >= seq); this.pullSlowState(); }
   }
@@ -340,10 +272,8 @@ export class Analyser {
   private pullSlowState(): void {
     if (!this.stateRd.read(this.splitCtrl!, this.splitState!, this.stateCopy)) return;
     const s = this.stateCopy; if (s[S_REC_SEQ] < this.barrierSeq) return;
-    this.beatPhaseMs = s[S_PHASE_MS]; this.beatPhaseConf = s[S_PHASE_CONF];
-    this.section = SECTIONS[s[S_SECTION]] || 'intro'; this.sectionStartMs = s[S_SEC_START]; this.sectionIndex = s[S_SEC_INDEX]; this.sectionTier = s[S_SEC_TIER]; this.secBuildAt = s[S_BUILD_AT]; this.secBuildSeen = s[S_BUILD_SEEN];
-    this.repeatSim = s[S_REP_SIM]; this.repeatAgoMs = s[S_REP_AGO]; this.repeatSection = SECTIONS[s[S_REP_SEC]] || '';
-    this.expectHighMs = s[S_EXPECT_MS]; this.expectSource = s[S_EXPECT_SRC]; this.prevSection = SECTIONS[s[S_PREV_SEC]] || ''; this.levelVsHighDb = s[S_LVL_HIGH];
+    this.f.clock.phaseMs = s[Sc.phaseMs]; this.f.clock.phaseConf = s[Sc.phaseConf];
+    this.sections?.unpack(s);
   }
   setInlinePeer(slow: Analyser | null): void { this.inlinePeer = slow; }
   /** Halsa for /api/live. */
@@ -376,7 +306,7 @@ export class Analyser {
         }
         this.slowGap = false;
       }
-      if (this.f.hop.bigOn) this.drainBig(r[o + R_BIGSEQ]);
+      this.drainBig(r[o + R_BIGSEQ]);
       this.slowStep(o); this.slowLastCnt = r[o + R_FLAGCNT];
       if (this.bigYield) this.bigYield();
       const us = (performance.now() - t0) * 1000;
@@ -389,28 +319,27 @@ export class Analyser {
       this.slowProcessed += n;
       Atomics.store(ctrl, C_READ, seqLow(this.recSeq));
       stateWrite(ctrl, this.splitState!, (s) => {
-        s[S_REC_SEQ] = this.recSeq; s[S_BPM] = this.localBpm; s[S_CONF] = this.localBpmConfidence; s[S_BPMF] = this.localBpmF;
-        s[S_PHASE_MS] = this.beatPhaseMs; s[S_PHASE_CONF] = this.beatPhaseConf;
-        s[S_SECTION] = sectionCode(this.section); s[S_SEC_START] = this.sectionStartMs; s[S_SEC_INDEX] = this.sectionIndex; s[S_SEC_TIER] = this.sectionTier; s[S_BUILD_AT] = this.secBuildAt; s[S_BUILD_SEEN] = this.secBuildSeen;
-        s[S_REP_SIM] = this.repeatSim; s[S_REP_AGO] = this.repeatAgoMs; s[S_REP_SEC] = sectionCode(this.repeatSection);
-        s[S_EXPECT_MS] = this.expectHighMs; s[S_EXPECT_SRC] = this.expectSource; s[S_PREV_SEC] = sectionCode(this.prevSection); s[S_LVL_HIGH] = this.levelVsHighDb;
+        s[S_REC_SEQ] = this.recSeq; s[S_BPM] = this.f.clock.bpm; s[S_CONF] = this.f.clock.conf; s[S_BPMF] = this.localBpmF;
+        s[Sc.phaseMs] = this.f.clock.phaseMs; s[Sc.phaseConf] = this.f.clock.phaseConf;
+        this.sections?.pack(s);
         s[S_PROCESSED] = this.slowProcessed; s[S_LAG_MS] = lagMs; s[S_LAG_MAX] = this.slowLagMaxMs; s[S_BUSY_US] = this.slowBusyEmaUs; s[S_BUSY_MAX_US] = this.slowBusyMaxUs; s[S_SKIPPED] = this.slowSkipped; s[S_LOST_FLAGS] = this.slowLostFlags;
       });
       if (this.syncWorker) Atomics.notify(ctrl, C_STATE_SEQ);
     }
-    if (this.f.hop.bigOn) this.drainBig(Infinity);
+    this.drainBig(Infinity);
     return n;
   }
 
   /** STORA VÄGEN. */
   private pushBig(samples: Float32Array): void {
     const h = this.f.hop;
+    const lv = this.f.level, sp = this.f.spectrum, kk = this.f.kick;
     const r = this.bigRing!, ctrl = this.splitCtrl!, seq = ++this.bigSeq, slot = seq % BIG_RING_N, o = slot * BIG_REC_LEN, n = samples.length;
     this.bigPcm!.set(samples, slot * BIG_HOP_MAX);
-    r[o + B_N] = n; r[o + B_RMS] = h.rms; r[o + B_LVL] = h.lvlSmooth; r[o + B_CENT] = h.centSmooth; r[o + B_ACTIVE] = this.activeMs;
-    r[o + B_WALL] = h.nowWall; r[o + B_KICK] = this.hKick ? 1 : 0; r[o + B_KICKHIT] = h.kickHit; r[o + B_INT] = this.hIntensity; r[o + B_BREAK] = h.breaking ? 1 : 0;
-    r[o + B_SEC] = sectionCode(this.section); r[o + B_LVH] = this.levelVsHighDb; r[o + B_CONF] = this.localBpmConfidence;
-    r[o + B_ENVF] = this.bigEnvFlag; r[o + B_ENVBPM] = this.bigEnvBpm; this.bigEnvFlag = 0;
+    r[o + B_N] = n; r[o + Bh.rms] = h.rms; r[o + Bh.nowWall] = h.nowWall; r[o + Bh.lvlSmooth] = h.lvlSmooth; r[o + Bh.centSmooth] = h.centSmooth; r[o + Bh.breaking] = h.breaking ? 1 : 0;
+    r[o + Bh.kickHit] = h.kickHit; r[o + Bh.sec] = sectionCode(h.sec); r[o + Bh.lvh] = h.lvh; r[o + Bh.conf] = h.conf; r[o + Bh.bpm] = h.bpm;
+    r[o + Bl.activeMs] = lv.activeMs; r[o + Bl.intensity] = lv.intensity; r[o + Bk.kick] = kk.kick ? 1 : 0;
+    r[o + B_ENVF] = this.bigEnvFlag; this.bigEnvFlag = 0;
     r[o + B_SEQ] = seq;
     Atomics.store(ctrl, C_BIG_WRITE, seqLow(seq)); Atomics.add(ctrl, C_WAKE, 1);
     if ((this.syncWorker || !this.hopLane) && (Atomics.load(ctrl, C_WAITING) || Atomics.load(ctrl, C_WAITING_B))) Atomics.notify(ctrl, C_WAKE);
@@ -418,12 +347,10 @@ export class Analyser {
     else if (this.syncWorker) syncWait(ctrl, C_BIG_SEQ, () => this.bigRd.read(ctrl, this.bigState!, this.bigCopy, C_BIG_SEQ) && this.bigCopy[BS_SEQ] >= seq);
     const s = this.bigCopy;
     if (!this.bigRd.read(ctrl, this.bigState!, s, C_BIG_SEQ) || s[BS_SEQ] === 0) return;
-    h.body = s[BS_BODY]; this.drop.dropCount = s[BS_DROPS]; this.drop.miniDropCount = s[BS_MINI]; this.drop.buildStartCount = s[BS_BUILDSTART]; this.bodyUnderDb = s[BS_UNDER];
-    this.drop.dropDemoted = s[BS_DEMOTED]; this.drop.dropSpaced = s[BS_SPACED]; this.drop.dropRiseDb = s[BS_DROPRISE]; this.drop.nearDropDb = s[BS_NEAR]; this.drop.nearDipDb = s[BS_NEARDIP]; this.drop.liftDb = s[BS_LIFT]; this.drop.stopCount = s[BS_STOPS]; this.drop.stopS = s[BS_STOPSEC]; this.buildUp = s[BS_BUILD]; this.hInRiser = s[BS_RISER] === 1;
-    const p = this.character.outProfile; p.punch = s[BS_PUNCH]; p.bass = s[BS_BASS]; p.bright = s[BS_BRIGHT]; p.beat = s[BS_BEAT]; p.bassline = s[BS_BASSLINE];
+    h.body = s[BSh.body]; this.drop?.unpack(s); this.riser?.unpack(s); this.character?.unpack(s);
     const sn = s[BS_SPEC_N];
     if (sn > this.specDelivered) {
-      const sink = this.specSink, binHz = h.cfg.audio.rate / this.bands.bufferBig.length, R = this.bands.specRing!, c = this.bands.specCopy;
+      const sink = sp.sink, binHz = h.cfg.audio.rate / this.bands.bufferBig.length, R = this.bands.specRing!, c = this.bands.specCopy;
       for (let k = Math.max(this.specDelivered + 1, sn - SPEC_SLOTS + 1); k <= sn; k++) {
         if (sink) { const o2 = (k % SPEC_SLOTS) * SPEC_MAX; c.set(R.subarray(o2, o2 + c.length)); sink(c, binHz); }
       }
@@ -434,6 +361,7 @@ export class Analyser {
   /** slow: behandla hop-recorden t.o.m. */
   drainBig(limit: number): number {
     const h = this.f.hop;
+    const lv = this.f.level, kk = this.f.kick;
     const ctrl = this.splitCtrl!, r = this.bigRing!, pcm = this.bigPcm!;
     let w = this.bigSeq + seqDelta(Atomics.load(ctrl, C_BIG_WRITE), this.bigSeq); if (limit < w) w = limit;
     if (w - this.bigSeq > BIG_RING_N - RING_MARGIN) { this.bigSkipped += (w - this.bigSeq) - (BIG_RING_N - RING_MARGIN); this.bigSeq = w - (BIG_RING_N - RING_MARGIN); }
@@ -442,30 +370,23 @@ export class Analyser {
       const seq = ++this.bigSeq, slot = seq % BIG_RING_N, o = slot * BIG_REC_LEN;
       if (r[o + B_SEQ] !== seq) { this.bigSkipped++; continue; }
       const hn = r[o + B_N];
-      { const bl = this.bandLvl[1] + this.bandLvl[2]; if (bl > this.blAccum) this.blAccum = bl; if (h.kickHit >= 1) this.blKickSeq = this.bass.envSeq; }
-      if (r[o + B_ENVF] === 1) { h.bpm = r[o + B_ENVBPM]; this.bass.stepBassline(); }
-      h.rms = r[o + B_RMS]; h.lvlSmooth = r[o + B_LVL]; h.centSmooth = r[o + B_CENT]; this.activeMs = r[o + B_ACTIVE]; h.kickHit = r[o + B_KICKHIT];
+      this.bass?.accumulate();
+      h.rms = r[o + Bh.rms]; h.nowWall = r[o + Bh.nowWall]; h.lvlSmooth = r[o + Bh.lvlSmooth]; h.centSmooth = r[o + Bh.centSmooth]; h.breaking = r[o + Bh.breaking] === 1;
+      h.kickHit = r[o + Bh.kickHit]; h.sec = SECTIONS[r[o + Bh.sec]]; h.lvh = r[o + Bh.lvh]; h.conf = r[o + Bh.conf]; h.bpm = r[o + Bh.bpm];
+      lv.activeMs = r[o + Bl.activeMs]; lv.intensity = r[o + Bl.intensity]; kk.kick = r[o + Bk.kick] === 1;
+      if (r[o + B_ENVF] === 1) this.bass?.stepBassline();
       this.levels.zoneStep();
-      const wall = r[o + B_WALL];
       { const po = slot * BIG_HOP_MAX; this.bands.bigRingPush(pcm.subarray(po, po + hn)); }
-      if (++this.bigCounter >= Analyser.BIG_EVERY) this.bands.bigStep();
-      h.nowWall = wall; h.body = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;
-      h.sec = SECTIONS[r[o + B_SEC]]; h.lvh = r[o + B_LVH];
-      this.drop.dropStep();
-      this.hInRiser = this.riser.riserStep();
-      h.conf = r[o + B_CONF];
-      this.character.profileStep();
-      this.bigAgg(r[o + B_INT], r[o + B_KICK] === 1, r[o + B_BREAK] === 1, wall);
+      this.bands.bigTick();
+      this.slowPart();
+      this.sections?.bigAgg();
       n++;
       if (this.bigYield) this.bigYield();
     }
     if (n > 0) {
       Atomics.store(ctrl, C_BIG_READ, seqLow(this.bigSeq));
-      const p = this.character.outProfile;
       stateWrite(ctrl, this.bigState!, (s) => {
-        s[BS_SEQ] = this.bigSeq; s[BS_BODY] = h.body; s[BS_DROPS] = this.drop.dropCount; s[BS_MINI] = this.drop.miniDropCount; s[BS_BUILDSTART] = this.drop.buildStartCount; s[BS_CAND] = this.drop.dropCand; s[BS_UNDER] = this.bodyUnderDb;
-        s[BS_DEMOTED] = this.drop.dropDemoted; s[BS_SPACED] = this.drop.dropSpaced; s[BS_DROPRISE] = this.drop.dropRiseDb; s[BS_NEAR] = this.drop.nearDropDb; s[BS_NEARDIP] = this.drop.nearDipDb; s[BS_LIFT] = this.drop.liftDb; s[BS_STOPS] = this.drop.stopCount; s[BS_STOPSEC] = this.drop.stopS; s[BS_BUILD] = this.buildUp; s[BS_RISER] = this.hInRiser ? 1 : 0;
-        s[BS_PUNCH] = p.punch; s[BS_BASS] = p.bass; s[BS_BRIGHT] = p.bright; s[BS_BEAT] = p.beat; s[BS_BASSLINE] = p.bassline; s[BS_SPEC_N] = this.bands.specN; s[BS_SKIPPED] = this.bigSkipped;
+        s[BS_SEQ] = this.bigSeq; s[BSh.body] = h.body; this.drop?.pack(s); this.riser?.pack(s); this.character?.pack(s); s[BS_SPEC_N] = this.bands.specN; s[BS_SKIPPED] = this.bigSkipped;
       }, C_BIG_SEQ);
       if (this.syncWorker) Atomics.notify(ctrl, C_BIG_SEQ);
     }
@@ -473,23 +394,13 @@ export class Analyser {
   }
   /** slow: alla hop-record lästa?. */
   bigIdle(): boolean { return seqLow(this.bigSeq) === Atomics.load(this.splitCtrl!, C_BIG_WRITE); }
-  /** slow: sektionens hopaggregat. */
-  private bigAgg(intensity: number, kick: boolean, breaking: boolean, wall: number): void {
-    const h = this.f.hop;
-    const rms = h.rms;
-    const sp = this.secSpecHop;
-    if (this.secSpecDirty) { this.secSpecDirty = false; for (let i = 0; i < 8; i++) sp[i] = Math.pow(10, this.bandDbRaw[i] / 20); }
-    const g = this.secAgg; g.n++; g.int += intensity; if (kick) g.kicks++; g.rms2 += rms * rms; g.cent += h.centSmooth; g.dt += h.dtHop * 1000;
-    g.breaking = breaking ? 1 : 0; g.wall = wall; g.drops = this.drop.dropCand + this.drop.secBodyRet; g.active = this.activeMs; g.build = this.buildUp;
-    for (let i = 0; i < 8; i++) g.spec[i] += sp[i];
-  }
   /** Snabba sidans kommandon i exakt den ordning de restes. */
   private applyFlags(flags: number, hintMs: number, vclock: number): void {
     if (flags & F_VCLOCK_NULL) this.setVirtualClock(null); else if (flags & F_VCLOCK_SET) this.setVirtualClock(vclock);
     if (flags & F_RESET_TEMPO) this.resetTempo();
     if (flags & F_HINT) this.hintTrackChange(hintMs);
     if (flags & F_RESET_BAR) this.resetBar();
-    if (flags & F_SIL10) this.localBpm = 0;
+    if (flags & F_SIL10) this.f.clock.zeroBpm();
   }
   /** Ett record. */
   private slowStep(o: number): void {
@@ -499,66 +410,36 @@ export class Analyser {
     this.envRing[this.envPos] = r[o + R_ENV]; this.envBassRing[this.envPos] = r[o + R_BASS];
     if (HIGH_ON) this.envHighRing[this.envPos] = r[o + R_HIGH];
     this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
-    this.localBpm = r[o + R_CLOCK], this.localBpmConfidence = r[o + R_CLOCK_CONF];
+    this.f.clock.bpm = r[o + Rc.bpm], this.f.clock.conf = r[o + Rc.conf];
     this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
-    if (this.f.hop.bigOn) {
-      const g = this.secAgg;
-      if (g.n > 0) this.sections.secVDrops = g.drops;
-      if (g.n > 0) {
-        const I = this.sections.shIn; I.hops = g.n; I.intSum = g.int; I.kicks = g.kicks; I.breaking = g.breaking > 0; I.nowMs = g.wall; I.dtMs = g.dt; I.rms2Sum = g.rms2; I.centSum = g.cent;
-        I.specOff = 0; I.bonSum = g.bon; I.bpk = g.bpk; I.fluxSum = g.flux; I.rms4Sum = g.rms4;
-        this.sections.sectionHop(g.spec);
-        g.n = 0; g.int = 0; g.kicks = 0; g.breaking = 0; g.rms2 = 0; g.cent = 0; g.dt = 0; g.spec.fill(0); g.bon = 0; g.bpk = 0; g.flux = 0; g.rms4 = 0;
-      }
-      return;
-    }
-    const secN = r[o + R_SEC_N] > 0;
-    if (!SECTION_AGG_HOP || secN) { this.drop.dropCand = r[o + R_DROPS]; this.activeMs = r[o + R_ACTIVE]; this.buildUp = r[o + R_BUILD]; }
-    if (secN)
-    { const I = this.sections.shIn; I.hops = r[o + R_SEC_N]; I.intSum = r[o + R_SEC_INT]; I.kicks = r[o + R_SEC_KICKS]; I.breaking = r[o + R_SEC_BREAK] > 0; I.nowMs = r[o + R_SEC_WALL];
-      I.dtMs = r[o + R_SEC_DT]; I.rms2Sum = r[o + R_SEC_RMS2]; I.centSum = r[o + R_SEC_CENT]; I.specOff = o + R_SEC_SPEC0; I.bonSum = r[o + R_SEC_BON]; I.bpk = r[o + R_SEC_BPK];
-      I.fluxSum = r[o + R_SEC_FLUX]; I.rms4Sum = r[o + R_SEC_RMS4];
-      this.sections.sectionHop(r); }
+    this.sections?.fromRecord();
   }
 
   /** Sparets tid. */
   private traceT(): number { return (this.wallNow() - 1700000000000) / 1000; }
   /** Nollställ analysatorns kopia av klockans tempo. */
   resetTempo(): void {
-    if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} RESET bpm=${this.localBpm}`);
+    if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} RESET bpm=${this.f.clock.bpm}`);
     this.flagSlow(F_RESET_TEMPO);
-    this.localBpm = 0; this.localBpmConfidence = 0;
+    this.f.clock.bpm = 0; this.f.clock.conf = 0;
   }
 
   trackBoundaries = 0;   // LÅTGRÄNSEN
   boundSure = false;   // LÅTGRÄNSEN ÄR SÄKER
-  bodyUnderDb = 0;   // BASKROPPEN UNDER TAKET
   /** Tystnad i ms. */
-  get quietMs(): number { return this.levels.silentMs; }
+  get quietMs(): number { return this.f.level.silentMs; }
   /** EN KÄLLA. */
-  setClock(bpm: number, conf: number): void { this.localBpm = bpm > 40 ? bpm : 0; this.localBpmConfidence = bpm > 40 ? conf : 0; }
+  setClock(bpm: number, conf: number): void { this.f.clock.bpm = bpm > 40 ? bpm : 0; this.f.clock.conf = bpm > 40 ? conf : 0; }
   hintTrackChange(windowMs = 5000, sections = true): void {
     if (this.f.hop.role !== 'slow') this.trackBoundaries++;
-    if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} HINT bpm=${this.localBpm} conf=${this.localBpmConfidence.toFixed(2)}`);
+    if (BPM_TRACE) console.log(`[bpmrst] t=${this.traceT().toFixed(1)} HINT bpm=${this.f.clock.bpm} conf=${this.f.clock.conf.toFixed(2)}`);
     if (this.f.hop.role === 'fast') { this.pendHintMs = windowMs; this.flagSlow(F_HINT); }
-    if (sections) {
-      const N = Analyser.SECTION_CARRY;
-      if (N > 0) {
-        const keep = <T>(x: T[]) => x.slice(Math.max(0, x.length - N)); const H = this.sections.secBlkH;
-        const c = [keep(this.sections.secBlkDb), keep(this.sections.secBlkDens), keep(this.sections.secBlkCentH), keep(this.sections.secBlkHighH), keep(this.sections.secBlkT), keep(this.sections.secBlkFeat), keep(this.sections.secBlkHi), keep(H.bon), keep(H.bpk), keep(H.high), keep(H.flat), keep(H.flux), keep(H.dyn)];
-        const hd = this.sections.lastHighDb === this.sections.lastHighDb ? this.sections.lastHighDb : this.sections.secCarryHighDb;
-        this.sections.sectionReset(); this.sections.secCarryHighDb = hd;
-        const put = <T>(x: T[], v: T[]) => { x.length = 0; for (const e of v) x.push(e); };
-        put(this.sections.secBlkDb, c[0] as number[]); put(this.sections.secBlkDens, c[1] as number[]); put(this.sections.secBlkCentH, c[2] as number[]); put(this.sections.secBlkHighH, c[3] as number[]); put(this.sections.secBlkT, c[4] as number[]); put(this.sections.secBlkFeat, c[5] as Float32Array[]); put(this.sections.secBlkHi, c[6] as number[]);
-        put(H.bon, c[7] as number[]); put(H.bpk, c[8] as number[]); put(H.high, c[9] as number[]); put(H.flat, c[10] as number[]); put(H.flux, c[11] as number[]); put(H.dyn, c[12] as number[]);
-      } else this.sections.sectionReset();
-    }
+    if (sections) this.sections?.carry();
   }
 
   /** Taktfasen är applicerad av motorn. */
   resetBar(): void { this.flagSlow(F_RESET_BAR); }
 
-  envelope: number;
   private lastT = 0;   // 0 = "ej satt"
   private sumSq = 0;   // Löpande kvadratsumma över `buffer`
   private rmsRecalc = 0;
@@ -571,9 +452,7 @@ export class Analyser {
     const jump = ms === null || !this.virtualOn || ms < prev || ms - prev > 1000;
     if (ms === null) { this.virtualOn = false; this.virtualMs = NaN; } else { this.virtualOn = true; this.virtualMs = ms; }
     if (!jump) return;
-    this.kicks.lastKick = 0;
-    this.pendingKickMs = 0;
-    this.beatAnchorMs = 0; this.beatPhaseMs = 0; this.beatPhaseConf = 0; this.sections.sectionReset();
+    this.kicks?.reset(); this.f.clock.resetPhase(); this.sections?.sectionReset();
     this.lastT = 0;
   }
   /** KORBANK. */
@@ -597,13 +476,12 @@ export class Analyser {
   }
   private virtualEpoch = 1700000000000;
 
-  beatSrc: { beat?: BeatGrid | null };   // Taktrastret
 
   /** EN KLOCKA. */
   setBeatGrid(grid: BeatGrid | null): void { this.extGrid = grid; }
   private extGrid: BeatGrid | null = null;
   /** Klockans inre rutnät. */
-  setClockGrid(grid: BeatGrid | null): void { this.beatSrc.beat = grid; }
+  setClockGrid(grid: BeatGrid | null): void { this.f.clock.src.beat = grid; }
 
   constructor(cfgIn: AnalyserConfig, splitIn?: SplitInit) {
     const h = this.f.hop;
@@ -618,13 +496,13 @@ export class Analyser {
         this.slowGap = true;
         const sq = Atomics.load(v.ctrl, C_STATE_SEQ); if (sq & 1) Atomics.store(v.ctrl, C_STATE_SEQ, sq + 1);
       }
-      if (Analyser.FAST_BANDS && SECTION_AGG_HOP && splitBuf.big && splitBuf.bigPcm && splitBuf.bigState && splitBuf.spec) {
+      if (!splitBuf.big || !splitBuf.bigPcm || !splitBuf.bigState || !splitBuf.spec) throw new Error('Analyser: delat läge kräver stora vägens buffertar (createSplitBuffers)');
+      {
         h.bigOn = true;
         this.bigRing = new Float64Array(splitBuf.big); this.bigPcm = new Float32Array(splitBuf.bigPcm); this.bigState = new Float64Array(splitBuf.bigState); this.bands.specRing = new Float32Array(splitBuf.spec);
         if (h.role === 'slow') {
           const sq = Atomics.load(v.ctrl, C_BIG_SEQ); if (sq & 1) Atomics.store(v.ctrl, C_BIG_SEQ, sq + 1);
-          const st = this.bigState; this.bigSeq = st[BS_SEQ]; this.drop.dropCount = st[BS_DROPS]; this.drop.miniDropCount = st[BS_MINI]; this.drop.buildStartCount = st[BS_BUILDSTART]; this.bands.specN = st[BS_SPEC_N]; this.drop.dropCand = st[BS_CAND]; this.sections.secVDrops = this.drop.dropCand;
-          this.drop.dropDemoted = st[BS_DEMOTED]; this.drop.dropSpaced = st[BS_SPACED]; this.drop.stopCount = st[BS_STOPS];
+          const st = this.bigState; this.bigSeq = st[BS_SEQ]; this.bands.resume(st); this.drop?.resume(st); this.sections?.resume(st);
         }
       }
     }
@@ -640,7 +518,7 @@ export class Analyser {
       },
       onset: { enhancements: cfgIn.onsetEnhancements ?? false },
     };
-    this.beatSrc = cfgIn.detection ? cfgIn : { beat: null };
+    this.f.clock.src = cfgIn.detection ? cfgIn : { beat: null };
     this.setSilenceLevel(cfgIn.silenceLevel);
     this.fft = new FFT(cfg.fft.size);
     this.window = hannWindow(cfg.fft.size);
@@ -651,7 +529,7 @@ export class Analyser {
     this.windowed512 = new Float32Array(cfg.fft.size);
     this.spectrum512 = this.fft.createComplexArray();
     this.mag512 = new Float32Array(cfg.fft.size / 2);
-    this.envelope = cfg.detection.autoGainTarget;
+    this.f.level.envelope = cfg.detection.autoGainTarget;
     const BIG = 2048;
     this.bands.fftBig = new FFT(BIG);
     this.bands.windowBig = hannWindow(BIG);
@@ -666,7 +544,7 @@ export class Analyser {
       this.bands.bandHi[b] = Math.min(BIG / 2, Math.round(Analyser.BAND_HZ[b + 1] / binHzBig));
       this.bands.bandPeak[b] = 1e-4;
     }
-    if (Analyser.FAST_BANDS) {
+    {
       const binHz = cfg.audio.rate / cfg.fft.size, half = cfg.fft.size / 2;
       for (let b = 3; b < 8; b++) { this.bands.fbLo[b] = Math.max(1, Math.round(Analyser.BAND_HZ[b] / binHz)); this.bands.fbHi[b] = Math.min(half, Math.max(this.bands.fbLo[b] + 1, Math.round(Analyser.BAND_HZ[b + 1] / binHz))); }
       this.fbMax = Math.min(half, this.bands.fbHi[7] + 1);
@@ -703,24 +581,24 @@ export class Analyser {
     this.dHat = Math.exp(-dtHop / 0.06);
     this.dSnare = Math.exp(-dtHop / 0.11);
     this.dKick = Math.exp(-dtHop / 0.15);
-    this.riser.aSpecSlow = 1 - Math.exp(-dtHop / 2.0);
-    this.riser.aNovSlow = 1 - Math.exp(-dtHop / 1.5);
-    this.character.aProf = 1 - Math.exp(-dtHop / 8.0);
+    this.riser?.rates(dtHop);
+    this.character?.rates(dtHop);
     this.outFrame = {
       silent: true, level: 0, levelRaw: 0, levelVU: 0, energy: 0, centroid: 0, flux: 0,
       kick: false, gain: 1, bpm: 0, bpmConfidence: 0, intensity: 0.5,
-      dropCount: 0, miniDropCount: 0, buildStartCount: 0, dropDemoted: 0, dropSpaced: 0, dropRiseDb: 0, nearDropDb: 0, nearDipDb: 0, liftDb: 0, stopCount: 0, stopS: 0, bodyDb: 0, bassEnergy: 0, bassEnergyShort: 0, bassLevel: 1, midHiDb: -120, inZone: false, breaking: false, buildUp: 0, buildProg: 0, inRiser: false, profile: this.character.outProfile, beatAnchorMs: 0,
+      dropCount: 0, miniDropCount: 0, buildStartCount: 0, dropDemoted: 0, dropSpaced: 0, dropRiseDb: 0, nearDropDb: 0, nearDipDb: 0, liftDb: 0, stopCount: 0, stopS: 0, bodyDb: 0, bassEnergy: 0, bassEnergyShort: 0, bassLevel: 1, midHiDb: -120, inZone: false, breaking: false, buildUp: 0, buildProg: 0, inRiser: false, profile: this.f.character.profile, beatAnchorMs: 0,
       kickAtMs: 0, barShift: -1, beatPhaseMs: 0, beatPhaseConf: 0, beatTrust: 0, section: 'intro', sectionAgeMs: 0, sectionIndex: 0, sectionTier: 1, repeatSim: 0, repeatAgoMs: 0, repeatSection: '', expectHighInMs: -1, prevSection: '', levelVsHighDb: 0, sectionBars: 0,
-      spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum,
+      spec: this.outSpec, specAbs: this.outSpecAbs, onset: this.outOnset, drum: this.outDrum, stenarAv: stenarAv(this.f),
     };
-    for (const o of [this.outFrame, this.character.outProfile, this.outSpec, this.outSpecAbs, this.outOnset, this.outDrum]) stabiliseNumbers(o);
+    for (const o of [this.outFrame, this.f.character.profile, this.outSpec, this.outSpecAbs, this.outOnset, this.outDrum]) stabiliseNumbers(o);
     stabilise(this, DOUBLE_FROM_START);
-    stabiliseNumbers(this.sections.secRank as unknown as Record<string, unknown>);
   }
 
   /** Feed a hop-sized chunk of mono samples, get a frame back. */
   process(samples: Float32Array): Frame {
     const h = this.f.hop;
+    const sc = this.f.section;
+    const lv = this.f.level, sp = this.f.spectrum, kk = this.f.kick, ck = this.f.clock;
     if (this.hopLane) this.setClock(this.hopLane.clockBpm, this.hopLane.clockConf);
     if (h.role === 'fast') this.pullSlowState();
     const hop = samples.length;
@@ -751,7 +629,7 @@ export class Analyser {
     const kickBins = Math.min(1, half);
     const enhancedOnset = h.cfg.onset.enhancements;
 
-    const fbMax = Analyser.FAST_BANDS ? this.fbMax : 0, fbMag = this.bands.fbMag;
+    const fbMax = this.fbMax, fbMag = this.bands.fbMag;
     const onsetPeak = this.onsetPeak, onsetPrev = this.onsetPrev, peakDecay = this.onsetPeakDecay, peakReady = this.onsetPeakReady, PFLOOR = Analyser.ONSET_PEAK_FLOOR;
     for (let i = 0; i < bassBins; i++) {
       const re = spectrum[2 * i];
@@ -790,7 +668,7 @@ export class Analyser {
     }
 
     { const t = this.prevMag; this.prevMag = this.mag512; this.mag512 = t; }
-    const energy = Math.min(1, (bassEnergy / bassBins) * 0.02 * this.gain);
+    const energy = Math.min(1, (bassEnergy / bassBins) * 0.02 * lv.gain);
     const centroid = powSum > 1e-12 ? Math.min(1, Math.sqrt(1.47 * (powW / powSum) / half)) : 0;
     const fluxNorm = Math.min(1, flux * (enhancedOnset ? 0.08 : 0.005));
 
@@ -798,15 +676,14 @@ export class Analyser {
     const dt = this.lastT === 0 ? 0 : Math.max(0, Math.min(0.1, (now - this.lastT) / 1000));
     this.lastT = now;
     const d = h.cfg.detection;
-    this.dbgRms = rms;
     h.rms = rms; h.now = now; h.dt = dt;
     h.gated = rms >= h.cfg.detection.noiseFloor * 1.5;
-    if (!this.gainLocked && rms > d.noiseFloor) this.levels.agcStep();
+    if (!lv.gainLocked && rms > d.noiseFloor) this.levels.agcStep();
 
-    const level = Math.min(1, rms * this.gain);
+    const level = Math.min(1, rms * lv.gain);
 
     h.kickFlux = kickFlux; h.energy = energy;
-    const kick = this.kicks.kickStep();
+    this.kicks?.kickStep();
 
     const hopMs = h.hopMs;
     this.levels.silenceStep();
@@ -815,20 +692,11 @@ export class Analyser {
     const bassFluxNorm = Math.min(1, kickFlux * (h.cfg.onset.enhancements ? 0.5 : 0.02));
     if (bassFluxNorm > this.envBassAccum) this.envBassAccum = bassFluxNorm;
     const big = h.bigOn;
-    if (!big) { const bl = this.bandLvl[1] + this.bandLvl[2]; if (bl > this.blAccum) this.blAccum = bl; if (h.kickHit >= 1) this.blKickSeq = this.bass.envSeq; }
-    if (HIGH_ON) { const hi = this.bandOn[6] > this.bandOn[7] ? this.bandOn[6] : this.bandOn[7]; if (hi > this.envHighAccum) this.envHighAccum = hi; }
+    if (!big) this.bass?.accumulate();
+    if (HIGH_ON) { const hi = sp.bandOn[6] > sp.bandOn[7] ? sp.bandOn[6] : sp.bandOn[7]; if (hi > this.envHighAccum) this.envHighAccum = hi; }
     this.envAccumT += hopMs;
     if (this.envAccumT >= 1000 / Analyser.ENV_HZ) this.envSampleStep();
-    let kickAtMs = 0;
-
-    if (this.pendingKickMs > 0) { this.kicks.kickRefine(); kickAtMs = this.hKickAt; }
-    if (kick) {
-      this.beatAnchorMs = this.wallNow();
-      this.pendingKickMs = this.beatAnchorMs;
-    }
-
-    this.kfPrev2 = this.kfPrev;
-    this.kfPrev = kickFlux;
+    this.kicks?.anchorStep();
 
     const dtHop = h.dtHop;
     const aAtt = this.aAtt;
@@ -839,47 +707,47 @@ export class Analyser {
     h.centSmooth = ema(h.centSmooth, centroid, aAtt, aRel);
 
     this.levels.intensityStep();
-    const intensity = this.hIntensity;
 
     if (!big) {
     this.bands.bigRingPush(samples);
-    if (++this.bigCounter >= Analyser.BIG_EVERY) this.bands.bigStep();
+    this.bands.bigTick();
     }
-    if (Analyser.FAST_BANDS) this.bands.fastBandStep(samples);
-    const ON = Analyser.FAST_BANDS ? this.fbOn : this.bandOn;
+    this.bands.fastBandStep(samples);
+    const ON = sp.fbOn;
     const hatOnset = ON[6] > ON[7] ? ON[6] : ON[7];
     this.hatHit = Math.max(this.hatHit * this.dHat, hatOnset);
     this.snareHit = Math.max(this.snareHit * this.dSnare, ON[5]);
-    if (kick) h.kickHit = 1;
+    if (kk.kick) h.kickHit = 1;
     else h.kickHit = h.kickHit * this.dKick;
     const nowWallA = this.wallNow();
     this.levels.zoneStep();
-    const breaking = h.lvlSmooth < this.levelCeil * 0.65;
-    const inZone = this.levels.inZoneState;
+    const breaking = h.lvlSmooth < lv.levelCeil * 0.65;
 
-    this.hKick = kick; h.nowWall = nowWallA;
-    let inRiser: boolean;
+    h.nowWall = nowWallA; h.sec = sc.section; h.lvh = sc.levelVsHighDb; h.conf = ck.conf;   // IN: färdiga före pushBig
+    this.bass?.bassEnergyStep(this.bands.fbAbs[0], this.bands.fbAbs[1]);   // basen före pushBig: workern kan få värdet samma hopp
     if (big) {
-      this.hIntensity = intensity; h.breaking = breaking;
+      h.breaking = breaking;
       this.pushBig(samples);
-      inRiser = this.hInRiser;
     } else {
-      const bodyNow = (this.bandDbRaw[0] + this.bandDbRaw[1] + this.bandDbRaw[2]) / 3;
-      h.body = bodyNow;
-      h.sec = this.section; h.lvh = this.levelVsHighDb;
-      this.drop.dropStep();
-      inRiser = this.riser.riserStep();
-      h.conf = this.localBpmConfidence;
-      this.character.profileStep();
+      this.slowPart();
     }
-    h.level = level; h.flux = fluxNorm; this.hIntensity = intensity; this.hInZone = inZone; h.breaking = breaking; this.hInRiser = inRiser;
-    this.hKickAt = kickAtMs;
+    h.level = level; h.flux = fluxNorm; h.breaking = breaking;
     return this.fillFrame();
+  }
+
+  /** DEN LÅNGSAMMA DELEN: stenarna efter stor-FFT:n, i workern (drainBig) eller odelat (process). En ny sten här. */
+  private slowPart(): void {
+    const h = this.f.hop, sp = this.f.spectrum;
+    h.body = (sp.bandDbRaw[0] + sp.bandDbRaw[1] + sp.bandDbRaw[2]) / 3;
+    this.drop?.dropStep();
+    this.riser?.riserStep();
+    this.character?.profileStep();
   }
 
   /** Ett onset-envelope-sampel. */
   private envSampleStep(): void {
     const h = this.f.hop;
+    const ck = this.f.clock;
       this.envAccumT -= 1000 / Analyser.ENV_HZ;
       let _e = this.envAccum;
       const _R = Analyser.REFRAC_N;
@@ -894,22 +762,25 @@ export class Analyser {
       const _b = this.envBassAccum, _h = this.envHighAccum;
       this.envRing[this.envPos] = _e;
       this.envBassRing[this.envPos] = _b;
-      if (h.bigOn) { this.bigEnvFlag = 1; this.bigEnvBpm = this.localBpm; } else { h.bpm = this.localBpm; this.bass.stepBassline(); }
+      h.bpm = ck.bpm; if (h.bigOn) this.bigEnvFlag = 1; else this.bass?.stepBassline();
       if (HIGH_ON) this.envHighRing[this.envPos] = _h;
       this.envPos = (this.envPos + 1) % Analyser.ENV_LEN;
       this.envFilled = Math.min(this.envFilled + 1, Analyser.ENV_LEN);
       this.envAccum = 0;
       this.envBassAccum = 0;
       if (HIGH_ON) this.envHighAccum = 0;
-      if (h.role === 'fast') { this.pushSlowRecord(_e, _b, _h); } else if (!SECTION_AGG_HOP) this.sections.sectionFlushAgg();
+      if (h.role === 'fast') this.pushSlowRecord(_e, _b, _h);
   }
 
   /** Muterar det ateranvanda Frame:t. */
   private fillFrame(): Frame {
     const h = this.f.hop;
-    const level = h.level, fluxNorm = h.flux, kick = this.hKick, intensity = this.hIntensity, bodyNow = h.body, inZone = this.hInZone, breaking = h.breaking,
-      inRiser = this.hInRiser, kickAtMs = this.hKickAt, nowWallA = h.nowWall;
-    const FB = Analyser.FAST_BANDS, L = FB ? this.bands.fbLvl : this.bandLvl, A = FB ? this.bands.fbAbs : this.bandAbs, O = FB ? this.fbOn : this.bandOn;
+    const sc = this.f.section;
+    const bo = this.f.bass, ri = this.f.riser, dp = this.f.drop;
+    const lv = this.f.level, sp = this.f.spectrum, kk = this.f.kick, ck = this.f.clock;
+    const level = h.level, fluxNorm = h.flux, kick = kk.kick, intensity = lv.intensity, bodyNow = h.body, inZone = lv.inZone, breaking = h.breaking,
+      inRiser = ri.inRiser, kickAtMs = kk.kickAt;
+    const L = this.bands.fbLvl, A = this.bands.fbAbs, O = sp.fbOn;
     const spec = this.outSpec, specAbs = this.outSpecAbs, onset = this.outOnset;
     spec.sub = L[0]; spec.kick = L[1]; spec.bass = L[2]; spec.lowMid = L[3]; spec.mid = L[4]; spec.highMid = L[5]; spec.treble = L[6]; spec.air = L[7];
     specAbs.sub = A[0]; specAbs.kick = A[1]; specAbs.bass = A[2]; specAbs.lowMid = A[3]; specAbs.mid = A[4]; specAbs.highMid = A[5]; specAbs.treble = A[6]; specAbs.air = A[7];
@@ -920,23 +791,23 @@ export class Analyser {
     const f = this.outFrame;
     f.silent = h.lvlSmooth <= this.silenceLevel; f.level = h.lvlSmooth; f.levelRaw = level; f.levelVU = this.lvlVU;
     f.energy = this.engSmooth;
-    f.centroid = h.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = this.gain;
-    f.bpm = this.localBpm; f.bpmConfidence = this.localBpmConfidence; f.intensity = intensity; f.beatAnchorMs = this.beatAnchorMs;
-    f.bodyDb = bodyNow; { const be = this.bass.bassEnergyStep(A[0], A[1]); f.bassEnergy = f.silent ? 0 : be; f.bassEnergyShort = f.silent ? 0 : this.bass.beShort; f.bassLevel = Math.pow(10, (this.bass.beHi - this.bass.beRef) / 20); }
-    { let s2 = 1e-12; for (let b = 3; b < 8; b++) { const lin = Math.pow(10, (FB ? this.bands.fbDbRaw : this.bandDbRaw)[b] / 20); s2 += lin * lin; } f.midHiDb = 20 * Math.log10(Math.sqrt(s2)); }
-    f.dropCount = this.drop.dropCount; f.miniDropCount = this.drop.miniDropCount; f.buildStartCount = this.drop.buildStartCount; f.dropDemoted = this.drop.dropDemoted; f.dropSpaced = this.drop.dropSpaced; f.dropRiseDb = this.drop.dropRiseDb;
-    f.nearDropDb = this.drop.nearDropDb; f.nearDipDb = this.drop.nearDipDb; f.liftDb = this.drop.liftDb; f.stopCount = this.drop.stopCount; f.stopS = this.drop.stopS; f.inZone = inZone; f.breaking = breaking; f.buildUp = this.buildUp; f.inRiser = inRiser;
+    f.centroid = h.centSmooth; f.flux = fluxNorm; f.kick = kick; f.gain = lv.gain;
+    f.bpm = ck.bpm; f.bpmConfidence = ck.conf; f.intensity = intensity; f.beatAnchorMs = kk.beatAnchorMs;
+    f.bodyDb = bodyNow; f.bassEnergy = f.silent ? 0 : bo.energy; f.bassEnergyShort = f.silent ? 0 : bo.beShort; f.bassLevel = Math.pow(10, (bo.beHi - bo.beRef) / 20);
+    { let s2 = 1e-12; for (let b = 3; b < 8; b++) { const lin = Math.pow(10, this.bands.fbDbRaw[b] / 20); s2 += lin * lin; } f.midHiDb = 20 * Math.log10(Math.sqrt(s2)); }
+    f.dropCount = dp.dropCount; f.miniDropCount = dp.miniDropCount; f.buildStartCount = dp.buildStartCount; f.dropDemoted = dp.dropDemoted; f.dropSpaced = dp.dropSpaced; f.dropRiseDb = dp.dropRiseDb;
+    f.nearDropDb = dp.nearDropDb; f.nearDipDb = dp.nearDipDb; f.liftDb = dp.liftDb; f.stopCount = dp.stopCount; f.stopS = dp.stopS; f.inZone = inZone; f.breaking = breaking; f.buildUp = ri.buildUp; f.inRiser = inRiser;
     f.kickAtMs = kickAtMs; f.barShift = -1;
-    f.beatPhaseMs = this.beatPhaseMs > 0 ? this.beatPhaseMs - Analyser.GRID_PHASE_OFFSET_MS : this.beatPhaseMs;
-    f.beatPhaseConf = this.beatPhaseConf;
-    this.sections.sectionAggStep();
-    const nowS = SECTION_AGG_HOP ? this.wallNow() : nowWallA;
-    f.buildProg = this.secBuildAt > 0 && nowS - this.secBuildSeen <= 2000 ? Math.min(1, (nowS - this.secBuildAt) / (32 * (this.localBpm > 0 ? 60000 / this.localBpm : Analyser.BE_FALLBACK_MS))) : 0;
-    f.section = this.section; f.sectionAgeMs = this.sectionStartMs > 0 ? nowS - this.sectionStartMs : 0; f.sectionIndex = this.sectionIndex; f.sectionTier = this.sectionTier;
-    f.repeatSim = this.repeatSim; f.repeatAgoMs = this.repeatAgoMs; f.repeatSection = this.repeatSection;
-    f.expectHighInMs = this.section === 'high' ? 0 : this.expectHighMs > 0 ? Math.max(0, this.expectHighMs - nowS) : -1;
-    f.prevSection = this.prevSection; f.levelVsHighDb = this.levelVsHighDb;
-    f.sectionBars = this.localBpm > 0 && this.sectionStartMs > 0 ? (nowS - this.sectionStartMs) / (240000 / this.localBpm) : 0;
+    f.beatPhaseMs = ck.phaseMs > 0 ? ck.phaseMs - Analyser.GRID_PHASE_OFFSET_MS : ck.phaseMs;
+    f.beatPhaseConf = ck.phaseConf;
+    this.sections?.sectionAggStep();
+    const nowS = this.wallNow();
+    f.buildProg = sc.secBuildAt > 0 && nowS - sc.secBuildSeen <= 2000 ? Math.min(1, (nowS - sc.secBuildAt) / (32 * (ck.bpm > 0 ? 60000 / ck.bpm : Analyser.BE_FALLBACK_MS))) : 0;
+    f.section = sc.section; f.sectionAgeMs = sc.sectionStartMs > 0 ? nowS - sc.sectionStartMs : 0; f.sectionIndex = sc.sectionIndex; f.sectionTier = sc.sectionTier;
+    f.repeatSim = sc.repeatSim; f.repeatAgoMs = sc.repeatAgoMs; f.repeatSection = sc.repeatSection;
+    f.expectHighInMs = sc.section === 'high' ? 0 : sc.expectHighMs > 0 ? Math.max(0, sc.expectHighMs - nowS) : -1;
+    f.prevSection = sc.prevSection; f.levelVsHighDb = sc.levelVsHighDb;
+    f.sectionBars = ck.bpm > 0 && sc.sectionStartMs > 0 ? (nowS - sc.sectionStartMs) / (240000 / ck.bpm) : 0;
     if (this.clock || this.hopSelf) {
       if (this.clock) this.clock.update(f, this.clockOut, this, Date.now());
       else this.hopLane!.feed(f, this.clockOut, this);
@@ -948,14 +819,16 @@ export class Analyser {
   readonly clockOut: ClockCfg = { beat: undefined, beatErr: undefined };
   /** Klockans utfall till motorn. */
   publishClock(cfg: ClockCfg): void { cfg.beat = this.clockOut.beat; cfg.beatErr = this.clockOut.beatErr; }
-  readonly drop = new DropDetector(this);   // DROP: flanken, slam-kandidaten, minidrop, lyft/nästan-drop/stopp
-  readonly sections = new SectionTracker(this);   // SEKTIONER
-  readonly riser = new RiserDetector(this);   // UPPBYGGNAD
-  readonly character = new CharacterProfile(this);   // KARAKTÄR
-  readonly kicks = new KickDetector(this);   // KICK: anslag i snabba vägen
-  readonly bass = new BassTracker(this);   // BAS: basenergin per slag och basgången
-  readonly levels = new LevelTracker(this);   // NIVÅ: förstärkning/AGC, tystnad, intensitet, nivåtak och topp-zon
-  readonly bands = new SpectrumBands(this);   // SPEKTRUM
+  // KEDJAN. Stäng av en sten = byt dess rad mot off('namn', this.f.<fack>) (t.ex. off('sektion', this.f.section)).
+  readonly drop: DropDetector | null = new DropDetector(this.f, this.f.drop);   // DROP: flanken, slam-kandidaten, minidrop, lyft/nästan-drop/stopp
+  readonly sections: SectionTracker | null = new SectionTracker(this.f, this.f.section);   // SEKTIONER
+  readonly riser: RiserDetector | null = new RiserDetector(this.f, this.f.riser);   // UPPBYGGNAD
+  readonly character: CharacterProfile | null = new CharacterProfile(this.f, this.f.character);   // KARAKTÄR
+  readonly kicks: KickDetector | null = new KickDetector(this.f, this.f.kick);   // KICK: anslag i snabba vägen
+  readonly bass: BassTracker | null = new BassTracker(this.f, this.f.bass);   // BAS: basenergin per slag och basgången
+  private readonly cmd = { flagSlow: (fl: number) => this.flagSlow(fl) };   // bunden en gång: nivån flaggar tystnad till workern
+  readonly levels = new LevelTracker(this.f, this.f.level, this.cmd);   // NIVÅ: förstärkning/AGC, tystnad, intensitet, nivåtak och topp-zon
+  readonly bands = new SpectrumBands(this.f, this.f.spectrum);   // SPEKTRUM
 }
 
 /** Asymmetrisk EMA. */

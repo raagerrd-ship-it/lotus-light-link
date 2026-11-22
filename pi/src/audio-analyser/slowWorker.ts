@@ -26,10 +26,10 @@ function pollMessages(): void {
   }
 }
 
-const idleSlow = (): boolean => !an || (seqLow(an.slowReadSeq()) === Atomics.load(ctrl, C_WRITE) && (!an.bigOn || an.bigIdle()));   // Sov aldrig langre an 200 ms sa ett 'stop' hinner fram
+const idleSlow = (): boolean => !an || (seqLow(an.slowReadSeq()) === Atomics.load(ctrl, C_WRITE) && an.bigIdle());   // Sov aldrig langre an 200 ms sa ett 'stop' hinner fram
 const idleLane = (): boolean => !lane || seqLow(lane.readSeq()) === Atomics.load(ctrl, C_HOP_WRITE);
 const WAIT_FLAG = part === 'slow' ? C_WAITING_B : C_WAITING;
-if (lane || an?.bigOn) while (!stop) {
+while (!stop) {
   const k = Atomics.load(ctrl, C_WAKE);
   if (idleSlow() && idleLane()) {
     Atomics.store(ctrl, WAIT_FLAG, 1);
@@ -40,17 +40,5 @@ if (lane || an?.bigOn) while (!stop) {
   }
   lane?.drain();
   an?.drainRecords();
-  pollMessages();
-}
-while (!stop && an) {
-  const w = Atomics.load(ctrl, C_WRITE);
-  if (seqLow(an.slowReadSeq()) === w) {
-    Atomics.store(ctrl, C_WAITING, 1);
-    Atomics.wait(ctrl, C_WRITE, w, 200);
-    Atomics.store(ctrl, C_WAITING, 0);
-    pollMessages();
-    continue;
-  }
-  an.drainRecords();
   pollMessages();
 }

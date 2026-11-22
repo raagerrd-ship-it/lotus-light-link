@@ -1,19 +1,12 @@
 /** DELAD ANALYSATOR (2026-09-21): transporten mellan den SNABBA tråden (ljudvägen: FFT, band, onset, kick, nivå, drop — måste svara inom en hop) och den LÅNGSAMMA (tempo, gridfas, sektioner, upprepning — sekunder är ok). Anteckningar (kommentarerna som stod i koden): docs/analysator/split.md */
 
 import { trustStep } from "./analyserClock.js";   // tilliten utjämnas i hoppets tid
-export const REC_LEN = 37;
+import { platser, antal } from "./analyserFack.js";
 export const RING_N = 1024;
 export const RING_MARGIN = 8;   // records workern lämnar orörda mot skrivaren
 
 export const R_SEQ = 0, R_PERF = 1, R_WALL = 2, R_ENV = 3, R_BASS = 4, R_FLAGS = 5, R_HINT_MS = 6, R_VCLOCK = 7,
-  R_SEC_N = 8, R_SEC_INT = 9, R_SEC_KICKS = 10, R_SEC_BREAK = 11, R_SEC_RMS2 = 12, R_SEC_CENT = 13, R_SEC_DT = 14,
-  R_DROPS = 15, R_ACTIVE = 16, R_BUILD = 17, R_SEC_SPEC0 = 18 , R_SEC_WALL = 26, R_TS = 27 ,
-  R_FLAGCNT = 28 ,
-  R_SEC_BON = 29 , R_SEC_BPK = 30 ,
-  R_SEC_FLUX = 31 , R_SEC_RMS4 = 32 ,
-  R_HIGH = 33 ,
-  R_BIGSEQ = 34 ,
-  R_CLOCK = 35 , R_CLOCK_CONF = 36 ;   // Record-fält
+  R_TS = 8, R_FLAGCNT = 9, R_HIGH = 10, R_BIGSEQ = 11;   // Record-fält (kärnan)
 
 export const F_SIL350 = 1, F_SIL10 = 2, F_RESET_TEMPO = 4, F_HINT = 8, F_RESET_BAR = 16, F_VCLOCK_SET = 32, F_VCLOCK_NULL = 64;   // Flaggor
 export const FLAG_BITS = 7;
@@ -46,11 +39,8 @@ export function seqLow(seq: number): number { return seq | 0; }
 /** Signerad skillnad. */
 export function seqDelta(ctrlLow: number, mySeq: number): number { return (ctrlLow - (mySeq | 0)) | 0; }
 
-export const S_REC_SEQ = 0, S_BPM = 1, S_CONF = 2, S_BPMF = 3, S_PHASE_MS = 4, S_PHASE_CONF = 5, S_SECTION = 6, S_SEC_START = 7,
-  S_SEC_INDEX = 8, S_SEC_TIER = 9, S_REP_SIM = 10, S_REP_AGO = 11, S_REP_SEC = 12, S_PROCESSED = 13, S_LAG_MS = 14, S_LAG_MAX = 15,
-  S_BUSY_US = 16, S_BUSY_MAX_US = 17, S_SKIPPED = 18, S_EXPECT_MS = 19, S_EXPECT_SRC = 20, S_PREV_SEC = 21, S_LVL_HIGH = 22,
-  S_LOST_FLAGS = 23 , S_BUILD_AT = 24, S_BUILD_SEEN = 25 ;   // Tillståndsblock
-export const STATE_LEN = 26;
+export const S_REC_SEQ = 0, S_BPM = 1, S_CONF = 2, S_BPMF = 3, S_PROCESSED = 4, S_LAG_MS = 5, S_LAG_MAX = 6,
+  S_BUSY_US = 7, S_BUSY_MAX_US = 8, S_SKIPPED = 9, S_LOST_FLAGS = 10;   // Tillståndsblock (kärnan)
 
 export const SECTIONS = ['', 'intro', 'low', 'build', 'high', 'break'];
 export function sectionCode(s: string): number { const i = SECTIONS.indexOf(s); return i < 0 ? 0 : i; }
@@ -126,15 +116,18 @@ export function syncWait(ctrl: Int32Array, word: number, ready: () => boolean): 
   throw new Error('analyser-split sync: workern svarar inte (30 s)');
 }
 
-export const BIG_REC_LEN = 16, BIG_RING_N = 2048, BIG_HOP_MAX = 256;   // STORA VÄGEN
-export const B_SEQ = 0, B_N = 1, B_RMS = 2, B_LVL = 3, B_CENT = 4, B_ACTIVE = 5, B_WALL = 6, B_KICK = 7, B_KICKHIT = 8, B_INT = 9, B_BREAK = 10,
-  B_SEC = 11, B_LVH = 12, B_CONF = 13, B_ENVF = 14, B_ENVBPM = 15;
+export const BIG_RING_N = 2048, BIG_HOP_MAX = 256;   // STORA VÄGEN
+export const B_SEQ = 0, B_N = 1, B_ENVF = 2;   // hopprecordet (kärnan)
 export const C_BIG_WRITE = 8, C_BIG_READ = 9, C_BIG_SEQ = 10 , C_WAITING_B = 11 ;
-export const BS_SEQ = 0, BS_BODY = 1, BS_DROPS = 2, BS_MINI = 3, BS_BUILD = 4, BS_RISER = 5, BS_PUNCH = 6, BS_BASS = 7, BS_BRIGHT = 8, BS_BEAT = 9,
-  BS_BASSLINE = 10, BS_SPEC_N = 11 , BS_SKIPPED = 12,
-  BS_CAND = 13, BS_DEMOTED = 14, BS_SPACED = 15, BS_DROPRISE = 16, BS_NEAR = 17, BS_NEARDIP = 18, BS_LIFT = 19, BS_STOPS = 20, BS_STOPSEC = 21,
-  BS_UNDER = 22, BS_BUILDSTART = 23 ;
-export const BIG_STATE_LEN = 24;
+export const BS_SEQ = 0, BS_SPEC_N = 1, BS_SKIPPED = 2;   // storblocket (kärnan)
+
+// FACKENS PLATSER (steg 18) ur taggarna (analyserFack.ts TRAD): IN följer hopprecordet B (tempot recordet R), UT storblocket BS (tempot och sektionen tillståndsblocket S).
+export const B = platser('IN', ['hop', 'level', 'spectrum', 'kick', 'bass', 'riser', 'drop', 'character', 'section'], B_ENVF + 1);
+export const R = platser('IN', ['clock'], R_BIGSEQ + 1);
+export const BS = platser('UT', ['hop', 'level', 'spectrum', 'kick', 'bass', 'riser', 'drop', 'character'], BS_SKIPPED + 1);
+export const S = platser('UT', ['clock', 'section'], S_LOST_FLAGS + 1);
+if (B.LEN - B_ENVF - 1 + R.LEN - R_BIGSEQ - 1 !== antal('IN') || BS.LEN - BS_SKIPPED - 1 + S.LEN - S_LOST_FLAGS - 1 !== antal('UT')) throw new Error('split: ett IN- eller UT-fält saknar plats');
+export const BIG_REC_LEN = B.LEN, REC_LEN = R.LEN, BIG_STATE_LEN = BS.LEN, STATE_LEN = S.LEN;
 export const SPEC_SLOTS = 16, SPEC_MAX = 1024;   // 16 spektra
 
 export const HOP_REC_LEN = 22;   // TAKTVÄGEN

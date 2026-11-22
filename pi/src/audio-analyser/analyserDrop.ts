@@ -1,5 +1,16 @@
 /**  DROP-DETEKTORN (utbruten ur analyser.ts 2026-11-14). Anteckningar (kommentarerna som stod i koden): docs/analysator/analyserDrop.md */
-import { Analyser, BODY_CEIL_DB_S, BODY_GONE_MIN_MS, BODY_RISE_DB, DROP_QUALITY_DB, DROP_RISE_LOW_DB, DROP_TRACE, DROP_UNDERPEAK_MIN, MINI_SPACING_MS } from "./analyser.js";
+import { env, sysEnv, stabilise, BODY_CEIL_DB_S, BODY_HIGH_MS, BODY_HIGH_DB,
+  type Ser, type DropOut } from "./analyserFack.js";
+import { BS } from "./split.js";
+
+const P = BS.drop;   // platserna i storblocket
+const BODY_RISE_DB = Number(env('BODY_RISE_DB') ?? 17);   // DROP-DETEKTOR
+const BODY_GONE_MIN_MS = Number(env('BODY_GONE_MIN_MS') ?? 2000);   // breakdown-langd som kravs
+const DROP_QUALITY_DB = Number(env('DROP_QUALITY_DB') ?? 3.5);   // HARD KVALITETSGRIND vid fyrningen
+const DROP_RISE_LOW_DB = Number(env('DROP_RISE_LOW_DB') ?? 0);   // DROP_RISE_MIN
+const DROP_UNDERPEAK_MIN = Number(env('DROP_UNDERPEAK_MIN') ?? 0);   // LUGN-SEKTIONS-GRIND
+const MINI_SPACING_MS = Number(env('MINI_SPACING_MS') ?? 0);   // KICK-LAS
+const DROP_TRACE = !!sysEnv('DROP_TRACE');
 
 const BODY_GONE_DB = 5;
 const BODY_PEAK_DB = 10;   // BRED onset-grind
@@ -23,15 +34,23 @@ const FLANK_SHORT_S = 2, FLANK_SHORT_RISE_DB = 24, FLANK_SILENT_LV = 0.005;
 const BUILD_SPACING_MS = 3000;   // UPPBYGGNADEN börjar när basen dras ur (kick-luckan), högst en gång per 3 s
 const SHOW_DROP_GAP_MS = 12000;   // spärr mellan full drops
 const NEAR_RISE_DB = 10, NEAR_DIP_DB = 8, LIFT_DB = 10, STOP_MINI_S = 0.6;   // LYFT/NÄSTAN-DROP/STOPP
-const DOUBLE_FROM_START = ['bodyEnv', 'bodyFast', 'bodyCeil', 'bodyPeak', 'lastGoneSpanMs', 'lastDropMs', 'lastMiniGoneMs', 'lastMiniMs', 'miniGoneMs', 'bodyGoneMs', 'lastBodyGoneMs', 'dropArmUntil', 'dropArmAt', 'fdGone', 'fdSpan', 'fdEnd', 'fdAt', 'fdQuietAt', 'lastShowDropMs', 'dropRiseDb', 'nearB', 'nearNorm', 'nearFloor', 'liftCalm', 'liftLift', 'liftHistAt', 'stopRunS', 'nearDropDb', 'nearDipDb', 'liftDb', 'stopS', 'hiFast', 'hiNorm'] as const;   // Talfält som ska vara flyttal från start
+const DOUBLE_FROM_START = ['bodyEnv', 'bodyFast', 'bodyCeil', 'bodyPeak', 'lastGoneSpanMs', 'lastMiniGoneMs', 'lastMiniMs', 'miniGoneMs', 'bodyGoneMs', 'lastBodyGoneMs', 'dropArmUntil', 'dropArmAt', 'fdGone', 'fdSpan', 'fdEnd', 'fdAt', 'fdQuietAt', 'lastShowDropMs', 'nearB', 'nearNorm', 'nearFloor', 'liftCalm', 'liftLift', 'liftHistAt', 'stopRunS', 'hiFast', 'hiNorm'] as const;   // Talfält som ska vara flyttal från start
+
+/** DET DROP LÄSER (workern). Inget annat går att nå. */
+export interface DropReads {
+  hop:      Ser<'L', 'hop', 'dtHop' | 'nowWall' | 'body' | 'lvlSmooth' | 'sec' | 'lvh' | 'wallNow'>;
+  spectrum: Ser<'L', 'spectrum', 'bandDbRaw'>;
+  level:    Ser<'L', 'level', 'activeMs'>;
+  riser:    Ser<'L', 'riser', 'buildUp'>;
+}
 
 export class DropDetector {
-  a: Analyser;   // analysatorn som äger den här delen
-  constructor(a: Analyser) {
-    this.a = a;
-    for (const k of DOUBLE_FROM_START) { const v = (this as unknown as Record<string, number>)[k]; if (typeof v === 'number') { (this as unknown as Record<string, number>)[k] = 0.5; (this as unknown as Record<string, number>)[k] = v; } }
+  private readonly h: DropReads['hop']; private readonly sp: DropReads['spectrum']; private readonly lv: DropReads['level']; private readonly ri: DropReads['riser'];
+  constructor(r: DropReads, private readonly o: DropOut) {   // läser: r, lämnar ut: o
+    this.h = r.hop; this.sp = r.spectrum; this.lv = r.level; this.ri = r.riser;
+    stabilise(this, DOUBLE_FROM_START);
   }
-  secBodyRet = 0; private secBodyArmMs = 0;
+  private secBodyArmMs = 0;
   private bodyEnv = -120;   // BASKROPPEN
   private bodyFast = -120;   // Snabb envelopp
   private bodyCeil = -300;
@@ -44,34 +63,29 @@ export class DropDetector {
   private bodyHistLen = 1;
   private bodyGoneMs = 0;   // Ihållande bas-FRÅNVARO
   private lastBodyGoneMs = -1e9;
-  miniDropCount = 0; private lastMiniMs = -1e9; private miniGoneMs = 0; private lastMiniGoneMs = -1e9; private wasMiniOnset = false;
+  private lastMiniMs = -1e9; private miniGoneMs = 0; private lastMiniGoneMs = -1e9; private wasMiniOnset = false;
   private dropArmUntil = 0; private dropArmAt = 0; private dropArmGoneMs = -1.5;   // armerat drop-fonster
   private calmHoldStart = -0; private calmHoldRise = -0;   // DROP_CALM_LAND_MS
 
   private goneEpisodeMs = -1.5;
-  dropCount = 0;   // monoton drop-räknare
-  dropCand = 0;   // slam-kandidaterna
-  dropDemoted = 0; dropSpaced = 0; dropRiseDb = -0;
   private fdGone = -0; private fdSpan = -0; private fdEnd = -1e12; private fdAbove = true; private fdAt = -1e12; private fdQuietAt = -1e12; private lastShowDropMs = -1e12;
   private fdT = new Float64Array(1024); private fdV = new Float64Array(1024); private fdS0 = 0; private fdN = 0;
   private nearOn = false; private nearB = -0; private nearNorm = -0; private nearFloor = 1e9; private liftCalm = -0; private liftLift = -0;
   private liftHist = new Float64Array(240); private liftW = 0; private liftN = 0; private liftHistAt = -1e12; private stopRunS = -0;
-  nearDropDb = -0; nearDipDb = -0; liftDb = -0; stopCount = 0; stopS = -0;
   private fdTop = -0; private miniEp = -1.5; private miniEpUsed = -2.5; private hiFast = -120.5; private hiNorm = -120.5;
-  buildStartCount = 0; private lastEpAt = -1.5e12;
-  lastDropMs = -1.5e9;   // utanfor Smi-intervallet
+  private lastEpAt = -1.5e12;
 
   /** Drop-detektionen. */
   dropStep(): void {
-    const nowWallA = this.a.f.hop.nowWall, bodyNow = this.a.f.hop.body;
-    const dtHop = this.a.f.hop.dtHop;
+    const nowWallA = this.h.nowWall, bodyNow = this.h.body;
+    const dtHop = this.h.dtHop;
     this.bodyEnv += (bodyNow - this.bodyEnv) * Math.min(1, dtHop / 0.35);
     this.bodyFast += (bodyNow - this.bodyFast) * Math.min(1, dtHop / BODY_FAST_S);
     const bodyPeek = this.bodyFast;
     this.bodyCeil = Math.max(this.bodyEnv, this.bodyCeil - dtHop * BODY_CEIL_DB_S);
     this.bodyPeak = Math.max(this.bodyEnv, this.bodyPeak - dtHop * 0.04);
-    this.a.bodyUnderDb = this.bodyCeil - this.bodyEnv;
-    { const x = this.a.bandDbRaw[6]; if (this.hiNorm < -120) { this.hiFast = x; this.hiNorm = x; } this.hiFast += (x - this.hiFast) * Math.min(1, dtHop / 2); this.hiNorm += (this.hiFast - this.hiNorm) * Math.min(1, dtHop / 30); }
+    this.o.bodyUnderDb = this.bodyCeil - this.bodyEnv;
+    { const x = this.sp.bandDbRaw[6]; if (this.hiNorm < -120) { this.hiFast = x; this.hiNorm = x; } this.hiFast += (x - this.hiFast) * Math.min(1, dtHop / 2); this.hiNorm += (this.hiFast - this.hiNorm) * Math.min(1, dtHop / 30); }
     const flank = this.flankStep(nowWallA, dtHop);
     this.liftStep(nowWallA, dtHop, bodyNow);
 
@@ -82,9 +96,9 @@ export class DropDetector {
         this.lastBodyGoneMs = nowWallA;
       }
     } else {
-      if (Analyser.BODY_HIGH_MS > 0 && this.bodyGoneMs >= Analyser.BODY_HIGH_MS) this.secBodyArmMs = nowWallA;
+      if (BODY_HIGH_MS > 0 && this.bodyGoneMs >= BODY_HIGH_MS) this.secBodyArmMs = nowWallA;
       if (this.bodyGoneMs > 0) this.lastGoneSpanMs = this.bodyGoneMs; this.bodyGoneMs = 0;
-      if (this.secBodyArmMs > 0) { if (nowWallA - this.secBodyArmMs > 2000) this.secBodyArmMs = 0; else if (this.bodyEnv >= this.bodyPeak - Analyser.BODY_HIGH_DB) { this.secBodyRet++; this.secBodyArmMs = 0; } }
+      if (this.secBodyArmMs > 0) { if (nowWallA - this.secBodyArmMs > 2000) this.secBodyArmMs = 0; else if (this.bodyEnv >= this.bodyPeak - BODY_HIGH_DB) { this.o.secBodyRet++; this.secBodyArmMs = 0; } }
     }
     const hist = this.bodyHist, HL = hist.length;
     const oldest = hist[(this.bodyHistPos + HL - this.bodyHistLen) % HL];
@@ -103,7 +117,7 @@ export class DropDetector {
     const riseOk = bodyRise > BODY_RISE_DB || (DROP_RISE_LOW_DB > 0 && bodyRise > DROP_RISE_LOW_DB && this.bodyPeak - bodyPeek < DROP_RISE_LOW_Q);
     const bodyOnset = riseOk && landsHigh && nowWallA - this.lastBodyGoneMs < 6000;
 
-    const sinceDrop = nowWallA - this.lastDropMs;
+    const sinceDrop = nowWallA - this.o.lastDropMs;
     const stronger = bodyRise > this.lastDropRise + DROP_ESCALATE_DB;
     const dropSpacingOk = sinceDrop > DROP_LONG_MS || (sinceDrop > DROP_SHORT_MS && stronger);
 
@@ -112,42 +126,42 @@ export class DropDetector {
     if (bodyOnsetEdge && this.goneEpisodeMs !== this.dropArmGoneMs) { this.dropArmUntil = nowWallA + DROP_ARM_MS; this.dropArmAt = nowWallA; this.dropArmGoneMs = this.goneEpisodeMs; }
     const armed = bodyOnsetEdge || nowWallA < this.dropArmUntil;
     if (MINI_SPACING_MS > 0) {
-      if (this.fdTop < this.bodyCeil - FLANK_GONE_DB) { this.miniGoneMs += dtHop * 1000; if (this.miniGoneMs >= MINI_TOPGONE_MS) { if (this.miniGoneMs - dtHop * 1000 < MINI_TOPGONE_MS) { this.miniEp = nowWallA; if (nowWallA - this.lastEpAt >= BUILD_SPACING_MS) this.buildStartCount++; this.lastEpAt = nowWallA; } this.lastMiniGoneMs = nowWallA; } }
+      if (this.fdTop < this.bodyCeil - FLANK_GONE_DB) { this.miniGoneMs += dtHop * 1000; if (this.miniGoneMs >= MINI_TOPGONE_MS) { if (this.miniGoneMs - dtHop * 1000 < MINI_TOPGONE_MS) { this.miniEp = nowWallA; if (nowWallA - this.lastEpAt >= BUILD_SPACING_MS) this.o.buildStartCount++; this.lastEpAt = nowWallA; } this.lastMiniGoneMs = nowWallA; } }
       else this.miniGoneMs = 0;
       const nv = hist[(this.bodyHistPos + HL - 1) % HL]; const mnRef = nv < riseRef ? nv : riseRef;
       const miniOnset = (bodyPeek - mnRef) > MINI_RISE_DB && bodyPeek > this.bodyPeak - MINI_PEAK_DB && nowWallA - this.lastMiniGoneMs < 4000;
       const miniEdge = miniOnset && !this.wasMiniOnset; this.wasMiniOnset = miniOnset;
-      if (miniEdge && this.miniEp !== this.miniEpUsed && this.a.activeMs > 2000 && nowWallA - this.lastDropMs > MINI_SPACING_MS && nowWallA - this.lastMiniMs > MINI_SPACING_MS
+      if (miniEdge && this.miniEp !== this.miniEpUsed && this.lv.activeMs > 2000 && nowWallA - this.o.lastDropMs > MINI_SPACING_MS && nowWallA - this.lastMiniMs > MINI_SPACING_MS
           && (DROP_UNDERPEAK_MIN <= 0 || this.bodyPeak - bodyPeek >= DROP_UNDERPEAK_MIN)) {
-        this.miniDropCount++; this.lastMiniMs = nowWallA; this.miniEpUsed = this.miniEp;
-        if (DROP_TRACE) console.log(`[minidrop] wall ${this.a.wallNow()} rise ${(bodyPeek - mnRef).toFixed(1)} underPeak ${(this.bodyPeak - bodyPeek).toFixed(1)} goneAgo ${((nowWallA - this.lastMiniGoneMs)/1000).toFixed(1)}s`);
+        this.o.miniDropCount++; this.lastMiniMs = nowWallA; this.miniEpUsed = this.miniEp;
+        if (DROP_TRACE) console.log(`[minidrop] wall ${this.h.wallNow()} rise ${(bodyPeek - mnRef).toFixed(1)} underPeak ${(this.bodyPeak - bodyPeek).toFixed(1)} goneAgo ${((nowWallA - this.lastMiniGoneMs)/1000).toFixed(1)}s`);
       }
     }
     const fullSlam = this.bodyPeak - bodyPeek < DROP_QUALITY_DB;
     if (DROP_TRACE && bodyOnsetEdge && !(dropSpacingOk && fullSlam)) console.log(`[dropedge] rise ${bodyRise.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s spacingOk ${dropSpacingOk} sinceDrop ${(sinceDrop/1000).toFixed(1)}s`);
     const notAtCeil = DROP_UNDERPEAK_MIN <= 0 || this.bodyPeak - this.bodyFast >= DROP_UNDERPEAK_MIN;
-    let fireNow = dropSpacingOk && armed && this.a.activeMs > 2000 && fullSlam && notAtCeil;
+    let fireNow = dropSpacingOk && armed && this.lv.activeMs > 2000 && fullSlam && notAtCeil;
     let fireTag = '';
     const underNow = this.bodyPeak - bodyPeek;
     if (fireNow) {
-      const calm = (this.a.f.hop.sec === 'low' || this.a.f.hop.sec === 'intro') || this.a.f.hop.lvh <= -DROP_CALM_DB;
-      let strong = this.a.buildUp >= DROP_CALM_BUILD || underNow < DROP_CALM_Q || bodyRise >= BODY_RISE_DB + DROP_CALM_RISE_DB;
-      if (this.a.f.hop.sec === 'intro') strong = this.a.buildUp >= DROP_CALM_BUILD;
+      const calm = (this.h.sec === 'low' || this.h.sec === 'intro') || this.h.lvh <= -DROP_CALM_DB;
+      let strong = this.ri.buildUp >= DROP_CALM_BUILD || underNow < DROP_CALM_Q || bodyRise >= BODY_RISE_DB + DROP_CALM_RISE_DB;
+      if (this.h.sec === 'intro') strong = this.ri.buildUp >= DROP_CALM_BUILD;
       if (calm && !strong) {
         fireNow = false;
         if (DROP_CALM_LAND_MS > 0 && this.calmHoldStart === 0) { this.calmHoldStart = nowWallA; this.calmHoldRise = bodyRise; }
-        if (DROP_TRACE && bodyOnsetEdge) console.log(`[dropcalm] wall ${this.a.wallNow()} ${DROP_CALM_LAND_MS > 0 ? 'HALLS' : 'NEKAD'} sect ${this.a.f.hop.sec} lvh ${this.a.f.hop.lvh.toFixed(1)} build ${this.a.buildUp.toFixed(2)} underPeak ${underNow.toFixed(1)} rise ${bodyRise.toFixed(1)}`);
+        if (DROP_TRACE && bodyOnsetEdge) console.log(`[dropcalm] wall ${this.h.wallNow()} ${DROP_CALM_LAND_MS > 0 ? 'HALLS' : 'NEKAD'} sect ${this.h.sec} lvh ${this.h.lvh.toFixed(1)} build ${this.ri.buildUp.toFixed(2)} underPeak ${underNow.toFixed(1)} rise ${bodyRise.toFixed(1)}`);
       }
     }
     if (this.calmHoldStart > 0) {
-      if (!fullSlam) { if (DROP_TRACE) console.log(`[dropcalm] wall ${this.a.wallNow()} SLAPPT efter ${(nowWallA - this.calmHoldStart).toFixed(0)} ms (underPeak ${underNow.toFixed(1)})`); this.calmHoldStart = 0; }
+      if (!fullSlam) { if (DROP_TRACE) console.log(`[dropcalm] wall ${this.h.wallNow()} SLAPPT efter ${(nowWallA - this.calmHoldStart).toFixed(0)} ms (underPeak ${underNow.toFixed(1)})`); this.calmHoldStart = 0; }
       else if (fireNow) this.calmHoldStart = 0;
       else if (nowWallA - this.calmHoldStart >= DROP_CALM_LAND_MS && dropSpacingOk) { fireNow = true; fireTag = ` CALMLAND +${(nowWallA - this.calmHoldStart).toFixed(0)}ms`; bodyRise = Math.max(bodyRise, this.calmHoldRise); this.calmHoldStart = 0; }
     }
     if (fireNow) {
       this.dropArmUntil = 0; this.calmHoldStart = 0;
-      this.dropCand++; this.lastDropMs = nowWallA; this.lastDropRise = bodyRise;
-      console.log(`[dropfire] wall ${this.a.wallNow()}${fireTag} rise ${bodyRise.toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} ceil ${this.bodyCeil.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} sinceDrop ${(sinceDrop/1000).toFixed(1)}s goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s goneSpan ${(this.lastGoneSpanMs/1000).toFixed(1)}s edgeAgo ${(nowWallA - this.dropArmAt).toFixed(0)}ms`);
+      this.o.dropCand++; this.o.lastDropMs = nowWallA; this.lastDropRise = bodyRise;
+      console.log(`[dropfire] wall ${this.h.wallNow()}${fireTag} rise ${bodyRise.toFixed(1)} fast ${this.bodyFast.toFixed(1)} peak ${this.bodyPeak.toFixed(1)} ceil ${this.bodyCeil.toFixed(1)} underPeak ${(this.bodyPeak - this.bodyFast).toFixed(1)} sinceDrop ${(sinceDrop/1000).toFixed(1)}s goneAgo ${((nowWallA - this.lastBodyGoneMs)/1000).toFixed(1)}s goneSpan ${(this.lastGoneSpanMs/1000).toFixed(1)}s edgeAgo ${(nowWallA - this.dropArmAt).toFixed(0)}ms`);
     }
     this.dropClassify(flank, fireNow, nowWallA);
   }
@@ -155,10 +169,10 @@ export class DropDetector {
   /** EN DROPDETEKTOR. */
   private dropClassify(flank: boolean, cand: boolean, nowWallA: number): void {
     if (flank) {
-      if (this.hiFast - this.hiNorm < HI_VETO_DB) { this.dropDemoted++; this.miniDropCount++; }
-      else if (nowWallA - this.lastShowDropMs < SHOW_DROP_GAP_MS) { this.dropSpaced++; this.miniDropCount++; }
-      else { this.lastShowDropMs = nowWallA; this.dropCount++; }
-    } else if (cand && nowWallA - this.fdAt > 2000) { this.dropDemoted++; this.miniDropCount++; }
+      if (this.hiFast - this.hiNorm < HI_VETO_DB) { this.o.dropDemoted++; this.o.miniDropCount++; }
+      else if (nowWallA - this.lastShowDropMs < SHOW_DROP_GAP_MS) { this.o.dropSpaced++; this.o.miniDropCount++; }
+      else { this.lastShowDropMs = nowWallA; this.o.dropCount++; }
+    } else if (cand && nowWallA - this.fdAt > 2000) { this.o.dropDemoted++; this.o.miniDropCount++; }
   }
 
   /** FULL DROP PÅ FLANKEN. */
@@ -172,10 +186,10 @@ export class DropDetector {
     if (top < ceil - FLANK_GONE_DB) this.fdGone += dt; else { if (this.fdGone > 0) { this.fdSpan = this.fdGone; this.fdEnd = now; } this.fdGone = 0; }
     const above = f > ceil - FLANK_LAND_DB, edge = above && !this.fdAbove; this.fdAbove = above;
     const span = this.fdGone > 0 ? this.fdGone : now - this.fdEnd < FLANK_GRACE_S * 1000 ? this.fdSpan : 0;
-    if (this.a.f.hop.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
+    if (this.h.lvlSmooth <= FLANK_SILENT_LV) this.fdQuietAt = now;
     if (!edge || f - low < FLANK_RISE_DB || (span < FLANK_BREAK_S && !(span >= FLANK_SHORT_S && ceil - low >= FLANK_SHORT_RISE_DB))) return false;
     if (now - this.fdQuietAt < span * 1000 + 500) { this.fdGone = 0; this.fdSpan = 0; if (DROP_TRACE) console.log(`[flank] ingen drop: helt tyst i breaket (latstart), break ${span.toFixed(1)} s`); return false; }
-    this.fdGone = 0; this.fdSpan = 0; this.fdAt = now; this.dropRiseDb = f - low;
+    this.fdGone = 0; this.fdSpan = 0; this.fdAt = now; this.o.dropRiseDb = f - low;
     if (DROP_TRACE) console.log(`[flank] full drop pa flanken: break ${span.toFixed(1)} s, stigning ${(f - low).toFixed(1)} dB`);
     return true;
   }
@@ -200,12 +214,30 @@ export class DropDetector {
     }
     const floor = this.nearFloor, rise = this.nearB - floor, dip = this.nearNorm - floor;
     const near = rise >= NEAR_RISE_DB && dip >= NEAR_DIP_DB && floor > -80 && this.nearB >= this.nearNorm - 1;
-    this.nearDropDb = near ? rise : 0; this.nearDipDb = near ? dip : 0;
-    this.liftDb = this.liftN >= 240 && this.liftCalm > -80 && this.liftLift >= LIFT_DB ? this.liftLift : 0;
+    this.o.nearDropDb = near ? rise : 0; this.o.nearDipDb = near ? dip : 0;
+    this.o.liftDb = this.liftN >= 240 && this.liftCalm > -80 && this.liftLift >= LIFT_DB ? this.liftLift : 0;
     if (this.nearB < this.nearNorm - 12) this.stopRunS += dt;
     else if (this.nearB >= this.nearNorm - 1) {
-      if (this.stopRunS >= STOP_MINI_S && this.stopRunS <= 3) { this.stopCount++; this.stopS = this.stopRunS; }
+      if (this.stopRunS >= STOP_MINI_S && this.stopRunS <= 3) { this.o.stopCount++; this.o.stopS = this.stopRunS; }
       this.stopRunS = 0;
     }
+  }
+
+  /** Transporten: workern packar dropens UT-fält i storblocket (drainBig), huvudtråden packar upp (pushBig). */
+  pack(s: Float64Array): void {
+    const o = this.o;
+    s[P.dropCount] = o.dropCount; s[P.miniDropCount] = o.miniDropCount; s[P.buildStartCount] = o.buildStartCount; s[P.dropCand] = o.dropCand; s[P.bodyUnderDb] = o.bodyUnderDb;
+    s[P.dropDemoted] = o.dropDemoted; s[P.dropSpaced] = o.dropSpaced; s[P.dropRiseDb] = o.dropRiseDb; s[P.nearDropDb] = o.nearDropDb; s[P.nearDipDb] = o.nearDipDb; s[P.liftDb] = o.liftDb; s[P.stopCount] = o.stopCount; s[P.stopS] = o.stopS;
+  }
+  unpack(s: Float64Array): void {
+    const o = this.o;
+    o.dropCount = s[P.dropCount]; o.miniDropCount = s[P.miniDropCount]; o.buildStartCount = s[P.buildStartCount]; o.dropCand = s[P.dropCand]; o.bodyUnderDb = s[P.bodyUnderDb];
+    o.dropDemoted = s[P.dropDemoted]; o.dropSpaced = s[P.dropSpaced]; o.dropRiseDb = s[P.dropRiseDb]; o.nearDropDb = s[P.nearDropDb]; o.nearDipDb = s[P.nearDipDb]; o.liftDb = s[P.liftDb]; o.stopCount = s[P.stopCount]; o.stopS = s[P.stopS];
+  }
+  /** Workern startar om: räknarna ur senaste storblocket (fem fält saknas som förut). */
+  resume(s: Float64Array): void {
+    const o = this.o;
+    o.dropCount = s[P.dropCount]; o.miniDropCount = s[P.miniDropCount]; o.buildStartCount = s[P.buildStartCount]; o.dropCand = s[P.dropCand];
+    o.dropDemoted = s[P.dropDemoted]; o.dropSpaced = s[P.dropSpaced]; o.stopCount = s[P.stopCount];
   }
 }
