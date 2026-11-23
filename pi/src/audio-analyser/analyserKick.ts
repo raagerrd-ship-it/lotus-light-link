@@ -8,15 +8,16 @@ const KICK_EFLOOR = Number(sysEnv('KICK_EFLOOR')) || 0.06;
 
 /** DET KICKEN LÄSER. Inget annat går att nå. */
 export interface KickReads {
-  hop:   Ser<'S', 'hop', 'kickFlux' | 'energy' | 'now' | 'hopMs' | 'rms' | 'wallNow'>;
+  hop:   Ser<'S', 'hop', 'now' | 'hopMs' | 'wallNow'>;
+  fft:   Ser<'S', 'fft', 'kickFlux' | 'energy' | 'rms'>;
   level: Ser<'S', 'level', 'gain' | 'envelope' | 'gainLocked'>;
   clock: Ser<'S', 'clock', 'src'>;
 }
 
 export class KickDetector {
-  private readonly h: KickReads['hop']; private readonly lv: KickReads['level']; private readonly ck: KickReads['clock'];
+  private readonly h: KickReads['hop']; private readonly ff: KickReads['fft']; private readonly lv: KickReads['level']; private readonly ck: KickReads['clock'];
   constructor(r: KickReads, private readonly o: KickOut) {   // läser: r, lämnar ut: o
-    this.h = r.hop; this.lv = r.level; this.ck = r.clock;
+    this.h = r.hop; this.ff = r.fft; this.lv = r.level; this.ck = r.clock;
   }
 
   private kickMed = 0.1;   // robust glidande MEDIAN av kick-fluxen
@@ -31,7 +32,7 @@ export class KickDetector {
 
   /** Kick-detektorn. */
   private kickStep(): void {
-    const kickFlux = this.h.kickFlux, energy = this.h.energy, now = this.h.now;
+    const kickFlux = this.ff.kickFlux, energy = this.ff.energy, now = this.h.now;
     if (this.kickSeed < 400) {
       this.kickSeed++;
       this.kickMed += (kickFlux - this.kickMed) * 0.05;
@@ -47,8 +48,8 @@ export class KickDetector {
     }
     const kickThresh = this.kickMed + KickDetector.KICK_K * this.kickMad;
     const dk = this.o.dbgKick;
-    if (dk === null) this.o.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.lv.gain, rms: this.h.rms, env: this.lv.envelope, locked: this.lv.gainLocked };
-    else { dk.flux = kickFlux; dk.thresh = kickThresh; dk.med = this.kickMed; dk.mad = this.kickMad; dk.energy = energy; dk.gain = this.lv.gain; dk.rms = this.h.rms; dk.env = this.lv.envelope; dk.locked = this.lv.gainLocked; }
+    if (dk === null) this.o.dbgKick = { flux: kickFlux, thresh: kickThresh, med: this.kickMed, mad: this.kickMad, energy, gain: this.lv.gain, rms: this.ff.rms, env: this.lv.envelope, locked: this.lv.gainLocked };
+    else { dk.flux = kickFlux; dk.thresh = kickThresh; dk.med = this.kickMed; dk.mad = this.kickMad; dk.energy = energy; dk.gain = this.lv.gain; dk.rms = this.ff.rms; dk.env = this.lv.envelope; dk.locked = this.lv.gainLocked; }
     const gk = this.ck.src.beat;
     const cb = gk && gk.bpm > 40 ? gk.bpm : 0;
     const KICK_COOLDOWN = KICK_COOLDOWN_MS > 0 ? KICK_COOLDOWN_MS
@@ -84,12 +85,12 @@ export class KickDetector {
       o.pendingKickMs = o.beatAnchorMs;
     }
     o.kfPrev2 = o.kfPrev;
-    o.kfPrev = this.h.kickFlux;
+    o.kfPrev = this.ff.kickFlux;
   }
 
   /** Forfinar forra kickens fas. */
   private kickRefine(): void {
-    const kickFlux = this.h.kickFlux, hopMs = this.h.hopMs;
+    const kickFlux = this.ff.kickFlux, hopMs = this.h.hopMs;
     let kickAtMs = 0;
       const ym1 = this.o.kfPrev2, y0 = this.o.kfPrev, yp1 = kickFlux;
       const denom = ym1 - 2 * y0 + yp1;

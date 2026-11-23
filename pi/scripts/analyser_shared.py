@@ -14,7 +14,7 @@ Syskonets kallkatalog: env ANALYSER_SIBLING, annars standardplatsen bredvid dett
 import hashlib, os, sys
 
 SHARED = ['analyser.ts', 'analyserFack.ts', 'analyserDrop.ts', 'analyserSection.ts', 'analyserSpectrum.ts', 'analyserLevel.ts', 'analyserKick.ts', 'analyserRiser.ts',
-          'analyserBass.ts', 'analyserCharacter.ts', 'split.ts', 'slowWorker.ts', 'analyserClock.ts', 'recorder.ts']   # analyserClock.ts: EN KLOCKA i analysatorn (entempo 11-09)
+          'analyserBass.ts', 'analyserCharacter.ts', 'analyserFft.ts', 'split.ts', 'slowWorker.ts', 'analyserClock.ts', 'recorder.ts']   # analyserClock.ts: EN KLOCKA i analysatorn (entempo 11-09)
 MANIFEST = 'ANALYSER_SHARED.md5'
 
 

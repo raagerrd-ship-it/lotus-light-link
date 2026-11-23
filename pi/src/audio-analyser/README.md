@@ -70,7 +70,8 @@ console.log(frame.level, frame.kick, frame.bpm, frame.spec.bass);
 | `intensity` | 0..1 | Section energy vs song's own average |
 | `dropCount` | monotone | +1 per detected drop (edge-safe) |
 | `levelInZone` / `levelBreaking` | bool | Sustained top zone / breakdown |
-| `buildUp` / `inRiser` | 0..1 / bool | Tension ramp toward a drop |
+| `dropKeys` / `dropNear` / `dropMiniBack` | bits / bits / monotone | Drop key bundles: keys held now, bundle almost open, minidrop body fell back |
+| `buildUp` / `inRiser` | 0..1 / bool | Build-up (key bundle since step 40): bass out + music + treble holds, >1.5 s after a drop; rises over 3.5 s, 0 when the bass returns |
 | `profile.{punch,bass,bright,beat}` | 0..1 each | ~8s character of the track |
 | `spec.{sub,kick,bass,lowMid,mid,highMid,treble,air}` | 0..1 each | Per-band level (per-band AGC) |
 | `onset.{...same bands...}` | 0..1 each | Per-band adaptive-threshold onset |

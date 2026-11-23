@@ -5,8 +5,8 @@ import { platser, antal } from "./analyserFack.js";
 export const RING_N = 1024;
 export const RING_MARGIN = 8;   // records workern lämnar orörda mot skrivaren
 
-export const R_SEQ = 0, R_PERF = 1, R_WALL = 2, R_ENV = 3, R_BASS = 4, R_FLAGS = 5, R_HINT_MS = 6, R_VCLOCK = 7,
-  R_TS = 8, R_FLAGCNT = 9, R_HIGH = 10, R_BIGSEQ = 11;   // Record-fält (kärnan)
+export const R_SEQ = 0, R_PERF = 1, R_WALL = 2, R_FLAGS = 3, R_HINT_MS = 4, R_VCLOCK = 5,
+  R_TS = 6, R_FLAGCNT = 7, R_BIGSEQ = 8;   // Record-fält (kärnan)
 
 export const F_SIL350 = 1, F_SIL10 = 2, F_RESET_TEMPO = 4, F_HINT = 8, F_RESET_BAR = 16, F_VCLOCK_SET = 32, F_VCLOCK_NULL = 64;   // Flaggor
 export const FLAG_BITS = 7;
@@ -39,8 +39,8 @@ export function seqLow(seq: number): number { return seq | 0; }
 /** Signerad skillnad. */
 export function seqDelta(ctrlLow: number, mySeq: number): number { return (ctrlLow - (mySeq | 0)) | 0; }
 
-export const S_REC_SEQ = 0, S_BPM = 1, S_CONF = 2, S_BPMF = 3, S_PROCESSED = 4, S_LAG_MS = 5, S_LAG_MAX = 6,
-  S_BUSY_US = 7, S_BUSY_MAX_US = 8, S_SKIPPED = 9, S_LOST_FLAGS = 10;   // Tillståndsblock (kärnan)
+export const S_REC_SEQ = 0, S_BPM = 1, S_CONF = 2, S_PROCESSED = 4, S_LAG_MS = 5, S_LAG_MAX = 6,
+  S_BUSY_US = 7, S_BUSY_MAX_US = 8, S_SKIPPED = 9, S_LOST_FLAGS = 10;   // Tillståndsblock (kärnan; 3 ledig)
 
 export const SECTIONS = ['', 'intro', 'low', 'build', 'high', 'break'];
 export function sectionCode(s: string): number { const i = SECTIONS.indexOf(s); return i < 0 ? 0 : i; }
@@ -122,7 +122,7 @@ export const C_BIG_WRITE = 8, C_BIG_READ = 9, C_BIG_SEQ = 10 , C_WAITING_B = 11 
 export const BS_SEQ = 0, BS_SPEC_N = 1, BS_SKIPPED = 2;   // storblocket (kärnan)
 
 // FACKENS PLATSER (steg 18) ur taggarna (analyserFack.ts TRAD): IN följer hopprecordet B (tempot recordet R), UT storblocket BS (tempot och sektionen tillståndsblocket S).
-export const B = platser('IN', ['hop', 'level', 'spectrum', 'kick', 'bass', 'riser', 'drop', 'character', 'section'], B_ENVF + 1);
+export const B = platser('IN', ['hop', 'fft', 'level', 'spectrum', 'kick', 'bass', 'riser', 'drop', 'character', 'section'], B_ENVF + 1);
 export const R = platser('IN', ['clock'], R_BIGSEQ + 1);
 export const BS = platser('UT', ['hop', 'level', 'spectrum', 'kick', 'bass', 'riser', 'drop', 'character'], BS_SKIPPED + 1);
 export const S = platser('UT', ['clock', 'section'], S_LOST_FLAGS + 1);
@@ -160,7 +160,7 @@ export class HopLaneFast {
   private readonly s = new Float64Array(FEED_STATE_LEN); private readonly sr = new StateReader();
   private seq = 0; private applied = 0; private rt = 0; private rb = 0;
   private readonly grid = { anchorMs: 0.5, bpm: 0.5, confidence: 0.5 };
-  clockBpm = 0; clockConf = 0; private trust = 0; private trustAt = 0;   // Klockans tempo/tillit efter senaste feed
+  clockBpm = 0; clockConf = 0; clockAnchor = 0; private trust = 0; private trustAt = 0;   // Klockans tempo/tillit efter senaste feed
   barKnown = false;   // EN ETTA
   peer: HopLaneSlow | null = null;   // inline-läget
   constructor(b: SplitBuffers, private readonly sync = false) {
@@ -182,7 +182,7 @@ export class HopLaneFast {
     if (this.peer) this.peer.drain();
     else if (this.sync) syncWait(ctrl, C_FEED_SEQ, () => this.sr.read(ctrl, this.state, this.s, C_FEED_SEQ) && this.s[FS_HOP_SEQ] >= seq);
     this.apply(cfg, an);
-    const b = cfg.beat; f.bpm = b ? b.bpm : 0; f.bpmConfidence = b ? (b.confidence ?? 0) : 0; this.clockBpm = f.bpm; this.clockConf = f.bpmConfidence;
+    const b = cfg.beat; f.bpm = b ? b.bpm : 0; f.bpmConfidence = b ? (b.confidence ?? 0) : 0; this.clockBpm = f.bpm; this.clockConf = f.bpmConfidence; this.clockAnchor = b ? b.anchorMs : 0;
     { const dt = this.trustAt > 0 ? now - this.trustAt : 0; this.trustAt = now; f.beatTrust = this.trust = trustStep(this.trust, f.bpmConfidence, cfg.beatErr ?? 0, dt > 250 ? 250 : dt); }
   }
   private apply(cfg: HopCfg, an: HopTarget): void {

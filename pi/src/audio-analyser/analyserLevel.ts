@@ -4,16 +4,17 @@ import { F_SIL350, F_SIL10 } from './split.js';
 
 /** DET NIVÅN LÄSER. Inget annat går att nå. zeroBpm = kommando till klockan. Bara huvudtråden. */
 export interface LevelReads {
-  hop:   Ser<'S', 'hop', 'rms' | 'now' | 'dt' | 'hopMs' | 'dtHop' | 'gated' | 'role' | 'cfg'>;
+  hop:   Ser<'S', 'hop', 'now' | 'dt' | 'hopMs' | 'dtHop' | 'gated' | 'role' | 'cfg'>;
+  fft:   Ser<'S', 'fft', 'rms'>;
   clock: Ser<'S', 'clock', 'bpm' | 'zeroBpm'>;
 }
 /** Nivåns kommando till kärnan: flagga tystnad till workern. */
 export interface LevelCmd { flagSlow(f: number): void }
 
 export class LevelTracker {
-  private readonly h: LevelReads['hop']; private readonly ck: LevelReads['clock'];
+  private readonly h: LevelReads['hop']; private readonly ff: LevelReads['fft']; private readonly ck: LevelReads['clock'];
   constructor(r: LevelReads, private readonly o: LevelOut, private readonly cmd: LevelCmd) {   // läser: r, lämnar ut: o
-    this.h = r.hop; this.ck = r.clock;
+    this.h = r.hop; this.ff = r.fft; this.ck = r.clock;
   }
   private aAtt = 0; private aRel = 0; private aIUp = 0; private aIDown = 0;
   /** Takterna ur hoppets längd (konstruktorn): utjämningen och intensiteten. */
@@ -66,9 +67,9 @@ export class LevelTracker {
   /** Hoppet: AGC (bara mic, över brusgolvet), tystnaden, rå nivå, utjämningen, intensiteten, nivåtaket. */
   hopStep(): void {
     const o = this.o;
-    if (!o.gainLocked && this.h.rms > this.h.cfg.detection.noiseFloor) this.agcStep();
+    if (!o.gainLocked && this.ff.rms > this.h.cfg.detection.noiseFloor) this.agcStep();
     this.silenceStep();
-    const x = Math.min(1, this.h.rms * o.gain), p = o.lvlSmooth;
+    const x = Math.min(1, this.ff.rms * o.gain), p = o.lvlSmooth;
     o.level = x;
     o.lvlSmooth = p + (x - p) * (x > p ? this.aAtt : this.aRel);
     this.intensityStep();
@@ -77,7 +78,7 @@ export class LevelTracker {
 
   /** AGC (bara mic). */
   private agcStep(): void {
-    const rms = this.h.rms, now = this.h.now, dt = this.h.dt;
+    const rms = this.ff.rms, now = this.h.now, dt = this.h.dt;
     const d = this.h.cfg.detection;
       const env = this.agcEnvelope(rms, now);
       if (env > 0) {

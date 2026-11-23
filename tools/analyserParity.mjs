@@ -17,7 +17,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { NAMN, BORT } from './refaktor/namnkarta.mjs';
+import { NAMN, BORT, NY } from './refaktor/namnkarta.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
@@ -108,6 +108,7 @@ for (const w of wavs) {
       side = null;
     }
     const [fo, fn] = frames; let bad = false;
+    for (const k of Object.keys(fn)) if (!(k in fo) && !NY.has(k.split('.')[0])) { bad = true; badFields.set(k + ' (nytt, ej i NY)', (badFields.get(k + ' (nytt, ej i NY)') || 0) + 1); }
     for (const k of Object.keys(fo)) {
       if (!same(fo[k], fn[k])) {
         bad = true; badFields.set(k, (badFields.get(k) || 0) + 1);
