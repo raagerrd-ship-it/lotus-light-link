@@ -1,3 +1,6 @@
+## Från kvällen 2026-11-22 (huvudsessionen)
+- DMX-analysatorn har nya ändringar (flytten steg 20-36: nyckelknippor för drop, sektion pågår) som INTE är portade till lotus. Porta INTE, bygg/deploya INTE analysatorn på lotus i morgon - huvudsessionen gör porten med ägarens ord. Lotus kör 52637b3d/4010de48 (live 11-22 13:41).
+
 ## LÄGET 2026-11-12 (huvudsessionen) - LÄS FÖRST, går före allt utom hälsan
 11-14 15:27 NYA ANALYSATORN LIVE PÅ PI:N (huvudsessionen, ägaren: "du får gärna köra igång på lotus direkt"): lotus 22a2055c (uppdelad i 13 filer + relativa nivågränser + break-taket), md5 Pi = bygget, Pi-backup *.bak-20261114-1527. Latens före/efter med musik: huvudtråd 39,0-39,8 -> 37,6-38,1 %, arbetstråd 16,3-16,5 -> 16,1-16,2 %,
 0 hopp över budget, eftersläp 1 ms, BLE 0 fel. Raderna nedan om "ej utlagd" är alltså inaktuella. Rapportera: omstarter, hopp över budget, och om ljuset ser annorlunda ut.
@@ -55,6 +58,8 @@ Historik: 12:45/13:00 hade kalibreringen fallMinMs 4000 + fallTopBpm 200 + riseM
 1742078b: onsetRiseK = effektens fade in ur tempot, leaden följer med som par - ägarens idé, rör inte beatLeadMs/onsetRiseMs). Rör inte, ändra inte. Värt att mäta: låtar där takten inte håller (13:00: låst ~35 %,
 tempot hoppade 81-150) - hur ofta växlar effekten nivå/takt där?
 NYTT 12:35 (9508e598): fallMinMs gäller fullt upp till 80 BPM/utan takt och glider till 0 vid 120 BPM (dirigentens val). 0 = av. Rör inte.
+
+## 2026-11-23 morgon (morgonagenten): ingen PUT, ingen bänk, ingen port (huvudsessionens besked 11-22). Hälsa: motorn uppe sedan 05:00, NRestarts 0, RSS 126 MB/swap 0, throttled 0x0, felsökning av, ingen LOTUS_RECORDER, timers 03:00–04:30, dist md5 Pi = bygget av 52637b3d (17 filer), heap 144/semi 4. Musik 11-22 13:21–19:28 CET, 120 spårbyten, full GC vid låtbyte 17 st max 111,5 ms, BLE controller-drain stuck 12 (alla ACL-rivning ~2 s + återhämtade, ~2/h). Sonos IDLE ⇒ ingen live-avläsning. Inga nya DMX-fynd.
 
 ## Från kvällen 2026-10-27 (ägaren via DMX-sessionen: 'nya test för natten') - KICKFÄLTET (går före allt utom hälsan och kalibreringen)
 DMX-nattagenten hittade i natt att gallop-felet i ladan är taktgridets fas: onset.kick är klampad 0/1 och står på 1 under hela bas-svallet,
