@@ -59,6 +59,8 @@ Historik: 12:45/13:00 hade kalibreringen fallMinMs 4000 + fallTopBpm 200 + riseM
 tempot hoppade 81-150) - hur ofta växlar effekten nivå/takt där?
 NYTT 12:35 (9508e598): fallMinMs gäller fullt upp till 80 BPM/utan takt och glider till 0 vid 120 BPM (dirigentens val). 0 = av. Rör inte.
 
+## 2026-11-24 morgon (morgonagenten): ingen PUT, ingen bänk, ingen port. Hälsa: motorn uppe sedan 05:00, NRestarts 0, RSS 164 MB/swap 0, throttled 0x0, felsökning av, ingen LOTUS_RECORDER, dist md5 Pi = bygget av abec7563 (FLYTTEN 25-45, utlagd av huvudsessionen 11-23 14:36), heap 144/semi 4, sync late 0, split lagMaxMs 350/skipped 0. Musik 11-23 14-19:25 CET, 75 spårbyten, full GC vid låtbyte 11 st max 108,6 ms, BLE controller-hängning 11 (dygnet) + 10 st 05:00-07:05 i dag (~5/h, högre än vanligt, alla återhämtade). LIVE 07:05 (30 s, abec7563): låst 77 %, BPM 126,6-129,8, effekt andning 77 %/nivå 23 %, trust 0,00-0,34. Inga nya DMX-fynd.
+
 ## 2026-11-23 morgon (morgonagenten): ingen PUT, ingen bänk, ingen port (huvudsessionens besked 11-22). Hälsa: motorn uppe sedan 05:00, NRestarts 0, RSS 126 MB/swap 0, throttled 0x0, felsökning av, ingen LOTUS_RECORDER, timers 03:00–04:30, dist md5 Pi = bygget av 52637b3d (17 filer), heap 144/semi 4. Musik 11-22 13:21–19:28 CET, 120 spårbyten, full GC vid låtbyte 17 st max 111,5 ms, BLE controller-drain stuck 12 (alla ACL-rivning ~2 s + återhämtade, ~2/h). Sonos IDLE ⇒ ingen live-avläsning. Inga nya DMX-fynd.
 
 ## Från kvällen 2026-10-27 (ägaren via DMX-sessionen: 'nya test för natten') - KICKFÄLTET (går före allt utom hälsan och kalibreringen)
